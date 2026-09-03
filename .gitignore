@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+build/
+
+# PyInstaller 产物（EXE 走 GitHub Release 资产，不入库）
+dist/
+
+# 历史废弃/测试残留
+_obsolete/
+_sample*/
+_flow*/
