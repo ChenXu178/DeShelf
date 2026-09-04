@@ -238,6 +238,7 @@ TEXTS = {
         "about_title": "关于 %s %s",
         "about_what": "本地文本整理工具：扫描 · 清洗 · 分章 · 导出\n"
                       "纯离线运行，不联网、不下载、不上传任何内容。",
+        "about_repo": "GitHub 主页 / 查看最新版：\nhttps://github.com/podcatcher962/DeShelf/releases",
         "usage_title": "使用说明", "disclaimer_title": "免责声明",
         "help_text": HELP_ZH, "disclaimer_text": DISC_ZH,
         # 右键菜单
@@ -345,6 +346,7 @@ TEXTS = {
         "about_title": "About %s %s",
         "about_what": "A local TXT organizer: scan · clean · split · export\n"
                       "Fully offline — no network, no upload, nothing leaves your computer.",
+        "about_repo": "GitHub homepage / latest release:\nhttps://github.com/podcatcher962/DeShelf/releases",
         "usage_title": "User Guide", "disclaimer_title": "Disclaimer",
         "help_text": HELP_EN, "disclaimer_text": DISC_EN,
         "m_open_loc": "Open file location", "m_open_note": "Open with Notepad",
@@ -818,8 +820,8 @@ class App:
         S = self.S
         messagebox.showinfo(
             S["about_title"] % (APP_CN, APP_EN),
-            "%s %s %s\n\n%s\n\n%s"
-            % (APP_CN, APP_EN, APP_VER, S["about_what"], AUTHOR))
+            "%s %s %s\n\n%s\n\n%s\n\n%s"
+            % (APP_CN, APP_EN, APP_VER, S["about_what"], S["about_repo"], AUTHOR))
 
     # ------------------------------------------------------------ 书库
     def add_book(self, info):
