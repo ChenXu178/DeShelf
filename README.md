@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · 导出
 >
+> **v1.2** · 新增中英双语界面（跟随系统语言，菜单可切换）· 记忆上次输出目录与模式 · 修复原地覆盖缺输出目录时静默跳过的校验
+>
 > **v1.1** · 新增启动开屏海报（淡入淡出，点击可跳过）· 主窗口居中
 
 [中文](#中文) | [English](#english)
@@ -73,6 +75,8 @@
 ## English
 
 > Local TXT organizing tool — scan · clean · split · export
+>
+> **v1.2** · bilingual UI (follows system language, switchable in the menu) · remembers last output folder & mode · fixed silent export skip when no output folder was set for in-place mode
 >
 > **v1.1** · new animated launch poster (fade in/out, click to skip) · centered main window
 

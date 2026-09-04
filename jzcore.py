@@ -13,7 +13,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.1"
+APP_VER = "v1.2"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -153,15 +153,24 @@ NAV_RE = re.compile(r"^\s*(上一页|下一页|上一章|下一章|返回目录|
 MOJI_RE = re.compile(r"[\ufffd\ue000-\uf8ff]|[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 RULES = [
-    {"id": "url", "name": "含网址的行", "tip": "删除出现 http / www / 域名的整行"},
-    {"id": "site", "name": "站点宣传行", "tip": "删除“请收藏本站”“笔趣阁”这类推广整行"},
-    {"id": "nav", "name": "翻页导航残留", "tip": "删除“上一页”“本章未完”等导航整行"},
-    {"id": "moji", "name": "乱码行", "tip": "删除含替换符或不可见控制符的整行"},
-    {"id": "blank", "name": "删除所有空行", "tip": "不留任何空行（与下一项二选一）"},
-    {"id": "blank2", "name": "压缩连续空行", "tip": "多个空行合并为一个，保留段落间隔"},
-    {"id": "trim", "name": "去除行首尾空白", "tip": "清掉每行开头结尾的空格与制表符"},
-    {"id": "half", "name": "全角转半角", "tip": "仅转换数字、字母与常见标点，不动汉字"},
-    {"id": "indent", "name": "段落首行缩进两格", "tip": "给每个非空段落开头补两个全角空格"},
+    {"id": "url", "name": "含网址的行", "name_en": "Lines with URLs",
+     "tip": "删除出现 http / www / 域名的整行", "tip_en": "Remove whole lines containing http / www / domains"},
+    {"id": "site", "name": "站点宣传行", "name_en": "Site promo lines",
+     "tip": "删除“请收藏本站”“笔趣阁”这类推广整行", "tip_en": "Remove promo lines like \u201cbookmark us\u201d or scraper-site names"},
+    {"id": "nav", "name": "翻页导航残留", "name_en": "Pagination leftovers",
+     "tip": "删除“上一页”“本章未完”等导航整行", "tip_en": "Remove nav-only lines such as \u201cprev page\u201d / \u201cto be continued\u201d"},
+    {"id": "moji", "name": "乱码行", "name_en": "Corrupted lines",
+     "tip": "删除含替换符或不可见控制符的整行", "tip_en": "Remove lines with replacement or invisible control characters"},
+    {"id": "blank", "name": "删除所有空行", "name_en": "Delete all blank lines",
+     "tip": "不留任何空行（与下一项二选一）", "tip_en": "Remove every blank line (pick either this or the next)"},
+    {"id": "blank2", "name": "压缩连续空行", "name_en": "Collapse blank runs",
+     "tip": "多个空行合并为一个，保留段落间隔", "tip_en": "Merge consecutive blanks into one, keep paragraph spacing"},
+    {"id": "trim", "name": "去除行首尾空白", "name_en": "Trim line ends",
+     "tip": "清掉每行开头结尾的空格与制表符", "tip_en": "Strip spaces & tabs at the start/end of every line"},
+    {"id": "half", "name": "全角转半角", "name_en": "Full-width to half-width",
+     "tip": "仅转换数字、字母与常见标点，不动汉字", "tip_en": "Convert digits, letters & common punctuation; keep Chinese"},
+    {"id": "indent", "name": "段落首行缩进两格", "name_en": "Indent paragraphs",
+     "tip": "给每个非空段落开头补两个全角空格", "tip_en": "Prepend two full-width spaces to each non-empty paragraph"},
 ]
 
 DEFAULT_ON = ["url", "site", "nav", "moji", "blank2", "trim", "half"]
@@ -218,10 +227,15 @@ def clean_text(text, enabled):
         if "indent" in on and s:
             s = "　　" + s
         out.append(s)
-    while out and not out[0]:
-        out.pop(0)
-    while out and not out[-1]:
-        out.pop()
+    # 去掉首尾空行：用指针扫描避免 pop(0) 在大文本上的 O(n²)
+    start = 0
+    while start < len(out) and not out[start]:
+        start += 1
+    end = len(out)
+    while end > start and not out[end - 1]:
+        end -= 1
+    if start or end != len(out):
+        out = out[start:end]
     return "\n".join(out) + ("\n" if out else ""), removed
 
 

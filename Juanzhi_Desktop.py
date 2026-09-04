@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""卷帙 DeShelf — 本地文本整理工具（桌面版）
+"""卷帙 DeShelf — 本地文本整理工具（桌面版，中英双语界面）
 
 扫描 → 清洗 → 分章 → 导出，全程在本机完成，不发起任何网络请求。
+界面语言：默认跟随系统；菜单「语言 / Language」可切换并记忆（重启生效）。
 """
 
 import os
@@ -35,7 +36,11 @@ SPLASH_GRAY = "#9AA5B6"
 SPLASH_DIM = "#7C8695"
 SPLASH_LINE = "#465061"
 
-HELP_TEXT = """卷帙 DeShelf 使用说明
+# ============================================================ 语言
+ZH = "zh"
+EN = "en"
+
+HELP_ZH = """卷帙 DeShelf 使用说明
 
 【1 扫描入库】
   选择一个目录后点「扫描」，程序会递归查找其中所有 .txt 文件，
@@ -65,7 +70,43 @@ HELP_TEXT = """卷帙 DeShelf 使用说明
   · 导出到手机后，用支持本地导入的阅读器打开 EPUB 即可带目录阅读。
 """
 
-DISCLAIMER = """免责声明
+HELP_EN = """DeShelf User Guide
+
+[1] Scan Library
+  Pick a folder and click Scan. DeShelf recursively finds every .txt file,
+  detects the encoding (GBK / UTF-8 / UTF-16), counts characters and flags
+  duplicates by content fingerprint. Your originals never move — only an
+  index is stored.
+
+[2] Batch Clean
+  Tick the rules you need and hit Preview to compare before/after text.
+  A common combo: URL lines + site promos + pagination leftovers +
+  corrupted lines + collapse blank runs.
+  “Delete all blank lines” and “Collapse blank runs” are alternatives —
+  pick one; the former squeezes the whole book into an unbroken block.
+
+[3] Smart Chapter Split
+  Built-in Chinese web-novel patterns match lines like 第1章 / 第一百二十三章 /
+  卷三 / 序章 / 番外. For special formats, fill in a custom regex
+  (the custom rule then replaces the built-ins). Click “Try split” to
+  check the result and adjust.
+
+[4] Export
+  Where cleaned text goes:
+    New folder  — originals stay byte-identical, safest
+    Overwrite   — .bak backup first, saves space but touches files
+    Export only — keep no cleaned TXT, just generated files
+  Formats (multi-select): EPUB (TOC, most readers), merged TXT,
+  per-chapter TXT.
+
+[Tips]
+  · Double-click a library row to toggle selection; right-click for file actions.
+  · Scan results are cached in .deshelf_index.json next to the folder —
+    reopening loads instantly.
+  · Send EPUBs to your phone and open them in any local-import reader.
+"""
+
+DISC_ZH = """免责声明
 
 卷帙 DeShelf 是一款纯本地的文本整理工具：它不联网、不下载、不上传、
 不提供也不存储任何书籍内容，仅对用户本机已有的文件做清洗、分章与格式转换。
@@ -77,12 +118,253 @@ DISCLAIMER = """免责声明
 请在执行「原地覆盖」前确认已做好备份。
 """
 
+DISC_EN = """Disclaimer
 
-def safe_name(s, maxlen=60):
-    s = (s or "未命名").strip()
+DeShelf is a purely local text-organizing tool: it does not connect to the
+network, download, upload, host or store any book content. It only cleans,
+splits and converts files that already exist on the user's own machine.
+
+Users are responsible for ensuring the files they process have a legal
+source and are used for personal study only. Any copyright or legal issue
+arising from the use of this tool is the sole responsibility of the user.
+
+The software is provided “as is”. The author accepts no liability for data
+loss or damage. Please confirm you have a backup before using “Overwrite”.
+"""
+
+TEXTS = {
+    ZH: {
+        # 窗口 / 菜单
+        "w_title": "%s %s %s",
+        "m_file": "文件", "m_lib": "书库", "m_lang": "语言", "m_help": "帮助",
+        "m_pick_dir": "选择目录…", "m_rescan": "重新扫描",
+        "m_rescan_fresh": "重新扫描（忽略缓存）", "m_quit": "退出",
+        "m_sel_all": "全选", "m_sel_none": "全不选", "m_invert": "反选",
+        "m_sel_dup": "只选重复文件", "m_export_csv": "导出书单 CSV",
+        "m_usage": "使用说明", "m_disclaimer": "免责声明", "m_about": "关于",
+        "lang_dlg_title": "语言 Language",
+        "lang_ok_zh": "语言已切换为中文，重启后界面生效。",
+        "lang_ok_en": "语言已切换为 English，重启后界面生效。",
+        # 顶部栏
+        "lib_dir": "书库目录：", "browse": "浏览…", "scan": "扫描",
+        "stop": "停止",
+        # 页标签
+        "tab1": " 1 扫描入库 ", "tab2": " 2 批量清洗 ",
+        "tab3": " 3 智能分章 ", "tab4": " 4 导出分发 ",
+        # 页1 书库
+        "lib_hint": "  双击行可切换勾选，右键可打开文件位置",
+        "lib_info": "共 {0} 本 · 已选 {1} 本",
+        "lib_info_dup": " · 重复 {0} 本",
+        "col_title": "书名", "col_author": "作者", "col_chars": "字数",
+        "col_enc": "编码", "col_chap": "章节", "col_size": "大小", "col_rel": "相对路径",
+        # 页2 清洗
+        "grp_rules": "清洗规则", "b_all_rules": "全选规则", "b_def_rules": "恢复默认",
+        "b_preview": "预览效果",
+        "clean_hint": "  对第一本勾选的书试跑，左边原文、右边清洗后",
+        "col_pre": "清洗前", "col_post": "清洗后",
+        "cmp_var": "删除 {0} 行，{1} → {2} 字",
+        # 页3 分章
+        "re_label": "章节正则（留空使用内置中文规则库）：",
+        "b_try": "试分章节",
+        "chap_hint": "内置可识别：第1章 / 第一百二十三章 / 卷三 / Chapter 5 / 序章 / 楔子 / 番外 / 后记；"
+                    "填写自定义正则后将只使用自定义规则。",
+        "col_chap_title": "章节标题",
+        "chap_res": "点「试分章节」查看结果",
+        "chap_sum": "《{0}》共切出 {1} 章，正文合计 {2} 字",
+        # 页4 导出
+        "grp_where": "清洗结果的去向",
+        "r_new": "输出到新目录（原文件不动，推荐）",
+        "r_inplace": "原地覆盖（先备份为 .bak）",
+        "r_none": "仅导出，不保存整理后的 TXT",
+        "grp_fmt": "导出格式（可多选）",
+        "f_epub": "EPUB（带目录，推荐）",
+        "f_merge": "合并 TXT（整本一个文件）",
+        "f_split": "分章 TXT（一章一个文件）",
+        "grp_out": "输出目录",
+        "b_go": "开始处理",
+        "out_note": "处理期间请勿关闭窗口。大批量任务建议先选少量书试跑。",
+        "out_suffix": "_卷帙整理",
+        # 日志 / 状态
+        "grp_log": "运行日志", "st_ready": "就绪", "stopping": "正在停止…",
+        "log_scan_start": "开始扫描：{0}",
+        "log_found": "发现 {0} 个文本文件，开始读取…",
+        "log_skip": "  跳过 {0}（{1}）",
+        "prog_scan": "扫描中 {0}/{1}",
+        "log_idx_load": "已从索引载入 {0} 本（{1}）{2}",
+        "log_idx_stale": "，{0} 本已失效建议重新扫描",
+        "log_idx_missing": "提示：索引中有 {0} 个文件已不存在，建议点「重新扫描」。",
+        "st_scan_done": "扫描完成：{0} / {1} 本",
+        "log_scan_done": "扫描完成，共 {0} 本。{1}",
+        "log_stopped": "（已停止）",
+        "log_run_done": "处理完成：成功 {0} 本，失败 {1} 本",
+        "st_run_done": "处理完成：成功 {0} 本，失败 {1} 本",
+        "prog_run": "处理中 {0}/{1}：{2}",
+        "prog_done": "处理完成",
+        "log_per_book": "[{0}/{1}] {2}：{3} 章，清洗删除 {4} 行",
+        "log_book_fail": "[{0}/{1}] {2} 失败：{3}",
+        "log_outdir_fail": "无法创建输出目录：{0}",
+        "log_open_fail": "无法打开资源管理器：{0}",
+        "log_file_fail": "无法打开文件：{0}",
+        "log_csv_ok": "书单已导出：{0}",
+        "log_dup_sel": "已选中 {0} 个重复文件，可在书库中取消保留项的勾选后清理。",
+        "log_out_final": "原地覆盖",
+        # 对话框
+        "d_info": "提示", "d_warn": "警告", "d_error": "错误", "d_confirm": "确认",
+        "d_close": "关闭",
+        "d_dir_invalid": "目录无效", "d_dir_invalid_msg": "请先选择一个存在的目录。",
+        "d_no_sel": "未选择", "d_no_sel_msg": "请先在书库中勾选至少一本书。",
+        "d_no_dup": "没有重复", "d_no_dup_msg": "当前书库中未发现内容完全相同的文件。",
+        "d_no_out": "缺少输出目录", "d_no_out_msg": "请先选择输出目录。",
+        "d_nothing": "无事可做",
+        "d_nothing_msg": "你选择了「仅导出」却又没有勾选任何导出格式。",
+        "d_confirm_ip": "确认原地覆盖",
+        "d_confirm_ip_msg": "将把清洗后的内容写回 {0} 个原文件，每个原文件会先备份为 .bak。\n\n"
+                           "此操作会改动你的原始文件，确定继续吗？",
+        "d_re_bad": "正则无效", "d_re_bad_msg": "自定义章节正则无效，请检查语法。",
+        "d_preview_fail": "预览失败", "d_chap_fail": "分章失败",
+        "d_export_fail": "导出失败",
+        # CSV
+        "csv_hdr": "书名,作者,字数,编码,大小,相对路径",
+        "csv_name": "书单.csv", "csv_type": "CSV 文件",
+        # 关于 / 帮助
+        "about_title": "关于 {0} {1}",
+        "about_what": "本地文本整理工具：扫描 · 清洗 · 分章 · 导出\n"
+                      "纯离线运行，不联网、不下载、不上传任何内容。",
+        "usage_title": "使用说明", "disclaimer_title": "免责声明",
+        "help_text": HELP_ZH, "disclaimer_text": DISC_ZH,
+        # 右键菜单
+        "m_open_loc": "打开文件位置", "m_open_note": "用记事本打开",
+        "m_copy_path": "复制完整路径",
+        # 通用
+        "unnamed": "未命名",
+        # 开屏
+        "sp_tag": "扫描 · 清洗 · 分章 · 导出",
+        "sp_bottom": "{0} · 纯本地离线工具 · 点击或按任意键跳过",
+    },
+    EN: {
+        "w_title": "%s %s %s",
+        "m_file": "File", "m_lib": "Library", "m_lang": "Language", "m_help": "Help",
+        "m_pick_dir": "Choose folder…", "m_rescan": "Rescan",
+        "m_rescan_fresh": "Rescan (ignore cache)", "m_quit": "Exit",
+        "m_sel_all": "Select all", "m_sel_none": "Select none", "m_invert": "Invert",
+        "m_sel_dup": "Select duplicates only", "m_export_csv": "Export list as CSV",
+        "m_usage": "User guide", "m_disclaimer": "Disclaimer", "m_about": "About",
+        "lang_dlg_title": "语言 Language",
+        "lang_ok_zh": "Language set to 中文 — restart to apply.",
+        "lang_ok_en": "Language set to English — restart to apply.",
+        "lib_dir": "Library folder:", "browse": "Browse…", "scan": "Scan",
+        "stop": "Stop",
+        "tab1": " 1 Scan Library ", "tab2": " 2 Batch Clean ",
+        "tab3": " 3 Split Chapters ", "tab4": " 4 Export ",
+        "lib_hint": "  Double-click a row to toggle; right-click for file actions",
+        "lib_info": "{0} books · {1} selected",
+        "lib_info_dup": " · {0} duplicated",
+        "col_title": "Title", "col_author": "Author", "col_chars": "Chars",
+        "col_enc": "Encoding", "col_chap": "Chap", "col_size": "Size", "col_rel": "Path",
+        "grp_rules": "Cleaning Rules", "b_all_rules": "Check all", "b_def_rules": "Reset",
+        "b_preview": "Preview",
+        "clean_hint": "  Dry-run on the first selected book: original left, cleaned right",
+        "col_pre": "Original", "col_post": "Cleaned",
+        "cmp_var": "{0} lines removed, {1} → {2} chars",
+        "re_label": "Chapter regex (blank = built-in Chinese rules):",
+        "b_try": "Try Split",
+        "chap_hint": "Built-in patterns match 第1章 / 第一百二十三章 / 卷三 / Chapter 5 / "
+                    "序章 / 楔子 / 番外 / 后记; a custom regex replaces the built-ins.",
+        "col_chap_title": "Chapter Title",
+        "chap_res": "Click \u201cTry Split\u201d to preview",
+        "chap_sum": "\u201c{0}\u201d: {1} chapters, {2} chars total",
+        "grp_where": "Where Cleaned Text Goes",
+        "r_new": "Output to a new folder (originals untouched, recommended)",
+        "r_inplace": "Overwrite in place (.bak backup first)",
+        "r_none": "Export only — don't save cleaned TXT",
+        "grp_fmt": "Export Formats (multi-select)",
+        "f_epub": "EPUB (with TOC, recommended)",
+        "f_merge": "Merged TXT (one file per book)",
+        "f_split": "Per-chapter TXT (one file per chapter)",
+        "grp_out": "Output Folder",
+        "b_go": "Start",
+        "out_note": "Keep the window open while processing. For large batches, try a few books first.",
+        "out_suffix": "_DeShelf",
+        "grp_log": "Log", "st_ready": "Ready", "stopping": "Stopping…",
+        "log_scan_start": "Scanning: {0}",
+        "log_found": "Found {0} text files, reading…",
+        "log_skip": "  Skipped {0} ({1})",
+        "prog_scan": "Scanning {0}/{1}",
+        "log_idx_load": "Loaded {0} books from index ({1}){2}",
+        "log_idx_stale": ", {0} stale — rescan advised",
+        "log_idx_missing": "{0} files in the index no longer exist — click \u201cRescan\u201d.",
+        "st_scan_done": "Scan done: {0}/{1}",
+        "log_scan_done": "Scan finished: {0} books.{1}",
+        "log_stopped": " (stopped)",
+        "log_run_done": "Done: {0} ok, {1} failed",
+        "st_run_done": "Done: {0} ok, {1} failed",
+        "prog_run": "Processing {0}/{1}: {2}",
+        "prog_done": "Done",
+        "log_per_book": "[{0}/{1}] {2}: {3} chapters, {4} lines removed",
+        "log_book_fail": "[{0}/{1}] {2} failed: {3}",
+        "log_outdir_fail": "Cannot create output folder: {0}",
+        "log_open_fail": "Cannot open Explorer: {0}",
+        "log_file_fail": "Cannot open file: {0}",
+        "log_csv_ok": "List exported: {0}",
+        "log_dup_sel": "Selected {0} duplicates — uncheck the copies you keep, then process.",
+        "log_out_final": "overwritten in place",
+        "d_info": "Info", "d_warn": "Warning", "d_error": "Error", "d_confirm": "Confirm",
+        "d_close": "Close",
+        "d_dir_invalid": "Invalid Folder", "d_dir_invalid_msg": "Please choose an existing folder.",
+        "d_no_sel": "Nothing Selected", "d_no_sel_msg": "Select at least one book in the library first.",
+        "d_no_dup": "No Duplicates",
+        "d_no_dup_msg": "No content-identical files found in the library.",
+        "d_no_out": "Output Folder Needed", "d_no_out_msg": "Please choose an output folder.",
+        "d_nothing": "Nothing to Do",
+        "d_nothing_msg": "You picked \u201cExport only\u201d but selected no format.",
+        "d_confirm_ip": "Confirm Overwrite",
+        "d_confirm_ip_msg": "Cleaned text will be written back to {0} original files, each backed "
+                           "up as .bak first.\n\nThis modifies your original files. Continue?",
+        "d_re_bad": "Invalid Regex", "d_re_bad_msg": "Custom chapter regex is invalid — check the syntax.",
+        "d_preview_fail": "Preview Failed", "d_chap_fail": "Split Failed",
+        "d_export_fail": "Export Failed",
+        "csv_hdr": "Title,Author,Chars,Encoding,Size,Path",
+        "csv_name": "library_list.csv", "csv_type": "CSV files",
+        "about_title": "About {0} {1}",
+        "about_what": "A local TXT organizer: scan · clean · split · export\n"
+                      "Fully offline — no network, no upload, nothing leaves your computer.",
+        "usage_title": "User Guide", "disclaimer_title": "Disclaimer",
+        "help_text": HELP_EN, "disclaimer_text": DISC_EN,
+        "m_open_loc": "Open file location", "m_open_note": "Open with Notepad",
+        "m_copy_path": "Copy full path",
+        "unnamed": "Untitled",
+        "sp_tag": "Scan · Clean · Split · Export",
+        "sp_bottom": "{0} · Fully offline · Click or press any key to skip",
+    },
+}
+
+
+def _sys_lang():
+    """按 Windows 界面语言判断默认界面语言（不抛异常）。"""
+    try:
+        import ctypes
+        lid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+        return ZH if (lid & 0x3FF) == 0x04 else EN   # 0x0804/0x0404/0x0004 = Chinese
+    except Exception:
+        return ZH
+
+
+def pick_lang():
+    """优先级：环境变量 JUANZHI_LANG > 配置文件 lang > 系统语言。"""
+    env = os.environ.get("JUANZHI_LANG")
+    if env in (ZH, EN):
+        return env
+    cfg = jzcore.load_config()
+    if cfg.get("lang") in (ZH, EN):
+        return cfg["lang"]
+    return _sys_lang()
+
+
+def safe_name(s, maxlen=60, fallback="未命名"):
+    s = (s or "").strip()
     s = "".join(c for c in s if c not in '\\/:*?"<>|\r\n\t')
     s = s.strip(" .")
-    return (s or "未命名")[:maxlen]
+    return (s or fallback)[:maxlen]
 
 
 def _dpi(root):
@@ -112,19 +394,22 @@ class App:
         self.busy = False
         self.cancel = False
         self.cfg = jzcore.load_config()
-        self.dir_var = tk.StringVar(value=self.cfg.get("lastdir", ""))
-        self.out_var = tk.StringVar()
+        self.lang = pick_lang()
+        self.S = TEXTS[self.lang]
+        last = self.cfg.get("lastdir", "")
+        self.dir_var = tk.StringVar(value=last)
+        self.out_var = tk.StringVar(value=self.cfg.get("outdir", ""))
         self.custom_re = tk.StringVar()
-        self.mode_var = tk.StringVar(value="new")
+        self.mode_var = tk.StringVar(value=self.cfg.get("mode", "new") or "new")
         self.rule_vars = {r["id"]: tk.BooleanVar(value=r["id"] in jzcore.DEFAULT_ON)
                           for r in jzcore.RULES}
         self.fmt_vars = {"epub": tk.BooleanVar(value=True),
                          "merge": tk.BooleanVar(value=False),
                          "split": tk.BooleanVar(value=False)}
-        self.status_var = tk.StringVar(value="就绪")
+        self.status_var = tk.StringVar(value=self.S["st_ready"])
         self.prog_var = tk.DoubleVar(value=0)
 
-        root.title("%s %s %s" % (APP_CN, APP_EN, APP_VER))
+        root.title(self.S["w_title"] % (APP_CN, APP_EN, APP_VER))
         root.geometry("1080x720")
         root.minsize(900, 620)
         root.configure(bg=BG)
@@ -138,6 +423,8 @@ class App:
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         d = self.dir_var.get()
         if d and os.path.isdir(d):
+            if not self.out_var.get():
+                self.out_var.set(d.rstrip("\\/") + self.S["out_suffix"])
             self.load_index(d)
 
     # ------------------------------------------------------------ 界面
@@ -160,43 +447,58 @@ class App:
         st.configure("Go.TButton", background="#2E7D32", foreground="white")
 
     def _menu(self):
+        S = self.S
         m = tk.Menu(self.root)
         self.root.configure(menu=m)
         fm = tk.Menu(m, tearoff=0)
-        fm.add_command(label="选择目录…", command=self.pick_dir)
-        fm.add_command(label="重新扫描", command=self.do_scan)
+        fm.add_command(label=S["m_pick_dir"], command=self.pick_dir)
+        fm.add_command(label=S["m_rescan"], command=self.do_scan)
+        fm.add_command(label=S["m_rescan_fresh"], command=lambda: self.do_scan(fresh=True))
         fm.add_separator()
-        fm.add_command(label="退出", command=self.on_close)
-        m.add_cascade(label="文件", menu=fm)
+        fm.add_command(label=S["m_quit"], command=self.on_close)
+        m.add_cascade(label=S["m_file"], menu=fm)
         sm = tk.Menu(m, tearoff=0)
-        sm.add_command(label="全选", command=lambda: self.set_all(True))
-        sm.add_command(label="全不选", command=lambda: self.set_all(False))
-        sm.add_command(label="反选", command=self.invert_sel)
+        sm.add_command(label=S["m_sel_all"], command=lambda: self.set_all(True))
+        sm.add_command(label=S["m_sel_none"], command=lambda: self.set_all(False))
+        sm.add_command(label=S["m_invert"], command=self.invert_sel)
         sm.add_separator()
-        sm.add_command(label="只选重复文件", command=self.sel_dup)
-        sm.add_command(label="导出书单 CSV", command=self.export_list)
-        m.add_cascade(label="书库", menu=sm)
+        sm.add_command(label=S["m_sel_dup"], command=self.sel_dup)
+        sm.add_command(label=S["m_export_csv"], command=self.export_list)
+        m.add_cascade(label=S["m_lib"], menu=sm)
+        lm = tk.Menu(m, tearoff=0)
+        self._lang_rb = tk.StringVar(value=self.lang)
+        lm.add_radiobutton(label="中文", value=ZH, variable=self._lang_rb,
+                           command=lambda: self.set_lang(ZH))
+        lm.add_radiobutton(label="English", value=EN, variable=self._lang_rb,
+                           command=lambda: self.set_lang(EN))
+        m.add_cascade(label=S["m_lang"], menu=lm)
         hm = tk.Menu(m, tearoff=0)
-        hm.add_command(label="使用说明", command=lambda: self.show_text("使用说明", HELP_TEXT))
-        hm.add_command(label="免责声明", command=lambda: self.show_text("免责声明", DISCLAIMER))
+        hm.add_command(label=S["m_usage"],
+                       command=lambda: self.show_text(S["usage_title"], S["help_text"]))
+        hm.add_command(label=S["m_disclaimer"],
+                       command=lambda: self.show_text(S["disclaimer_title"], S["disclaimer_text"]))
         hm.add_separator()
-        hm.add_command(label="关于", command=self.show_about)
-        m.add_cascade(label="帮助", menu=hm)
+        hm.add_command(label=S["m_about"], command=self.show_about)
+        m.add_cascade(label=S["m_help"], menu=hm)
 
     def _top(self, root):
+        S = self.S
         f = ttk.Frame(root, padding=(8, 6))
         f.pack(fill="x")
-        ttk.Label(f, text="书库目录：").pack(side="left")
+        ttk.Label(f, text=S["lib_dir"]).pack(side="left")
         e = ttk.Entry(f, textvariable=self.dir_var)
         e.pack(side="left", fill="x", expand=True, padx=4)
         e.bind("<Return>", lambda _e: self.do_scan())
-        ttk.Button(f, text="浏览…", command=self.pick_dir).pack(side="left")
-        ttk.Button(f, text="扫描", style="Accent.TButton", command=self.do_scan).pack(side="left", padx=(4, 0))
-        ttk.Button(f, text="重新扫描（忽略缓存）", command=lambda: self.do_scan(fresh=True)).pack(side="left", padx=4)
-        self.btn_stop = ttk.Button(f, text="停止", command=self.do_stop, state="disabled")
+        ttk.Button(f, text=S["browse"], command=self.pick_dir).pack(side="left")
+        ttk.Button(f, text=S["scan"], style="Accent.TButton",
+                   command=self.do_scan).pack(side="left", padx=(4, 0))
+        ttk.Button(f, text=S["m_rescan_fresh"],
+                   command=lambda: self.do_scan(fresh=True)).pack(side="left", padx=4)
+        self.btn_stop = ttk.Button(f, text=S["stop"], command=self.do_stop, state="disabled")
         self.btn_stop.pack(side="left")
 
     def _tabs(self, root):
+        S = self.S
         nb = ttk.Notebook(root)
         self.nb = nb
         nb.pack(fill="both", expand=True, padx=8, pady=(0, 4))
@@ -204,35 +506,36 @@ class App:
         self.tab_clean = ttk.Frame(nb)
         self.tab_chap = ttk.Frame(nb)
         self.tab_out = ttk.Frame(nb)
-        nb.add(self.tab_lib, text=" 1 扫描入库 ")
-        nb.add(self.tab_clean, text=" 2 批量清洗 ")
-        nb.add(self.tab_chap, text=" 3 智能分章 ")
-        nb.add(self.tab_out, text=" 4 导出分发 ")
+        nb.add(self.tab_lib, text=S["tab1"])
+        nb.add(self.tab_clean, text=S["tab2"])
+        nb.add(self.tab_chap, text=S["tab3"])
+        nb.add(self.tab_out, text=S["tab4"])
         self._build_lib()
         self._build_clean()
         self._build_chap()
         self._build_out()
 
     def _build_lib(self):
+        S = self.S
         f = self.tab_lib
         bar = ttk.Frame(f)
         bar.pack(fill="x", pady=(6, 4))
-        for txt, cmd in (("全选", lambda: self.set_all(True)),
-                         ("全不选", lambda: self.set_all(False)),
-                         ("反选", self.invert_sel),
-                         ("只选重复", self.sel_dup)):
+        for txt, cmd in ((S["m_sel_all"], lambda: self.set_all(True)),
+                         (S["m_sel_none"], lambda: self.set_all(False)),
+                         (S["m_invert"], self.invert_sel),
+                         (S["m_sel_dup"], self.sel_dup)):
             ttk.Button(bar, text=txt, command=cmd).pack(side="left", padx=2)
-        ttk.Label(bar, text="  双击行可切换勾选，右键可打开文件位置",
-                  foreground="#666666").pack(side="left")
-        self.info_var = tk.StringVar(value="共 0 本")
+        ttk.Label(bar, text=S["lib_hint"], foreground="#666666").pack(side="left")
+        self.info_var = tk.StringVar(value=S["lib_info"].format(0, 0))
         ttk.Label(bar, textvariable=self.info_var).pack(side="right")
 
         cols = ("sel", "title", "author", "chars", "enc", "chap", "size", "rel")
         wrap = ttk.Frame(f)
         wrap.pack(fill="both", expand=True)
         self.tv = ttk.Treeview(wrap, columns=cols, show="headings", selectmode="extended")
-        heads = {"sel": "✓", "title": "书名", "author": "作者", "chars": "字数",
-                 "enc": "编码", "chap": "章节", "size": "大小", "rel": "相对路径"}
+        heads = {"sel": "✓", "title": S["col_title"], "author": S["col_author"],
+                 "chars": S["col_chars"], "enc": S["col_enc"], "chap": S["col_chap"],
+                 "size": S["col_size"], "rel": S["col_rel"]}
         widths = {"sel": 32, "title": 190, "author": 100, "chars": 80, "enc": 76,
                   "chap": 56, "size": 78, "rel": 320}
         for c in cols:
@@ -247,34 +550,37 @@ class App:
         self.tv.bind("<Button-3>", self.popup)
 
     def _build_clean(self):
+        S = self.S
         f = self.tab_clean
-        left = ttk.LabelFrame(f, text="清洗规则", width=280)
+        left = ttk.LabelFrame(f, text=S["grp_rules"], width=280)
         left.pack(side="left", fill="y", padx=(6, 4), pady=6)
         left.pack_propagate(False)
+        en = self.lang == EN
         for r in jzcore.RULES:
-            cb = ttk.Checkbutton(left, text=r["name"], variable=self.rule_vars[r["id"]])
+            name = r["name_en"] if en else r["name"]
+            tip = r["tip_en"] if en else r["tip"]
+            cb = ttk.Checkbutton(left, text=name, variable=self.rule_vars[r["id"]])
             cb.pack(anchor="w", padx=8, pady=2)
-            ttk.Label(left, text="    " + r["tip"], foreground="#777777",
+            ttk.Label(left, text="    " + tip, foreground="#777777",
                       font=FONT_S, wraplength=250).pack(anchor="w", padx=8)
         bf = ttk.Frame(left)
         bf.pack(anchor="w", padx=8, pady=8)
-        ttk.Button(bf, text="全选规则", command=lambda: self.set_rules(True)).pack(side="left")
-        ttk.Button(bf, text="恢复默认", command=lambda: self.set_rules(None)).pack(side="left", padx=4)
+        ttk.Button(bf, text=S["b_all_rules"], command=lambda: self.set_rules(True)).pack(side="left")
+        ttk.Button(bf, text=S["b_def_rules"], command=lambda: self.set_rules(None)).pack(side="left", padx=4)
 
         right = ttk.Frame(f)
         right.pack(side="left", fill="both", expand=True, padx=4, pady=6)
         bar = ttk.Frame(right)
         bar.pack(fill="x")
-        ttk.Button(bar, text="预览效果", style="Accent.TButton",
+        ttk.Button(bar, text=S["b_preview"], style="Accent.TButton",
                    command=self.preview_clean).pack(side="left")
-        ttk.Label(bar, text="  对第一本勾选的书试跑，左边原文、右边清洗后",
-                  foreground="#666666").pack(side="left")
+        ttk.Label(bar, text=S["clean_hint"], foreground="#666666").pack(side="left")
         self.cmp_var = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.cmp_var, foreground="#2E7D32").pack(side="right")
         box = ttk.Frame(right)
         box.pack(fill="both", expand=True, pady=4)
-        self.txt_before = self._mk_text(box, "清洗前")
-        self.txt_after = self._mk_text(box, "清洗后")
+        self.txt_before = self._mk_text(box, S["col_pre"])
+        self.txt_after = self._mk_text(box, S["col_post"])
 
     def _mk_text(self, parent, title):
         f = ttk.LabelFrame(parent, text=title)
@@ -289,70 +595,70 @@ class App:
         return t
 
     def _build_chap(self):
+        S = self.S
         f = self.tab_chap
         top = ttk.Frame(f)
         top.pack(fill="x", padx=8, pady=(8, 4))
-        ttk.Label(top, text="章节正则（留空使用内置中文规则库）：").pack(side="left")
+        ttk.Label(top, text=S["re_label"]).pack(side="left")
         e = ttk.Entry(top, textvariable=self.custom_re)
         e.pack(side="left", fill="x", expand=True, padx=4)
-        ttk.Button(top, text="试分章节", style="Accent.TButton",
+        ttk.Button(top, text=S["b_try"], style="Accent.TButton",
                    command=self.preview_chap).pack(side="left")
-        ttk.Label(f, text="内置可识别：第1章 / 第一百二十三章 / 卷三 / Chapter 5 / 序章 / 楔子 / 番外 / 后记；"
-                          "填写自定义正则后将只使用自定义规则。",
+        ttk.Label(f, text=S["chap_hint"],
                   foreground="#666666", font=FONT_S).pack(anchor="w", padx=8)
         wrap = ttk.Frame(f)
         wrap.pack(fill="both", expand=True, padx=8, pady=4)
         self.tv_chap = ttk.Treeview(wrap, columns=("no", "title", "chars"),
                                     show="headings", height=8)
-        for c, w, t in (("no", 60, "#"), ("title", 520, "章节标题"), ("chars", 100, "字数")):
+        for c, w, t in (("no", 60, "#"), ("title", 520, S["col_chap_title"]), ("chars", 100, S["col_chars"])):
             self.tv_chap.heading(c, text=t)
             self.tv_chap.column(c, width=w, anchor="w" if c == "title" else "center")
         sb = ttk.Scrollbar(wrap, orient="vertical", command=self.tv_chap.yview)
         self.tv_chap.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.tv_chap.pack(side="left", fill="both", expand=True)
-        self.chap_var = tk.StringVar(value="点「试分章节」查看结果")
+        self.chap_var = tk.StringVar(value=S["chap_res"])
         ttk.Label(f, textvariable=self.chap_var).pack(anchor="w", padx=8, pady=(0, 6))
 
     def _build_out(self):
+        S = self.S
         f = self.tab_out
-        g1 = ttk.LabelFrame(f, text="清洗结果的去向")
+        g1 = ttk.LabelFrame(f, text=S["grp_where"])
         g1.pack(fill="x", padx=8, pady=(10, 6))
-        for v, t in (("new", "输出到新目录（原文件不动，推荐）"),
-                     ("inplace", "原地覆盖（先备份为 .bak）"),
-                     ("none", "仅导出，不保存整理后的 TXT")):
+        for v, t in (("new", S["r_new"]), ("inplace", S["r_inplace"]), ("none", S["r_none"])):
             ttk.Radiobutton(g1, text=t, value=v, variable=self.mode_var,
                             command=self.sync_out).pack(anchor="w", padx=10, pady=2)
 
-        g2 = ttk.LabelFrame(f, text="导出格式（可多选）")
+        g2 = ttk.LabelFrame(f, text=S["grp_fmt"])
         g2.pack(fill="x", padx=8, pady=6)
         row = ttk.Frame(g2)
         row.pack(fill="x", padx=10, pady=4)
-        ttk.Checkbutton(row, text="EPUB（带目录，推荐）",
+        ttk.Checkbutton(row, text=S["f_epub"],
                         variable=self.fmt_vars["epub"]).pack(side="left", padx=(0, 16))
-        ttk.Checkbutton(row, text="合并 TXT（整本一个文件）",
+        ttk.Checkbutton(row, text=S["f_merge"],
                         variable=self.fmt_vars["merge"]).pack(side="left", padx=(0, 16))
-        ttk.Checkbutton(row, text="分章 TXT（一章一个文件）",
+        ttk.Checkbutton(row, text=S["f_split"],
                         variable=self.fmt_vars["split"]).pack(side="left")
 
-        g3 = ttk.LabelFrame(f, text="输出目录")
+        g3 = ttk.LabelFrame(f, text=S["grp_out"])
         g3.pack(fill="x", padx=8, pady=6)
         r = ttk.Frame(g3)
         r.pack(fill="x", padx=10, pady=6)
         ttk.Entry(r, textvariable=self.out_var).pack(side="left", fill="x", expand=True, padx=(0, 4))
-        ttk.Button(r, text="浏览…", command=self.pick_out).pack(side="left")
+        ttk.Button(r, text=S["browse"], command=self.pick_out).pack(side="left")
 
         bar = ttk.Frame(f)
         bar.pack(fill="x", padx=8, pady=10)
-        self.btn_go = ttk.Button(bar, text="开始处理", style="Go.TButton", command=self.start_run)
+        self.btn_go = ttk.Button(bar, text=S["b_go"], style="Go.TButton", command=self.start_run)
         self.btn_go.pack(side="left")
         self.pb = ttk.Progressbar(bar, variable=self.prog_var, maximum=100)
         self.pb.pack(side="left", fill="x", expand=True, padx=10)
-        ttk.Label(f, text="处理期间请勿关闭窗口。大批量任务建议先选少量书试跑。",
+        ttk.Label(f, text=S["out_note"],
                   foreground="#777777", font=FONT_S).pack(anchor="w", padx=8)
 
     def _log(self, root):
-        f = ttk.LabelFrame(root, text="运行日志", height=130)
+        S = self.S
+        f = ttk.LabelFrame(root, text=S["grp_log"], height=130)
         f.pack(fill="x", padx=8, pady=(0, 4))
         f.pack_propagate(False)
         self.logbox = tk.Text(f, height=7, font=FONT_S, bg="#FFFFFF",
@@ -397,11 +703,19 @@ class App:
 
     def do_stop(self):
         self.cancel = True
-        self.status_var.set("正在停止…")
+        self.status_var.set(self.S["stopping"])
+
+    def set_lang(self, lang):
+        self.cfg["lang"] = lang
+        jzcore.save_config(self.cfg)
+        messagebox.showinfo(self.S["lang_dlg_title"],
+                            self.S["lang_ok_zh"] if lang == ZH else self.S["lang_ok_en"])
 
     def on_close(self):
         cfg = self.cfg
         cfg["lastdir"] = self.dir_var.get()
+        cfg["outdir"] = self.out_var.get()
+        cfg["mode"] = self.mode_var.get()
         jzcore.save_config(cfg)
         self.root.destroy()
 
@@ -409,7 +723,7 @@ class App:
         d = filedialog.askdirectory(initialdir=self.dir_var.get() or None)
         if d:
             self.dir_var.set(d)
-            self.out_var.set(d.rstrip("\\/") + "_卷帙整理")
+            self.out_var.set(d.rstrip("\\/") + self.S["out_suffix"])
             self.do_scan()
 
     def pick_out(self):
@@ -419,9 +733,10 @@ class App:
 
     def sync_out(self):
         if not self.out_var.get() and self.dir_var.get():
-            self.out_var.set(self.dir_var.get().rstrip("\\/") + "_卷帙整理")
+            self.out_var.set(self.dir_var.get().rstrip("\\/") + self.S["out_suffix"])
 
     def show_text(self, title, body):
+        S = self.S
         w = tk.Toplevel(self.root)
         w.title(title)
         w.geometry("640x520")
@@ -429,14 +744,14 @@ class App:
         t.insert("1.0", body)
         t.configure(state="disabled")
         t.pack(fill="both", expand=True)
-        ttk.Button(w, text="关闭", command=w.destroy).pack(pady=6)
+        ttk.Button(w, text=S["d_close"], command=w.destroy).pack(pady=6)
 
     def show_about(self):
+        S = self.S
         messagebox.showinfo(
-            "关于 %s %s" % (APP_CN, APP_EN),
-            "%s %s %s\n\n本地文本整理工具：扫描 · 清洗 · 分章 · 导出\n"
-            "纯离线运行，不联网、不下载、不上传任何内容。\n\n%s"
-            % (APP_CN, APP_EN, APP_VER, AUTHOR))
+            S["about_title"] % (APP_CN, APP_EN),
+            "%s %s %s\n\n%s\n\n%s"
+            % (APP_CN, APP_EN, APP_VER, S["about_what"], AUTHOR))
 
     # ------------------------------------------------------------ 书库
     def add_book(self, info):
@@ -453,7 +768,10 @@ class App:
         n = len(self.books)
         m = sum(1 for b in self.books if b["sel"])
         d = self.dup_count()
-        self.info_var.set("共 %d 本 · 已选 %d 本%s" % (n, m, " · 重复 %d 本" % d if d else ""))
+        s = self.S["lib_info"].format(n, m)
+        if d:
+            s += self.S["lib_info_dup"].format(d)
+        self.info_var.set(s)
 
     def dup_count(self):
         c = Counter(b["md5"] for b in self.books)
@@ -481,31 +799,32 @@ class App:
         self.refresh_info()
 
     def sel_dup(self):
+        S = self.S
         c = Counter(b["md5"] for b in self.books)
         dups = {k for k, v in c.items() if v > 1}
         if not dups:
-            messagebox.showinfo("没有重复", "当前书库中未发现内容完全相同的文件。")
+            messagebox.showinfo(S["d_no_dup"], S["d_no_dup_msg"])
             return
         for i, b in enumerate(self.books):
             b["sel"] = b["md5"] in dups
             self.tv.set(str(i), "sel", "✓" if b["sel"] else "")
         self.refresh_info()
-        self.log("已选中 %d 个重复文件，可在书库中取消保留项的勾选后清理。"
-                 % sum(1 for b in self.books if b["sel"]))
+        self.log(S["log_dup_sel"].format(sum(1 for b in self.books if b["sel"])))
 
     def popup(self, event):
+        S = self.S
         row = self.tv.identify_row(event.y)
         if not row:
             return
         self.tv.selection_set(row)
         b = self.books[int(row)]
         m = tk.Menu(self.root, tearoff=0)
-        m.add_command(label="打开文件位置",
+        m.add_command(label=S["m_open_loc"],
                       command=lambda: self.open_folder(b["path"]))
-        m.add_command(label="用记事本打开",
+        m.add_command(label=S["m_open_note"],
                       command=lambda: self.open_file(b["path"]))
         m.add_separator()
-        m.add_command(label="复制完整路径",
+        m.add_command(label=S["m_copy_path"],
                       command=lambda: self.copy_path(b["path"]))
         m.tk_popup(event.x_root, event.y_root)
 
@@ -513,42 +832,44 @@ class App:
         try:
             subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
         except OSError:
-            self.log("无法打开资源管理器：%s" % path)
+            self.log(self.S["log_open_fail"].format(path))
 
     def open_file(self, path):
         try:
             os.startfile(path)
         except OSError:
-            self.log("无法打开文件：%s" % path)
+            self.log(self.S["log_file_fail"].format(path))
 
     def copy_path(self, path):
         self.root.clipboard_clear()
         self.root.clipboard_append(path)
 
     def export_list(self):
+        S = self.S
         if not self.books:
             return
         p = filedialog.asksaveasfilename(defaultextension=".csv",
-                                         filetypes=[("CSV 文件", "*.csv")],
-                                         initialfile="书单.csv")
+                                         filetypes=[(S["csv_type"], "*.csv")],
+                                         initialfile=S["csv_name"])
         if not p:
             return
         try:
             with open(p, "w", encoding="utf-8-sig", newline="") as f:
-                f.write("书名,作者,字数,编码,大小,相对路径\n")
+                f.write(S["csv_hdr"] + "\n")
                 for b in self.books:
                     f.write('"%s","%s",%d,%s,%d,"%s"\n' % (
                         b["title"].replace('"', '""'), b["author"].replace('"', '""'),
                         b["chars"], b["enc"], b["size"], b.get("rel", "").replace('"', '""')))
-            self.log("书单已导出：%s" % p)
+            self.log(S["log_csv_ok"].format(p))
         except OSError as e:
-            messagebox.showerror("导出失败", str(e))
+            messagebox.showerror(S["d_export_fail"], str(e))
 
     # ------------------------------------------------------------ 扫描
     def do_scan(self, fresh=False):
+        S = self.S
         d = self.dir_var.get().strip()
         if not d or not os.path.isdir(d):
-            messagebox.showwarning("目录无效", "请先选择一个存在的目录。")
+            messagebox.showwarning(S["d_dir_invalid"], S["d_dir_invalid_msg"])
             return
         if self.busy:
             return
@@ -557,7 +878,7 @@ class App:
         self.clear_books()
         self.set_busy(True)
         self.cancel = False
-        self.log("开始扫描：%s" % d)
+        self.log(S["log_scan_start"].format(d))
         threading.Thread(target=self.scan_worker, args=(d,), daemon=True).start()
 
     def clear_books(self):
@@ -567,6 +888,7 @@ class App:
         self.refresh_info()
 
     def scan_worker(self, root):
+        S = self.S
         files = []
         for dp, _dn, fn in os.walk(root):
             for f in fn:
@@ -574,7 +896,7 @@ class App:
                     files.append(os.path.join(dp, f))
         files.sort()
         total = len(files)
-        self.q.put(("log", "发现 %d 个文本文件，开始读取…" % total))
+        self.q.put(("log", S["log_found"].format(total)))
         got = 0
         for i, p in enumerate(files, 1):
             if self.cancel:
@@ -585,12 +907,13 @@ class App:
                 self.q.put(("book", info))
                 got += 1
             except Exception as e:
-                self.q.put(("log", "  跳过 %s（%s）" % (os.path.basename(p), e)))
+                self.q.put(("log", S["log_skip"].format(os.path.basename(p), e)))
             if i % 5 == 0 or i == total:
-                self.q.put(("prog", (i, total, "扫描中 %d/%d" % (i, total))))
+                self.q.put(("prog", (i, total, S["prog_scan"].format(i, total))))
         self.q.put(("done", ("scan", root, got, total)))
 
     def load_index(self, root):
+        S = self.S
         data = jzcore.load_index(root)
         books = data.get("books") or []
         if not books:
@@ -608,12 +931,14 @@ class App:
             b.setdefault("sel", True)
             self.add_book(b)
         self.mark_dup()
-        self.out_var.set(root.rstrip("\\/") + "_卷帙整理")
-        self.log("已从索引载入 %d 本（%s）%s" % (
-            len(self.books), time.strftime("%Y-%m-%d %H:%M", time.localtime(data.get("scanned", 0))),
-            "，%d 本已失效建议重新扫描" % missing if missing else ""))
+        if not self.out_var.get():
+            self.out_var.set(root.rstrip("\\/") + S["out_suffix"])
+        stale_n = sum(1 for b in self.books if b.get("stale"))
+        extra = S["log_idx_stale"].format(stale_n) if stale_n else ""
+        self.log(S["log_idx_load"].format(
+            len(self.books), time.strftime("%Y-%m-%d %H:%M", time.localtime(data.get("scanned", 0))), extra))
         if missing:
-            self.log("提示：索引中有 %d 个文件已不存在，建议点「重新扫描」。" % missing)
+            self.log(S["log_idx_missing"].format(missing))
         return True
 
     def mark_dup(self):
@@ -623,21 +948,22 @@ class App:
                 self.tv.item(str(i), tags=("dup",))
 
     def on_done(self, payload):
+        S = self.S
         kind = payload[0]
         self.set_busy(False)
         self.prog_var.set(0)
         if kind == "scan":
             _s, root, got, total = payload
             self.mark_dup()
-            self.status_var.set("扫描完成：%d / %d 本" % (got, total))
-            self.log("扫描完成，共 %d 本。%s" % (got, "已停止" if self.cancel else ""))
+            self.status_var.set(S["st_scan_done"].format(got, total))
+            self.log(S["log_scan_done"].format(got, S["log_stopped"] if self.cancel else ""))
             jzcore.save_index(root, {
                 "root": root, "scanned": time.time(),
                 "books": [{k: v for k, v in b.items() if k != "path"} for b in self.books]})
         elif kind == "run":
             _s, ok, fail, outdir = payload
-            self.status_var.set("处理完成：成功 %d 本，失败 %d 本" % (ok, fail))
-            self.log("处理完成：成功 %d 本，失败 %d 本，输出目录 %s" % (ok, fail, outdir))
+            self.status_var.set(S["st_run_done"].format(ok, fail))
+            self.log(S["log_run_done"].format(ok, fail) + "，输出目录 %s" % outdir)
             if outdir and os.path.isdir(outdir) and not self.cancel:
                 try:
                     os.startfile(outdir)
@@ -660,29 +986,31 @@ class App:
             v.set(val if val is not None else r["id"] in jzcore.DEFAULT_ON)
 
     def preview_clean(self):
+        S = self.S
         b = self.first_selected()
         if not b:
-            messagebox.showinfo("未选择", "请先在书库中勾选至少一本书。")
+            messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
         try:
             text = jzcore.load_text(b["path"])
             rules = self.active_rules()
             cleaned, removed = jzcore.clean_text(text, rules)
         except Exception as e:
-            messagebox.showerror("预览失败", str(e))
+            messagebox.showerror(S["d_preview_fail"], str(e))
             return
         for t, s in ((self.txt_before, text), (self.txt_after, cleaned)):
             t.configure(state="normal")
             t.delete("1.0", "end")
             t.insert("1.0", "\n".join(s.splitlines()[:400]))
             t.configure(state="disabled")
-        self.cmp_var.set("删除 %d 行，%d → %d 字" % (removed, len(text), len(cleaned)))
-        self.log("预览《%s》：启用 %d 条规则，删除 %d 行" % (b["title"], len(rules), removed))
+        self.cmp_var.set(S["cmp_var"].format(removed, len(text), len(cleaned)))
+        self.log("《%s》规则 %d 条，删除 %d 行" % (b["title"], len(rules), removed))
 
     def preview_chap(self):
+        S = self.S
         b = self.first_selected()
         if not b:
-            messagebox.showinfo("未选择", "请先在书库中勾选至少一本书。")
+            messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
         custom = self.custom_re.get().strip() or None
         try:
@@ -692,41 +1020,43 @@ class App:
                 text, _r = jzcore.clean_text(text, rules)
             chapters = jzcore.split_chapters(text, custom)
         except ValueError as e:
-            messagebox.showerror("正则无效", str(e))
+            messagebox.showerror(S["d_re_bad"], str(e))
             return
         except Exception as e:
-            messagebox.showerror("分章失败", str(e))
+            messagebox.showerror(S["d_chap_fail"], str(e))
             return
         for i in self.tv_chap.get_children():
             self.tv_chap.delete(i)
         for i, (t, body) in enumerate(chapters[:2000], 1):
             self.tv_chap.insert("", "end", values=(i, t, "{:,}".format(len(body))))
         total = sum(len(x[1]) for x in chapters)
-        self.chap_var.set("《%s》共切出 %d 章，正文合计 %s 字"
-                          % (b["title"], len(chapters), "{:,}".format(total)))
-        self.log("试分《%s》：%d 章" % (b["title"], len(chapters)))
+        self.chap_var.set(S["chap_sum"].format(b["title"], len(chapters), "{:,}".format(total)))
+        self.log("《%s》试分 %d 章" % (b["title"], len(chapters)))
 
     # ------------------------------------------------------------ 执行
     def start_run(self):
+        S = self.S
         sel = [b for b in self.books if b["sel"]]
         if not sel:
-            messagebox.showinfo("未选择", "请先在书库中勾选要处理的书。")
+            messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
         fmts = [k for k, v in self.fmt_vars.items() if v.get()]
         mode = self.mode_var.get()
         outdir = self.out_var.get().strip()
         if mode in ("new", "none") and not outdir:
-            messagebox.showwarning("缺少输出目录", "请先选择输出目录。")
+            messagebox.showwarning(S["d_no_out"], S["d_no_out_msg"])
+            return
+        # 原地覆盖清洗不需要输出目录；但只要勾了导出格式，仍必须有输出目录
+        if mode == "inplace" and fmts and not outdir:
+            messagebox.showwarning(S["d_no_out"], S["d_no_out_msg"])
             return
         if mode == "none" and not fmts:
-            messagebox.showwarning("无事可做",
-                                   "你选择了「仅导出」却又没有勾选任何导出格式。")
+            messagebox.showwarning(S["d_nothing"], S["d_nothing_msg"])
             return
         if mode == "inplace":
             if not messagebox.askyesno(
-                    "确认原地覆盖",
-                    "将把清洗后的内容写回 %d 个原文件，每个原文件会先备份为 .bak。\n\n"
-                    "此操作会改动你的原始文件，确定继续吗？" % len(sel)):
+                    S["d_confirm_ip"],
+                    S["d_confirm_ip_msg"].format(len(sel))):
                 return
         if self.busy:
             return
@@ -736,6 +1066,7 @@ class App:
                          daemon=True).start()
 
     def run_worker(self, sel, fmts, mode, outdir):
+        S = self.S
         rules = self.active_rules()
         custom = self.custom_re.get().strip() or None
         ok = fail = 0
@@ -743,14 +1074,14 @@ class App:
             try:
                 os.makedirs(outdir, exist_ok=True)
             except OSError as e:
-                self.q.put(("log", "无法创建输出目录：%s" % e))
+                self.q.put(("log", S["log_outdir_fail"].format(e)))
                 self.q.put(("done", ("run", 0, len(sel), outdir)))
                 return
         total = len(sel)
         for i, b in enumerate(sel, 1):
             if self.cancel:
                 break
-            self.q.put(("prog", (i - 1, total, "处理中 %d/%d：%s" % (i, total, b["title"]))))
+            self.q.put(("prog", (i - 1, total, S["prog_run"].format(i, total, b["title"]))))
             try:
                 text = jzcore.load_text(b["path"])
                 removed = 0
@@ -758,7 +1089,7 @@ class App:
                     text, removed = jzcore.clean_text(text, rules)
                 chapters = jzcore.split_chapters(text, custom)
                 title = b["title"] or os.path.splitext(b["name"])[0]
-                base = safe_name(title)
+                base = safe_name(title, fallback=S["unnamed"])
                 if mode == "inplace":
                     bak = b["path"] + ".bak"
                     if not os.path.exists(bak):
@@ -781,15 +1112,15 @@ class App:
                         jzcore.save_txt(chapters, self.uniq(outdir, base + ".txt"), merge=True)
                     if "split" in fmts:
                         jzcore.save_txt(chapters, self.uniq(outdir, base + ".txt"), merge=False)
-                self.q.put(("log", "[%d/%d] %s：%d 章，清洗删除 %d 行"
-                            % (i, total, title, len(chapters), removed)))
+                self.q.put(("log", S["log_per_book"].format(i, total, title, len(chapters), removed)))
                 ok += 1
             except Exception as e:
                 fail += 1
-                self.q.put(("log", "[%d/%d] %s 失败：%s" % (i, total, b["title"], e)))
+                self.q.put(("log", S["log_book_fail"].format(i, total, b["title"], e)))
                 self.q.put(("log", traceback.format_exc(limit=1).strip()))
-        self.q.put(("prog", (total, total, "处理完成")))
-        self.q.put(("done", ("run", ok, fail, outdir if mode != "inplace" else "原地覆盖")))
+        self.q.put(("prog", (total, total, S["prog_done"])))
+        final = outdir if mode != "inplace" else (outdir or S["log_out_final"])
+        self.q.put(("done", ("run", ok, fail, final)))
 
     def uniq(self, outdir, filename):
         p = os.path.join(outdir, filename)
@@ -809,15 +1140,17 @@ class _Splash:
 
     任意键或点击海报可跳过等待，直接进入主界面。
     时序全部由 after 驱动；_skipped 置位后淡入链立即收敛。
+    文案按界面语言渲染（构造时传入 lang）。
     """
 
-    def __init__(self, root):
+    def __init__(self, root, lang=None):
         self.root = root
         self._fade_job = None
         self._skipped = False
         self._fade_done = None
         self._hold_then = None
         self._then = None
+        self.S = TEXTS[lang or pick_lang()]
         win = tk.Toplevel(root)
         self.win = win
         win.overrideredirect(True)
@@ -840,6 +1173,7 @@ class _Splash:
         win.update_idletasks()
 
     def _paint(self, c):
+        S = self.S
         W, H = SPLASH_W, SPLASH_H
         cx = W // 2
         g, ln = SPLASH_GOLD, SPLASH_LINE
@@ -862,12 +1196,12 @@ class _Splash:
         c.create_text(cx, 172, text=" ".join(APP_EN), font=(FONT[0], 13),
                       fill=SPLASH_GOLD, anchor="n")
         # 一句定位
-        c.create_text(cx, 212, text="扫描 · 清洗 · 分章 · 导出",
+        c.create_text(cx, 212, text=S["sp_tag"],
                       font=(FONT[0], 11), fill=SPLASH_GRAY, anchor="n")
         # 分隔线 + 底部信息
         c.create_line(cx - 90, 250, cx + 90, 250, fill=ln, width=1)
-        c.create_text(cx, 272, text="%s · 纯本地离线工具 · 点击或按任意键跳过"
-                      % APP_VER, font=(FONT[0], 9), fill=SPLASH_DIM, anchor="n")
+        c.create_text(cx, 272, text=S["sp_bottom"].format(APP_VER),
+                      font=(FONT[0], 9), fill=SPLASH_DIM, anchor="n")
 
     # ------------------------------------------------------------ 动画
     def fade_in(self, done):
