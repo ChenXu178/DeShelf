@@ -159,6 +159,11 @@ TEXTS = {
         # 页2 清洗
         "grp_rules": "清洗规则", "b_all_rules": "全选规则", "b_def_rules": "恢复默认",
         "b_preview": "预览效果",
+        "b_clean_apply": "应用到所选书籍",
+        "d_rule_none": "未选择清洗规则", "d_rule_none_msg": "请至少勾选一条清洗规则后再应用。",
+        "prog_clean": "清洗 {0}/{1}：《{2}》",
+        "st_clean_done": "已清洗 {0} 本 · 共删除 {1} 行",
+        "log_clean_done": "批量清洗完成：{0} 本 · 删除 {1} 行",
         "clean_hint": "  对第一本勾选的书试跑，左边原文、右边清洗后",
         "col_pre": "清洗前", "col_post": "清洗后",
         "cmp_var": "删除 {0} 行，{1} → {2} 字",
@@ -264,6 +269,11 @@ TEXTS = {
         "col_enc": "Encoding", "col_chap": "Chap", "col_size": "Size", "col_rel": "Path",
         "grp_rules": "Cleaning Rules", "b_all_rules": "Check all", "b_def_rules": "Reset",
         "b_preview": "Preview",
+        "b_clean_apply": "Apply to selected books",
+        "d_rule_none": "No cleaning rule", "d_rule_none_msg": "Tick at least one cleaning rule first.",
+        "prog_clean": "Cleaning {0}/{1}: {2}",
+        "st_clean_done": "Cleaned {0} books · {1} lines removed",
+        "log_clean_done": "Batch clean done: {0} books · {1} lines removed",
         "clean_hint": "  Dry-run on the first selected book: original left, cleaned right",
         "col_pre": "Original", "col_post": "Cleaned",
         "cmp_var": "{0} lines removed, {1} → {2} chars",
@@ -578,6 +588,9 @@ class App:
         bar.pack(fill="x")
         ttk.Button(bar, text=S["b_preview"], style="Accent.TButton",
                    command=self.preview_clean).pack(side="left")
+        self.btn_clean_apply = ttk.Button(bar, text=S["b_clean_apply"],
+                                          command=self.start_clean)
+        self.btn_clean_apply.pack(side="left", padx=(6, 0))
         ttk.Label(bar, text=S["clean_hint"], foreground="#666666").pack(side="left")
         self.cmp_var = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.cmp_var, foreground="#2E7D32").pack(side="right")
@@ -790,6 +803,16 @@ class App:
             s += self.S["lib_info_dup"].format(d)
         self.info_var.set(s)
 
+    def reload_rows(self):
+        """按 books 快照整表重灌（批量清洗改 chars 后刷新书库列表）。"""
+        for row in self.tv.get_children():
+            self.tv.delete(row)
+        for i, b in enumerate(self.books):
+            self.tv.insert("", "end", iid=str(i), values=(
+                "✓" if b["sel"] else "", b["title"], b["author"],
+                "{:,}".format(b["chars"]), b["enc"], "-",
+                jzcore.human_size(b["size"]), b.get("rel", os.path.basename(b["path"]))))
+
     def dup_count(self):
         c = Counter(b["md5"] for b in self.books)
         return sum(v for v in c.values() if v > 1)
@@ -986,6 +1009,12 @@ class App:
                     os.startfile(outdir)
                 except OSError:
                     pass
+        elif kind == "clean":
+            _s, ok, rm_sum, cancelled = payload
+            self.reload_rows()
+            self.status_var.set(S["st_clean_done"].format(ok, "{:,}".format(rm_sum)))
+            self.log(S["log_clean_done"].format(ok, "{:,}".format(rm_sum))
+                     + (S["log_stopped"] if cancelled else ""))
 
     # ------------------------------------------------------------ 预览
     def first_selected(self):
@@ -1023,6 +1052,43 @@ class App:
         self.cmp_var.set(S["cmp_var"].format(removed, len(text), len(cleaned)))
         self.log("《%s》规则 %d 条，删除 %d 行" % (b["title"], len(rules), removed))
 
+    def start_clean(self):
+        """批量清洗：对勾选书籍按当前规则清洗，结果缓存到内存供后续分章/导出复用。"""
+        S = self.S
+        sel = [b for b in self.books if b["sel"]]
+        if not sel:
+            messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
+            return
+        if not self.active_rules():
+            messagebox.showinfo(S["d_rule_none"], S["d_rule_none_msg"])
+            return
+        if self.busy:
+            return
+        self.set_busy(True)
+        self.cancel = False
+        threading.Thread(target=self.clean_worker, args=(sel,), daemon=True).start()
+
+    def clean_worker(self, sel):
+        S = self.S
+        rules = self.active_rules()
+        total = len(sel)
+        ok = rm_sum = 0
+        for i, b in enumerate(sel, 1):
+            if self.cancel:
+                break
+            self.q.put(("prog", (i - 1, total, S["prog_clean"].format(i, total, b["title"]))))
+            try:
+                text = jzcore.load_text(b["path"])
+                text, removed = jzcore.clean_text(text, rules)
+                b["_clean"] = text          # 清洗快照：分章/导出优先使用（与 Web 版一致）
+                b["chars"] = len(text)
+                rm_sum += removed
+                ok += 1
+            except Exception as e:
+                self.q.put(("log", S["log_book_fail"].format(i, total, b["title"], e)))
+        self.q.put(("prog", (total, total, S["prog_done"])))
+        self.q.put(("done", ("clean", ok, rm_sum, self.cancel)))
+
     def preview_chap(self):
         S = self.S
         self._chap_cols(False)
@@ -1032,10 +1098,12 @@ class App:
             return
         custom = self.custom_re.get().strip() or None
         try:
-            text = jzcore.load_text(b["path"])
-            rules = self.active_rules()
-            if rules:
-                text, _r = jzcore.clean_text(text, rules)
+            text = b.get("_clean")
+            if text is None:
+                text = jzcore.load_text(b["path"])
+                rules = self.active_rules()
+                if rules:
+                    text, _r = jzcore.clean_text(text, rules)
             chapters = jzcore.split_chapters(text, custom)
         except ValueError as e:
             messagebox.showerror(S["d_re_bad"], str(e))
@@ -1075,10 +1143,12 @@ class App:
         ok_n = sum_n = bad = 0
         for b in sel:
             try:
-                text = jzcore.load_text(b["path"])
-                rules = self.active_rules()
-                if rules:
-                    text, _r = jzcore.clean_text(text, rules)
+                text = b.get("_clean")
+                if text is None:
+                    text = jzcore.load_text(b["path"])
+                    rules = self.active_rules()
+                    if rules:
+                        text, _r = jzcore.clean_text(text, rules)
                 chapters = jzcore.split_chapters(text, custom)
             except ValueError as e:
                 messagebox.showerror(S["d_re_bad"], str(e))
@@ -1143,10 +1213,19 @@ class App:
                 break
             self.q.put(("prog", (i - 1, total, S["prog_run"].format(i, total, b["title"]))))
             try:
-                text = jzcore.load_text(b["path"])
-                removed = 0
-                if rules:
-                    text, removed = jzcore.clean_text(text, rules)
+                # 原地覆盖始终从磁盘原文按当前规则重洗写回；其余模式优先用内存清洗快照
+                if mode == "inplace":
+                    text = jzcore.load_text(b["path"])
+                    removed = 0
+                    if rules:
+                        text, removed = jzcore.clean_text(text, rules)
+                else:
+                    text = b.get("_clean")
+                    removed = 0
+                    if text is None:
+                        text = jzcore.load_text(b["path"])
+                        if rules:
+                            text, removed = jzcore.clean_text(text, rules)
                 chapters = jzcore.split_chapters(text, custom)
                 title = b["title"] or os.path.splitext(b["name"])[0]
                 base = safe_name(title, fallback=S["unnamed"])
