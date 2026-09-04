@@ -10,3 +10,6 @@ dist/
 _obsolete/
 _sample*/
 _flow*/
+
+# Web 版开发截图（临时产物，不入库）
+web/_ui_shot.png
