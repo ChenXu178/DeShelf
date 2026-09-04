@@ -2,13 +2,12 @@
 """卷帙 DeShelf — 本地文本整理工具（桌面版，中英双语界面）
 
 扫描 → 清洗 → 分章 → 导出，全程在本机完成，不发起任何网络请求。
-界面语言：默认跟随系统；菜单「语言 / Language」可切换并记忆（重启生效）。
+界面语言：默认跟随系统；菜单「语言 / Language」可即时切换（窗口内重建）并记忆。
 """
 
 import os
 import queue
 import subprocess
-import sys
 import threading
 import time
 import traceback
@@ -142,8 +141,8 @@ TEXTS = {
         "m_sel_all": "全选", "m_sel_none": "全不选", "m_invert": "反选",
         "m_sel_dup": "只选重复文件", "m_export_csv": "导出书单 CSV",
         "m_usage": "使用说明", "m_disclaimer": "免责声明", "m_about": "关于",
-        "d_restart_title": "重启应用",
-        "d_restart_msg": "新语言需重启后生效。是否立即重启卷帙？（书库将自动从上次目录恢复）",
+        "lang_busy": "正在处理中",
+        "lang_busy_msg": "请等待当前任务完成后再切换语言。",
         # 顶部栏
         "lib_dir": "书库目录：", "browse": "浏览…", "scan": "扫描",
         "stop": "停止",
@@ -256,8 +255,8 @@ TEXTS = {
         "m_sel_all": "Select all", "m_sel_none": "Select none", "m_invert": "Invert",
         "m_sel_dup": "Select duplicates only", "m_export_csv": "Export list as CSV",
         "m_usage": "User guide", "m_disclaimer": "Disclaimer", "m_about": "About",
-        "d_restart_title": "Restart app",
-        "d_restart_msg": "The new language takes effect after a restart. Restart 卷帙 now? (The library reloads automatically from the last folder)",
+        "lang_busy": "Busy",
+        "lang_busy_msg": "Please wait for the current task to finish before switching language.",
         "lib_dir": "Library folder:", "browse": "Browse…", "scan": "Scan",
         "stop": "Stop",
         "tab1": " 1 Scan Library ", "tab2": " 2 Batch Clean ",
@@ -482,9 +481,9 @@ class App:
         lm = tk.Menu(m, tearoff=0)
         self._lang_rb = tk.StringVar(value=self.lang)
         lm.add_radiobutton(label="中文", value=ZH, variable=self._lang_rb,
-                           command=lambda: self.set_lang(ZH))
+                           command=lambda: self.switch_lang(ZH))
         lm.add_radiobutton(label="English", value=EN, variable=self._lang_rb,
-                           command=lambda: self.set_lang(EN))
+                           command=lambda: self.switch_lang(EN))
         m.add_cascade(label=S["m_lang"], menu=lm)
         hm = tk.Menu(m, tearoff=0)
         hm.add_command(label=S["m_usage"],
@@ -724,22 +723,46 @@ class App:
         self.cancel = True
         self.status_var.set(self.S["stopping"])
 
-    def set_lang(self, lang):
+    def switch_lang(self, lang):
+        """窗口内即时切换语言：就地销毁并重建全部界面控件（数据留在 self.books）。"""
+        if lang == self.lang:
+            return
+        if self.busy:
+            messagebox.showinfo(self.S["lang_busy"], self.S["lang_busy_msg"])
+            return
+        try:
+            cur_tab = self.nb.index(self.nb.select())
+        except Exception:
+            cur_tab = 0
+        old_log = ""
+        try:
+            old_log = self.logbox.get("1.0", "end-1c")
+        except Exception:
+            pass
+        for w in self.root.winfo_children():
+            w.destroy()
+        # 切语言并保存记忆
+        self.lang = lang
+        self.S = TEXTS[lang]
         self.cfg["lang"] = lang
         jzcore.save_config(self.cfg)
-        if messagebox.askyesno(self.S["d_restart_title"], self.S["d_restart_msg"]):
-            self._relaunch()
-            self.root.destroy()
-
-    def _relaunch(self):
-        """以新语言重启自身（跳过开屏海报）；书库由启动逻辑从上次目录自动恢复。"""
-        env = dict(os.environ)
-        env["JUANZHI_NO_SPLASH"] = "1"
-        if getattr(sys, "frozen", False):
-            cmd = [sys.executable]
-        else:
-            cmd = [sys.executable, os.path.abspath(sys.argv[0])]
-        subprocess.Popen(cmd, env=env)
+        # 就地重建（各 _build 方法幂等；复用 __init__ 创建的 var，勾选/输入值天然保留）
+        self.root.title(self.S["w_title"] % (APP_CN, APP_EN, APP_VER))
+        self._style()
+        self._menu()
+        self._top(self.root)
+        self._tabs(self.root)
+        self._log(self.root)
+        self._status(self.root)
+        self.status_var.set(self.S["st_ready"])
+        self.reload_rows()          # books 数据在内存，整表重灌（含勾选状态）
+        try:
+            self.nb.select(cur_tab)
+        except Exception:
+            self.nb.select(0)
+        if old_log:
+            self.logbox.insert("end", old_log + "\n")
+        self.log("✓ Language switched / 语言已切换：%s" % ("English" if lang == EN else "中文"))
 
     def on_close(self):
         cfg = self.cfg
