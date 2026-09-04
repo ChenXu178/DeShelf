@@ -73,9 +73,30 @@ check("tab 中文", tabs2[0], " 1 扫描入库 ")
 check("状态栏中文", app2.status_var.get(), "就绪")
 check("书名列头中文", app2.tv.heading("title")["text"], "书名")
 check("书库信息格式中文", app2.S["lib_info"].format(3, 2), "共 3 本 · 已选 2 本")
+print("\n== 6. 窗口内即时切换（v1.3 就地重建）==")
+orig_lang = jzcore.load_config().get("lang", "zh")
+app2.switch_lang(EN)
+root2.update_idletasks()
+tabs3 = [app2.nb.tab(i, "text") for i in app2.nb.tabs()]
+check("切英后 tab 英文", tabs3[0], " 1 Scan Library ")
+check("切英后状态栏英文", app2.status_var.get(), "Ready")
+check("切英后书名列头英文", app2.tv.heading("title")["text"], "Title")
+check("切英后菜单 radio 选中", app2._lang_rb.get(), EN)
+app2.switch_lang(ZH)
+root2.update_idletasks()
+check("切回中文 tab", [app2.nb.tab(i, "text") for i in app2.nb.tabs()][0], " 1 扫描入库 ")
+check("切回后状态栏中文", app2.status_var.get(), "就绪")
+check("切回后书名列头中文", app2.tv.heading("title")["text"], "书名")
+# 恢复用户配置原语言（switch_lang 会写入 cfg）
+cfg2 = jzcore.load_config()
+if cfg2.get("lang") != orig_lang:
+    cfg2["lang"] = orig_lang
+    jzcore.save_config(cfg2)
+check("用户配置语言已恢复", jzcore.load_config().get("lang", "zh"), orig_lang)
+
 root2.destroy()
 
-print("\n== 6. 关于/帮助双语长文存在 ==")
+print("\n== 7. 关于/帮助双语长文存在 ==")
 check("帮助中文非空", len(TEXTS[ZH]["help_text"]) > 300, True)
 check("帮助英文非空", len(TEXTS[EN]["help_text"]) > 300, True)
 check("免责中文含关键词", "免责声明" in TEXTS[ZH]["disclaimer_text"], True)
