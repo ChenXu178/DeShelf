@@ -142,9 +142,8 @@ TEXTS = {
         "m_sel_all": "全选", "m_sel_none": "全不选", "m_invert": "反选",
         "m_sel_dup": "只选重复文件", "m_export_csv": "导出书单 CSV",
         "m_usage": "使用说明", "m_disclaimer": "免责声明", "m_about": "关于",
-        "lang_dlg_title": "语言 Language",
-        "lang_ok_zh": "语言已切换为中文，重启后界面生效。",
-        "lang_ok_en": "语言已切换为 English，重启后界面生效。",
+        "d_restart_title": "重启应用",
+        "d_restart_msg": "新语言需重启后生效。是否立即重启卷帙？（书库将自动从上次目录恢复）",
         # 顶部栏
         "lib_dir": "书库目录：", "browse": "浏览…", "scan": "扫描",
         "stop": "停止",
@@ -166,10 +165,13 @@ TEXTS = {
         # 页3 分章
         "re_label": "章节正则（留空使用内置中文规则库）：",
         "b_try": "试分章节",
+        "b_try_all": "试分全部选中",
         "chap_hint": "内置可识别：第1章 / 第一百二十三章 / 卷三 / Chapter 5 / 序章 / 楔子 / 番外 / 后记；"
                     "填写自定义正则后将只使用自定义规则。",
         "col_chap_title": "章节标题",
+        "col_c_book": "书名", "col_c_chaps": "章节",
         "chap_res": "点「试分章节」查看结果",
+        "chap_all_done": "试分 {0} 本：共 {1} 章，异常 {2} 本（见日志）",
         "chap_sum": "《{0}》共切出 {1} 章，正文合计 {2} 字",
         # 页4 导出
         "grp_where": "清洗结果的去向",
@@ -249,9 +251,8 @@ TEXTS = {
         "m_sel_all": "Select all", "m_sel_none": "Select none", "m_invert": "Invert",
         "m_sel_dup": "Select duplicates only", "m_export_csv": "Export list as CSV",
         "m_usage": "User guide", "m_disclaimer": "Disclaimer", "m_about": "About",
-        "lang_dlg_title": "语言 Language",
-        "lang_ok_zh": "Language set to 中文 — restart to apply.",
-        "lang_ok_en": "Language set to English — restart to apply.",
+        "d_restart_title": "Restart app",
+        "d_restart_msg": "The new language takes effect after a restart. Restart 卷帙 now? (The library reloads automatically from the last folder)",
         "lib_dir": "Library folder:", "browse": "Browse…", "scan": "Scan",
         "stop": "Stop",
         "tab1": " 1 Scan Library ", "tab2": " 2 Batch Clean ",
@@ -268,10 +269,13 @@ TEXTS = {
         "cmp_var": "{0} lines removed, {1} → {2} chars",
         "re_label": "Chapter regex (blank = built-in Chinese rules):",
         "b_try": "Try Split",
+        "b_try_all": "Try Split (all selected)",
         "chap_hint": "Built-in patterns match 第1章 / 第一百二十三章 / 卷三 / Chapter 5 / "
                     "序章 / 楔子 / 番外 / 后记; a custom regex replaces the built-ins.",
         "col_chap_title": "Chapter Title",
+        "col_c_book": "Book", "col_c_chaps": "Chapters",
         "chap_res": "Click \u201cTry Split\u201d to preview",
+        "chap_all_done": "Tried {0} books: {1} chapters in total, {2} failed (see log)",
         "chap_sum": "\u201c{0}\u201d: {1} chapters, {2} chars total",
         "grp_where": "Where Cleaned Text Goes",
         "r_new": "Output to a new folder (originals untouched, recommended)",
@@ -604,6 +608,8 @@ class App:
         e.pack(side="left", fill="x", expand=True, padx=4)
         ttk.Button(top, text=S["b_try"], style="Accent.TButton",
                    command=self.preview_chap).pack(side="left")
+        ttk.Button(top, text=S["b_try_all"],
+                   command=self.preview_chap_all).pack(side="left", padx=(6, 0))
         ttk.Label(f, text=S["chap_hint"],
                   foreground="#666666", font=FONT_S).pack(anchor="w", padx=8)
         wrap = ttk.Frame(f)
@@ -708,8 +714,19 @@ class App:
     def set_lang(self, lang):
         self.cfg["lang"] = lang
         jzcore.save_config(self.cfg)
-        messagebox.showinfo(self.S["lang_dlg_title"],
-                            self.S["lang_ok_zh"] if lang == ZH else self.S["lang_ok_en"])
+        if messagebox.askyesno(self.S["d_restart_title"], self.S["d_restart_msg"]):
+            self._relaunch()
+            self.root.destroy()
+
+    def _relaunch(self):
+        """以新语言重启自身（跳过开屏海报）；书库由启动逻辑从上次目录自动恢复。"""
+        env = dict(os.environ)
+        env["JUANZHI_NO_SPLASH"] = "1"
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable]
+        else:
+            cmd = [sys.executable, os.path.abspath(sys.argv[0])]
+        subprocess.Popen(cmd, env=env)
 
     def on_close(self):
         cfg = self.cfg
@@ -1008,6 +1025,7 @@ class App:
 
     def preview_chap(self):
         S = self.S
+        self._chap_cols(False)
         b = self.first_selected()
         if not b:
             messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
@@ -1032,6 +1050,48 @@ class App:
         total = sum(len(x[1]) for x in chapters)
         self.chap_var.set(S["chap_sum"].format(b["title"], len(chapters), "{:,}".format(total)))
         self.log("《%s》试分 %d 章" % (b["title"], len(chapters)))
+
+    def _chap_cols(self, batch):
+        """分章表格列头：False=单本预览(章序/标题/字数)，True=批量试分(序号/书名/章节)。"""
+        S = self.S
+        self.tv_chap.heading("no", text="#")
+        self.tv_chap.heading("title", text=S["col_c_book"] if batch else S["col_chap_title"])
+        self.tv_chap.heading("chars", text=S["col_c_chaps"] if batch else S["col_chars"])
+        self.tv_chap.column("title", width=320 if batch else 520)
+        self.tv_chap.column("chars", width=140 if batch else 100)
+        self._chap_batch = batch
+
+    def preview_chap_all(self):
+        """批量试分：对书库中所有勾选的书籍逐本切章，结果按 序号/书名/章节 列出。"""
+        S = self.S
+        sel = [b for b in self.books if b["sel"]]
+        if not sel:
+            messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
+            return
+        custom = self.custom_re.get().strip() or None
+        self._chap_cols(True)
+        for i in self.tv_chap.get_children():
+            self.tv_chap.delete(i)
+        ok_n = sum_n = bad = 0
+        for b in sel:
+            try:
+                text = jzcore.load_text(b["path"])
+                rules = self.active_rules()
+                if rules:
+                    text, _r = jzcore.clean_text(text, rules)
+                chapters = jzcore.split_chapters(text, custom)
+            except ValueError as e:
+                messagebox.showerror(S["d_re_bad"], str(e))
+                return
+            except Exception as e:
+                bad += 1
+                self.log("《%s》试分失败：%s" % (b["title"], e))
+                continue
+            ok_n += 1
+            sum_n += len(chapters)
+            self.tv_chap.insert("", "end", values=(ok_n, b["title"], str(len(chapters))))
+        self.chap_var.set(S["chap_all_done"].format(ok_n, sum_n, bad))
+        self.log("批量试分：%d 本成功 · %d 本异常 · 共 %d 章" % (ok_n, bad, sum_n))
 
     # ------------------------------------------------------------ 执行
     def start_run(self):

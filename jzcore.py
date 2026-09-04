@@ -13,7 +13,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.2"
+APP_VER = "v1.3"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 

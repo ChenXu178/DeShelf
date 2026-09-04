@@ -157,7 +157,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">Web v1.0</span>
+  <span class="ver">v1.3</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -236,6 +236,10 @@ b.dark{color:var(--ink)}
       <legend data-k="chapCustom">自定义章节正则（留空 = 用内置规则库）</legend>
       <input class="inp" id="chapRegex" placeholder="如：第[0-9零一二三四五六七八九十百千万]+[章节回卷篇]" spellcheck="false">
     </fieldset>
+    <div class="row2" style="margin:8px 0">
+      <button class="btn b2" id="btnChapAll" data-k="btnChapAll">⚡ 全部书籍一键分章</button>
+      <span class="hint" id="chapAllInfo"></span>
+    </div>
     <div class="chlist" id="chapList"></div>
   </div>
 </section>
@@ -264,8 +268,8 @@ b.dark{color:var(--ink)}
 </section>
 
 <div class="logbar">
-  <div class="lt" id="logToggle">▸ <span data-k="logTitle">处理日志</span></div>
-  <pre id="logBox" class="hidden"></pre>
+  <div class="lt" id="logToggle"><span id="logArrow">▾</span> <span data-k="logTitle">处理日志</span></div>
+  <pre id="logBox"></pre>
 </div>
 
 </div>
@@ -287,6 +291,7 @@ const Z = {
   btnCleanPrev:"预览清洗效果", btnCleanApply:"应用到所选书籍",
   chapTitle:"③ 智能分章", chapReset:"恢复内置规则", chapPick:"选择一本书试分",
   btnChapTry:"试分章节", btnChapApply:"应用分章到该书", chapCustom:"自定义章节正则（留空 = 用内置规则库）",
+  btnChapAll:"⚡ 全部书籍一键分章", chAllEmpty:"书库为空，请先扫描或拖入 TXT", chAllDoing:"正在分章 {i}/{n}：{name}", chAllDone:"批量分章完成：{n} 本 · 共 {m} 章",
   outTitle:"④ 导出分发", btnRun:"▶ 开始处理所选书籍", btnSaveDir:"保存到所选文件夹…",
   optSkipDup:"跳过已经处理过的文件",
   logTitle:"处理日志",
@@ -366,6 +371,7 @@ const E = {
   chapTitle:"③ Smart Chapters", chapReset:"Built-in rules", chapPick:"Pick a book to try",
   btnChapTry:"Try splitting", btnChapApply:"Apply chapters to this book",
   chapCustom:"Custom chapter regex (empty = built-in rules)",
+  btnChapAll:"⚡ Chapter all books", chAllEmpty:"Library is empty — scan or drop TXT files first", chAllDoing:"Splitting {i}/{n}: {name}", chAllDone:"Done: {n} books · {m} chapters in total",
   outTitle:"④ Export", btnRun:"▶ Process selected books", btnSaveDir:"Save to chosen folder…",
   optSkipDup:"Skip files already processed",
   logTitle:"Activity log",
@@ -487,7 +493,7 @@ function log(msg){const d=new Date();const p=x=>String(x).padStart(2,"0");
   const ts=p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
   logBox.textContent += "["+ts+"] "+msg+"\n";
   logBox.scrollTop = logBox.scrollHeight;}
-$("logToggle").onclick=()=>logBox.classList.toggle("hidden");
+$("logToggle").onclick=()=>{const h=logBox.classList.toggle("hidden");$("logArrow").textContent=h?"▸":"▾";};
 
 /* ================= 工具 ================= */
 function showMsg(boxId,kind,text){const b=$(boxId);if(!text){b.classList.add("hidden");return;}
@@ -1389,6 +1395,30 @@ function applyChapters(){
   $("chapInfo").textContent=fill(T("chApplied"),{n:t.chs.length});
   window._lastTry=null;
 }
+/* 批量：对书库全部书籍按当前规则一键分章并保存到各书 */
+async function chapAll(){
+  const info=$("chapAllInfo");const btn=$("btnChapAll");
+  if(!St.books.length){info.textContent=T("chAllEmpty");return;}
+  const custom=$("chapRegex").value.trim();
+  if(custom){try{new RegExp(custom);}catch(e){$("chapInfo").textContent=T("chBadRegex");return;}}
+  btn.disabled=true;info.textContent="";
+  const n=St.books.length;let done=0,sum=0;
+  for(let i=0;i<n;i++){
+    const b=St.books[i];
+    info.textContent=fill(T("chAllDoing"),{i:i+1,n,name:(b.title||b.name).slice(0,24)});
+    try{
+      const raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
+      const chs=Core.splitChapters(raw,custom);
+      b._chap=chs;b.chapters=chs.length;sum+=chs.length;done++;
+    }catch(e){log("分章失败："+b.name+" "+e.message);}
+    if(i%5===4||i===n-1){renderLib();fillChapBook();}
+  }
+  renderLib();fillChapBook();
+  btn.disabled=false;
+  const msg=fill(T("chAllDone"),{n:done,m:sum});
+  info.textContent=msg;
+  log(msg);
+}
 
 /* ================= 导出面板 ================= */
 function refreshOutInfo(){
@@ -1521,6 +1551,7 @@ function bindSteps(){
   $("cleanReset").onclick=()=>{St.rulesOn=new Set(Core.DEFAULT_ON);buildRules();};
   $("btnChapTry").onclick=tryChapters;
   $("btnChapApply").onclick=applyChapters;
+  $("btnChapAll").onclick=chapAll;
   $("chapReset").onclick=()=>{$("chapRegex").value="";window._lastTry=null;
     renderChapList([]);$("chapInfo").textContent="";};
   $("btnRun").onclick=runExport;

@@ -89,14 +89,7 @@ try {
   r = await evalv("!document.querySelector('.dlg')");
   ok("弹窗可关闭", r.val === true);
 
-  // 3b. 截图（清洗规则页）用于 UI 复查
-  try {
-    await evalv("window.goStep(1)");
-    await sleep(500);
-    const shot = await send("Page.captureScreenshot", { format: "png" });
-    fs.writeFileSync("web/_ui_shot.png", Buffer.from(shot.result.data, "base64"));
-    console.log("  截图已存 web/_ui_shot.png");
-  } catch (e) { console.error("截图失败:", e.message); }
+  // 3b. 截图改在分章批量测试后（7d），此处仅回书库页
   await evalv("window.goStep(0)");
 
   // 4. 注入文件入库（等效拖拽）
@@ -180,6 +173,26 @@ try {
   if (dbg.val && dbg.val.chs > 0) {
     await evalv(`window.applyChapters()`);
   }
+
+  // 7c. 批量一键分章（v1.3 新功能）：整库按钮应把结果保存到各书
+  r = await evalv(`(async () => {
+    document.getElementById('btnChapAll').click();
+    await new Promise(r2=>setTimeout(r2,1200));
+    return {info: document.querySelector('#chapAllInfo').textContent,
+            sel: document.querySelector('#chapBook option') ? document.querySelector('#chapBook option').textContent : ''};
+  })()`);
+  ok("批量一键分章完成", r.val && /完成/.test(r.val.info), JSON.stringify(r.err || r.val));
+  ok("分章结果已保存到书(下拉带章数)", r.val && /\[\d+章\]/.test(r.val.sel), JSON.stringify(r.val));
+
+  // 7d. 截图（分章页：批量按钮 + 日志默认展开）用于 UI 复查
+  try {
+    await sleep(400);
+    const shot = await send("Page.captureScreenshot", { format: "png" });
+    if (shot.result && shot.result.data) {
+      fs.writeFileSync("web/_ui_shot.png", Buffer.from(shot.result.data, "base64"));
+      console.log("  分章页截图已存 web/_ui_shot.png");
+    }
+  } catch (e) { console.error("截图失败:", e.message); }
 
   // 8. 导出（EPUB+合并TXT；headless 下载只触发不落盘）
   r = await evalv(`(async () => {
