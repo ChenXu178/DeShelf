@@ -170,6 +170,8 @@ TEXTS = {
         "re_label": "章节正则（留空使用内置中文规则库）：",
         "b_try": "试分章节",
         "b_try_all": "试分全部选中",
+        "lab_chap_pick": "试分书籍：",
+        "chap_pick_hint": "选单本试分；「试分全部选中」处理①书库勾选的全部书",
         "chap_hint": "内置可识别：第1章 / 第一百二十三章 / 卷三 / Chapter 5 / 序章 / 楔子 / 番外 / 后记；"
                     "填写自定义正则后将只使用自定义规则。",
         "col_chap_title": "章节标题",
@@ -233,7 +235,7 @@ TEXTS = {
         "csv_hdr": "书名,作者,字数,编码,大小,相对路径",
         "csv_name": "书单.csv", "csv_type": "CSV 文件",
         # 关于 / 帮助
-        "about_title": "关于 {0} {1}",
+        "about_title": "关于 %s %s",
         "about_what": "本地文本整理工具：扫描 · 清洗 · 分章 · 导出\n"
                       "纯离线运行，不联网、不下载、不上传任何内容。",
         "usage_title": "使用说明", "disclaimer_title": "免责声明",
@@ -279,6 +281,8 @@ TEXTS = {
         "re_label": "Chapter regex (blank = built-in Chinese rules):",
         "b_try": "Try Split",
         "b_try_all": "Try Split (all selected)",
+        "lab_chap_pick": "Book to split:",
+        "chap_pick_hint": "Pick a book here; \"Try Split (all selected)\" acts on every book ticked in ①Library",
         "chap_hint": "Built-in patterns match 第1章 / 第一百二十三章 / 卷三 / Chapter 5 / "
                     "序章 / 楔子 / 番外 / 后记; a custom regex replaces the built-ins.",
         "col_chap_title": "Chapter Title",
@@ -338,7 +342,7 @@ TEXTS = {
         "d_export_fail": "Export Failed",
         "csv_hdr": "Title,Author,Chars,Encoding,Size,Path",
         "csv_name": "library_list.csv", "csv_type": "CSV files",
-        "about_title": "About {0} {1}",
+        "about_title": "About %s %s",
         "about_what": "A local TXT organizer: scan · clean · split · export\n"
                       "Fully offline — no network, no upload, nothing leaves your computer.",
         "usage_title": "User Guide", "disclaimer_title": "Disclaimer",
@@ -527,6 +531,7 @@ class App:
         self._build_clean()
         self._build_chap()
         self._build_out()
+        nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
     def _build_lib(self):
         S = self.S
@@ -622,6 +627,15 @@ class App:
                    command=self.preview_chap).pack(side="left")
         ttk.Button(top, text=S["b_try_all"],
                    command=self.preview_chap_all).pack(side="left", padx=(6, 0))
+        pick = ttk.Frame(f)
+        pick.pack(fill="x", padx=8, pady=(2, 0))
+        ttk.Label(pick, text=S["lab_chap_pick"]).pack(side="left")
+        self.chap_pick_text = tk.StringVar()
+        self.cb_chap = ttk.Combobox(pick, textvariable=self.chap_pick_text,
+                                    state="readonly", width=46)
+        self.cb_chap.pack(side="left", padx=4)
+        ttk.Label(pick, text=S["chap_pick_hint"], foreground="#666666",
+                  font=FONT_S).pack(side="left")
         ttk.Label(f, text=S["chap_hint"],
                   foreground="#666666", font=FONT_S).pack(anchor="w", padx=8)
         wrap = ttk.Frame(f)
@@ -756,6 +770,7 @@ class App:
         self._status(self.root)
         self.status_var.set(self.S["st_ready"])
         self.reload_rows()          # books 数据在内存，整表重灌（含勾选状态）
+        self._fill_chap_pick()      # 重建后重填「试分书籍」下拉
         try:
             self.nb.select(cur_tab)
         except Exception:
@@ -1113,10 +1128,40 @@ class App:
         self.q.put(("prog", (total, total, S["prog_done"])))
         self.q.put(("done", ("clean", ok, rm_sum, self.cancel)))
 
+    def _fill_chap_pick(self):
+        """同步「试分书籍」下拉：列出书库全部书；保持当前选中，失效则默认勾选首本。"""
+        names = [(b["title"] or os.path.splitext(b["name"])[0]) for b in self.books]
+        try:
+            self.cb_chap["values"] = names
+        except Exception:
+            return
+        cur = self.chap_pick_text.get()
+        if cur not in names:
+            fb = self.first_selected()
+            cur = (fb["title"] or os.path.splitext(fb["name"])[0]) if fb else (names[0] if names else "")
+        self.chap_pick_text.set(cur or "")
+
+    def picked_book(self):
+        """单本试分目标 = 下拉所选；下拉无有效值时回退勾选首本。"""
+        self._fill_chap_pick()
+        t = self.chap_pick_text.get()
+        for b in self.books:
+            if (b["title"] or os.path.splitext(b["name"])[0]) == t:
+                return b
+        return self.first_selected()
+
+    def _on_tab_changed(self, _e=None):
+        """切到 ③ 分章页时同步试分书下拉。"""
+        try:
+            if self.nb.index("current") == 2:
+                self._fill_chap_pick()
+        except Exception:
+            pass
+
     def preview_chap(self):
         S = self.S
         self._chap_cols(False)
-        b = self.first_selected()
+        b = self.picked_book()
         if not b:
             messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
