@@ -44,7 +44,7 @@
 
 ### 安装
 
-下载 `卷帙.exe`，双击运行即可，无需安装 Python。
+到 [Releases](https://github.com/podcatcher962/DeShelf/releases) 页下载 `DeShelf.exe`（软件中文名「卷帙」，Release 资产统一用英文名以兼容各平台下载），双击运行即可，无需安装 Python。
 
 ### 使用流程
 
@@ -112,7 +112,7 @@ finds duplicates by content fingerprint.
 
 ### Install
 
-Download `卷帙.exe` and double-click. No Python required.
+Grab `DeShelf.exe` from the [Releases](https://github.com/podcatcher962/DeShelf/releases) page (the app is named 卷帙 in Chinese; release assets use the English name for cross-platform download) and double-click it. No Python required.
 
 ### Workflow
 
