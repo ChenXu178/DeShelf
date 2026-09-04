@@ -1,6 +1,6 @@
 # 卷帙 DeShelf
 
-> 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · 导出
+> 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
 > **v1.2** · 新增中英双语界面（跟随系统语言，菜单可切换）· 记忆上次输出目录与模式 · 修复原地覆盖缺输出目录时静默跳过的校验
 >
@@ -30,6 +30,20 @@
 | **4 导出分发** | 导出 EPUB（带完整目录）、合并 TXT、分章 TXT。清洗结果可选择输出到新目录、原地覆盖（先备份 .bak）或不落盘 |
 
 其它：目录记忆、扫描索引缓存（秒开）、书单导出 CSV、按内容指纹找出重复文件。
+
+### 为什么要转 EPUB
+
+EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推荐格式：
+
+| 好处 | 说明 |
+|---|---|
+| 电纸书即插即用 | 文石 / 掌阅 / Kobo / 微信读书 / Apple Books 等均直接支持，打开就有章节目录、可跳章 |
+| 可划线做笔记 | 支持高亮与批注留心得（笔记存在阅读器侧，换设备不丢） |
+| 体积小近一半 | EPUB 是 zip 压缩容器，同一本书通常比 TXT 小 40%~55%，省电纸书存储 |
+| 排版规范 | 段落缩进、标题层级完整保留，调字号自动重排，永不失真不乱码 |
+| 开放标准 | EPUB 2.0 为 W3C 国际标准，不会过期，任何设备可长期阅读 |
+
+**推荐流程**：卷帙把野生 TXT 清洗分章 → 导出最终版 EPUB → 放进电纸书精读做笔记。
 
 ### 和其它工具的区别
 
@@ -74,7 +88,7 @@
 
 ## English
 
-> Local TXT organizing tool — scan · clean · split · export
+> Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
 >
 > **v1.2** · bilingual UI (follows system language, switchable in the menu) · remembers last output folder & mode · fixed silent export skip when no output folder was set for in-place mode
 >
@@ -100,6 +114,20 @@ network** — no downloading, no uploading. It only touches files already on you
 
 Also: remembers the last folder, caches the scan index for instant reload, exports the book list as CSV,
 finds duplicates by content fingerprint.
+
+### Why EPUB
+
+EPUB is DeShelf's primary output format and the recommended way to read on e-readers / reading apps:
+
+| Benefit | Detail |
+|---|---|
+| E-reader ready | Works out of the box on Boox, iReader, Kobo, WeRead, Apple Books, etc. — opens with a real table of contents and chapter jumps |
+| Highlight & annotate | Full support for highlighting and margin notes (notes live in the reader, so they survive file changes) |
+| Roughly half the size | EPUB is a zip container — the same book is typically 40–55% smaller than TXT |
+| Clean typography | Paragraph indents and heading levels are preserved; text reflows at any font size — no mojibake, no distortion |
+| Open standard | EPUB 2.0 is a W3C standard that will never go stale |
+
+**Recommended workflow**: clean & split your raw TXT in DeShelf → export the final EPUB → read and annotate on your e-reader.
 
 ### How it differs
 
