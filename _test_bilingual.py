@@ -102,6 +102,9 @@ check("帮助英文非空", len(TEXTS[EN]["help_text"]) > 300, True)
 check("免责中文含关键词", "免责声明" in TEXTS[ZH]["disclaimer_text"], True)
 check("免责英文含关键词", "Disclaimer" in TEXTS[EN]["disclaimer_text"], True)
 check("中文版式键含书名号", "《" in TEXTS[ZH]["chap_sum"], True)
+# 防回归：show_about 用 % 格式化，about_title 必须 %s 占位（{0} 会 TypeError 且被回调吞掉=关于点不开）
+check("about_title 中文用 %s 占位", "%s" in TEXTS[ZH]["about_title"], True)
+check("about_title 英文用 %s 占位", "%s" in TEXTS[EN]["about_title"], True)
 
 print("\n失败项：%d" % len(fails))
 for f in fails:

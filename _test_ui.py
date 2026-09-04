@@ -72,6 +72,12 @@ print("\n== 页3 智能分章 ==")
 app.nb.select(app.tab_chap)
 root.update()
 check("章节 Treeview", app.tv_chap, 500, 100)
+check("试分书下拉", app.cb_chap, 100, 18)
+if n and len(list(app.cb_chap["values"])) != n:
+    fails.append("试分书下拉未同步书库")
+    print("  [FAIL] 试分书下拉未同步书库（样本 %d，下拉 %d）" % (n, len(list(app.cb_chap["values"]))))
+else:
+    print("  [OK]   试分书下拉已同步书库（%d 项）" % n)
 app.preview_chap()
 root.update()
 cnt = len(app.tv_chap.get_children())
