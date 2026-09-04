@@ -1064,13 +1064,14 @@ class App:
             return
         if self.busy:
             return
+        # 规则必须在主线程预取：tk 变量在线程内读取会 RuntimeError
+        rules = self.active_rules()
         self.set_busy(True)
         self.cancel = False
-        threading.Thread(target=self.clean_worker, args=(sel,), daemon=True).start()
+        threading.Thread(target=self.clean_worker, args=(sel, rules), daemon=True).start()
 
-    def clean_worker(self, sel):
+    def clean_worker(self, sel, rules):
         S = self.S
-        rules = self.active_rules()
         total = len(sel)
         ok = rm_sum = 0
         for i, b in enumerate(sel, 1):
@@ -1192,13 +1193,15 @@ class App:
             return
         self.set_busy(True)
         self.cancel = False
-        threading.Thread(target=self.run_worker, args=(sel, fmts, mode, outdir),
-                         daemon=True).start()
-
-    def run_worker(self, sel, fmts, mode, outdir):
-        S = self.S
+        # 规则/正则必须在主线程预取：tk 变量在线程内读取会 RuntimeError
         rules = self.active_rules()
         custom = self.custom_re.get().strip() or None
+        threading.Thread(target=self.run_worker,
+                         args=(sel, fmts, mode, outdir, rules, custom),
+                         daemon=True).start()
+
+    def run_worker(self, sel, fmts, mode, outdir, rules, custom):
+        S = self.S
         ok = fail = 0
         if mode != "inplace" and outdir:
             try:
