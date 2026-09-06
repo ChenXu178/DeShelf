@@ -92,6 +92,13 @@ try {
   r = await evalv("(async()=>{document.getElementById('btnAbout').click();await new Promise(r2=>setTimeout(r2,300));const t=document.querySelector('.dlg .dh');const v=t?t.textContent:'';const c=document.querySelector('.dlg .x');if(c)c.click();return v;})()");
   ok("关于弹窗可开可关", r.val && /卷帙|DeShelf/.test(r.val), JSON.stringify(r.err || r.val));
 
+  // 4b. 不蒜子访问统计（信息性：脚本加载受网络影响，失败只提示不算失败）
+  await sleep(3000);
+  r = await evalv("(()=>{const c=document.getElementById('busuanzi_container_page_pv');const pv=document.getElementById('busuanzi_value_page_pv');const uv=document.getElementById('busuanzi_value_site_uv');return {shown:c?getComputedStyle(c).display:'missing', pv:pv?pv.textContent:'', uv:uv?uv.textContent:''};})()");
+  const bzOk = r.val && r.val.shown !== "none" && r.val.shown !== "missing" && /[0-9]/.test(r.val.pv || "");
+  ok("不蒜子统计已加载并显示数字", bzOk, JSON.stringify(r.val || r.err));
+  console.log("  · 统计状态:", JSON.stringify(r.val || r.err));
+
   // 5. 截图（复用 _ui_shot.png 名以匹配 .gitignore）
   await evalv("document.querySelectorAll('.step')[0] ? null : null");
   const shot = await send("Page.captureScreenshot", { format: "png" });
