@@ -47,7 +47,9 @@ try {
       const d = m.params.exceptionDetails;
       errors.push("exception: " + (d.exception ? d.exception.description : d.text));
     } else if (m.method === "Log.entryAdded" && m.params.entry.level === "error") {
-      errors.push("console.error: " + m.params.entry.text);
+      const txt = m.params.entry.text || "";
+      if (/busuanzi/i.test(txt)) return;   // 第三方访问统计脚本加载噪音，不算应用错误
+      errors.push("console.error: " + txt);
     }
   };
   function send(method, params = {}) {

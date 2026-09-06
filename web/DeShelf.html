@@ -148,6 +148,8 @@ label.lab{font-size:13px;color:var(--muted)}
 .prog>div{height:100%;width:0;background:var(--green);transition:width .2s}
 h3{font-size:14px;margin:4px 0 8px}
 .hint{color:var(--faint);font-size:12px;margin-top:4px}
+.stat{margin-top:10px;text-align:center;font-size:12px;color:var(--faint);display:none}
+.stat b{color:var(--muted);font-weight:400}
 .row2{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 b.dark{color:var(--ink)}
 </style>
@@ -272,11 +274,18 @@ b.dark{color:var(--ink)}
   <pre id="logBox"></pre>
 </div>
 
+<div class="stat" id="busuanzi_container_page_pv">
+  <span data-k="stat_pv">👁 本页访问</span> <b id="busuanzi_value_page_pv"></b>
+  <span data-k="stat_unit">次</span>
+  <span id="busuanzi_container_site_uv"><span data-k="stat_uv">· 访客</span> <b id="busuanzi_value_site_uv"></b> <span data-k="stat_ppl">人</span></span>
+</div>
+
 </div>
 
 <!-- 关于 / 帮助 对话框容器 -->
 <div id="modalRoot"></div>
 
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
 <script id="core-js">
 /* ================= 双语词典 ================= */
 const Z = {
@@ -295,6 +304,7 @@ const Z = {
   outTitle:"④ 导出分发", btnRun:"▶ 开始处理所选书籍", btnSaveDir:"保存到所选文件夹…",
   optSkipDup:"跳过已经处理过的文件",
   logTitle:"处理日志",
+  stat_pv:"👁 本页访问", stat_unit:"次", stat_uv:"· 访客", stat_ppl:"人",
   thSel:"", thName:"书名", thAuth:"作者", thChars:"字数", thSize:"大小",
   thEnc:"编码", thChap:"章节", thDup:"重复", thStatus:"状态",
   dupYes:"重复", dupNo:"", colText:"正文",
@@ -375,6 +385,7 @@ const E = {
   outTitle:"④ Export", btnRun:"▶ Process selected books", btnSaveDir:"Save to chosen folder…",
   optSkipDup:"Skip files already processed",
   logTitle:"Activity log",
+  stat_pv:"👁 Views", stat_unit:"", stat_uv:"· Visitors", stat_ppl:"",
   thSel:"", thName:"Title", thAuth:"Author", thChars:"Chars", thSize:"Size",
   thEnc:"Encoding", thChap:"Chapters", thDup:"Dup", thStatus:"Status",
   dupYes:"dup", dupNo:"", colText:"Text",
@@ -445,6 +456,7 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.3</b></p>'
  +'<p>同一份 HTML 本地双击即用；放到 GitHub Pages 等 https 静态托管即是"在线版"，功能不变——数据始终不出本机。</p>'
  +'<p class="hint">桌面版（Windows EXE）支持原地覆盖写回与 .bak 备份，批量处理大书库建议用桌面版。</p>'
  +'<p>GitHub 主页 / 查看最新版：<a href="https://github.com/podcatcher962/DeShelf/releases" target="_blank">github.com/podcatcher962/DeShelf/releases</a></p>'
+ +'<p class="hint">隐私：本页仅加载一个匿名访问计数器（不蒜子），用于统计访问次数；它不接触你的文件，书籍内容始终不出本机。离线打开时计数器不加载，功能不受影响。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
 E.aboutBody = '<p><b>卷帙 DeShelf · v1.3</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
@@ -453,6 +465,7 @@ E.aboutBody = '<p><b>卷帙 DeShelf · v1.3</b></p>'
  +'<p>Double-click the same HTML file for local use, or host it on any https static site (e.g. GitHub Pages) for an “online” version — behavior is identical, and data never leaves your machine.</p>'
  +'<p class="hint">The desktop app (Windows EXE) can overwrite files in place with .bak backup — prefer it for big in-place batch jobs.</p>'
  +'<p>GitHub homepage / latest release: <a href="https://github.com/podcatcher962/DeShelf/releases" target="_blank">github.com/podcatcher962/DeShelf/releases</a></p>'
+ +'<p class="hint">Privacy: the page loads one anonymous visit counter (Busuanzi) to count page views. It never touches your files — book content stays on your machine. Offline, the counter simply does not load and everything still works.</p>'
  +'<p style="color:var(--muted);font-size:12px">© Lanlan Eternal</p>';
 Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<li><b>书库</b>：Chrome/Edge 点「选择文件夹」授权目录（可整目录扫描、写缓存、批量保存）；其它浏览器或临时用，直接拖入文件即可。</li>'
