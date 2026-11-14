@@ -159,7 +159,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.3.1</span>
+  <span class="ver">v1.3.2</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -449,7 +449,7 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.3.1</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.3.2</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
  +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
  +'<p>技术：单文件 HTML · File System Access（目录模式）/ 拖拽（全浏览器）· TextDecoder 编码识别 · 手写 EPUB 2.0 + ZIP（CompressionStream deflate）。</p>'
@@ -458,7 +458,7 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.3.1</b></p>'
  +'<p>GitHub 主页 / 查看最新版：<a href="https://github.com/podcatcher962/DeShelf/releases" target="_blank">github.com/podcatcher962/DeShelf/releases</a></p>'
  +'<p class="hint">隐私：本页仅加载一个匿名访问计数器（不蒜子），用于统计访问次数；它不接触你的文件，书籍内容始终不出本机。离线打开时计数器不加载，功能不受影响。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.3.1</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.3.2</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
  +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
  +'<p>Tech: single-file HTML · File System Access (directory mode) / drag &amp; drop (every browser) · TextDecoder encoding detection · hand-rolled EPUB 2.0 + ZIP (CompressionStream deflate).</p>'
@@ -711,8 +711,8 @@ const Core = (() => {
 
   /* ---------- 分章（对齐 split_chapters） ---------- */
   const CHAPTER_RE=[
-    /^第\s*[0-9零一二三四五六七八九十百千万两]{1,15}\s*[章节節回卷篇集部]\s*[^\n]{0,40}/,
-    /(?:^|\s)(?:卷|Chapter|CHAPTER|chapter)\s*[0-9零一二三四五六七八九十百千万]{1,15}[^\n]{0,40}/,
+    /^第\s*[0-9０-９零〇一二三四五六七八九十百千万两]{1,15}\s*[章节節回卷篇集部]\s*[^\n]{0,40}/,
+    /(?:^|\s)(?:卷|Chapter|CHAPTER|chapter)\s*[0-9０-９零〇一二三四五六七八九十百千万]{1,15}[^\n]{0,40}/,
     /(?:序章|序言|楔子|引子|尾声|後记|后记|番外|终章|結局|结局|完本)[^\n]{0,40}/,
   ];
   const MAX_TITLE_LEN=50;
@@ -1384,7 +1384,13 @@ async function tryChapters(){
   let reOk=true;
   if(custom){try{new RegExp(custom);}catch(e){reOk=false;}}
   if(!reOk){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
-  const raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
+  let raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
+  /* 与 EXE 版及导出逻辑一致：未应用清洗时按当前规则临时清洗一份再分章
+     （不写入 b._clean，避免影响清洗页的统计与“应用清洗”流程） */
+  if(b._clean===undefined){
+    const rules=activeRuleIds();
+    if(rules.length) raw=Core.cleanText(raw,rules,false).text;
+  }
   let chs;
   try{chs=Core.splitChapters(raw,custom);}catch(e){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
   window._lastTry={chs,b};
@@ -1424,7 +1430,11 @@ async function chapAll(){
     const b=St.books[i];
     info.textContent=fill(T("chAllDoing"),{i:i+1,n,name:(b.title||b.name).slice(0,24)});
     try{
-      const raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
+      let raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
+      if(b._clean===undefined){
+        const rules=activeRuleIds();
+        if(rules.length) raw=Core.cleanText(raw,rules,false).text;
+      }
       const chs=Core.splitChapters(raw,custom);
       b._chap=chs;b.chapters=chs.length;sum+=chs.length;done++;
     }catch(e){log("分章失败："+b.name+" "+e.message);}

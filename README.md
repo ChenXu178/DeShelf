@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.3.2** · 分章不再依赖先清洗：内置规则库支持**全角数字**（第１５章）与「〇」，章号写成全角也能直接分出章节；网页版「试分章节 / 全部一键分章」改为与桌面版一致，先按当前规则清洗再分章（此前未清洗只能分出 1 章，导出时却是另一个结果）
+>
 > **v1.3.1** · 修复「全角转半角」误改中文标点的问题：规则现在**只转换全角数字与字母**，中文的逗号、冒号、括号、引号等一律保持原样（此前整本书的「，」会被改成「,」；章号是全角数字的书仍然能正常分章）
 >
 > **v1.3** · 智能分章新增批量操作（Web：全部书籍一键分章并保存；EXE：试分全部选中）与「试分书籍」下拉选单本 · EXE 清洗页新增「应用到所选书籍」批量清洗 · **界面语言窗口内即时切换**（EXE 就地重建，无需重启）· 在线版日志栏默认展开 · 修复「关于」无法打开的占位符 bug
@@ -139,6 +141,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.3.2** · chapter splitting no longer requires cleaning first: built-in rules now recognise **full-width digits** (第１５章) and 「〇」, so books numbered in full-width digits split correctly out of the box; the online edition's "Try splitting" / "Split all" now match the desktop edition by cleaning with the active rules before splitting (previously an uncleaned book yielded a single chapter while export produced a different result)
 >
 > **v1.3.1** · fixed "Full-width to half-width" mangling Chinese punctuation: the rule now converts **only full-width digits and letters**, leaving Chinese commas, colons, brackets and quotes untouched (previously every 「，」 in a book became 「,」; books numbered with full-width digits still split into chapters correctly)
 >

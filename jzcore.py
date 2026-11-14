@@ -13,7 +13,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.3.1"
+APP_VER = "v1.3.2"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -243,8 +243,8 @@ def clean_text(text, enabled):
 # ---------------------------------------------------------------- 分章
 
 CHAPTER_PATTERNS = [
-    r"第\s*[0-9零一二三四五六七八九十百千万两]{1,15}\s*[章节節回卷篇集部]\s*[^\n]{0,40}",
-    r"(?:^|\s)(?:卷|Chapter|CHAPTER|chapter)\s*[0-9零一二三四五六七八九十百千万]{1,15}[^\n]{0,40}",
+    r"第\s*[0-9０-９零〇一二三四五六七八九十百千万两]{1,15}\s*[章节節回卷篇集部]\s*[^\n]{0,40}",
+    r"(?:^|\s)(?:卷|Chapter|CHAPTER|chapter)\s*[0-9０-９零〇一二三四五六七八九十百千万]{1,15}[^\n]{0,40}",
     r"(?:序章|序言|楔子|引子|尾声|後记|后记|番外|终章|結局|结局|完本)[^\n]{0,40}",
 ]
 MAX_TITLE_LEN = 50
