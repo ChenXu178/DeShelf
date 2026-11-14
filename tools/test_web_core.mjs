@@ -85,7 +85,7 @@ console.log("== 清洗规则 ==");
   ok("网址/宣传行已删", !r.text.includes("请收藏本站"));
   ok("导航残留已删", !r.text.includes("上一页"));
   ok("连续空行压缩为单行空", r.text.split("\n\n").length >= 1 && r.text.includes("第1章 开头\nabc"));
-  ok("半角转换", lines.includes("abc,def!123"));
+  ok("半角转换（只转数字字母，中文标点不动）", lines.includes("abc，def！123"));
   ok("行尾 trim", lines.includes("尾部有空格"));
   ok("首尾空行裁掉", r.text.startsWith("正文") && r.text.trimEnd().endsWith("尾部有空格"));
   ok("del 集合有记录", r.del.size >= 3);
@@ -93,8 +93,8 @@ console.log("== 清洗规则 ==");
   ok("blank 全删空行", !r2.text.includes("\n\n") && !r2.text.trimEnd().split("\n").some(l => l.trim() === ""), r2.text);
   const r3 = Core.cleanText("甲\n乙\n", ["indent"], false);
   ok("缩进两全角", r3.text.startsWith("　　甲"));
-  const r4 = Core.cleanText("A：b（c）d，e。f「g」\n", ["half"], false);
-  ok("全角→半角(FF01-FF5E，句号保留)", r4.text.split("\n")[0] === "A:b(c)d,e。f「g」", r4.text.split("\n")[0]);
+  const r4 = Core.cleanText("A：b（c）d，e。f「g」１２３ＡＢＣ\n", ["half"], false);
+  ok("全角转半角仅动数字字母，中文标点保留", r4.text.split("\n")[0] === "A：b（c）d，e。f「g」123ABC", r4.text.split("\n")[0]);
 }
 
 console.log("== 分章 ==");

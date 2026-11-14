@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.3.1** · 修复「全角转半角」误改中文标点的问题：规则现在**只转换全角数字与字母**，中文的逗号、冒号、括号、引号等一律保持原样（此前整本书的「，」会被改成「,」；章号是全角数字的书仍然能正常分章）
+>
 > **v1.3** · 智能分章新增批量操作（Web：全部书籍一键分章并保存；EXE：试分全部选中）与「试分书籍」下拉选单本 · EXE 清洗页新增「应用到所选书籍」批量清洗 · **界面语言窗口内即时切换**（EXE 就地重建，无需重启）· 在线版日志栏默认展开 · 修复「关于」无法打开的占位符 bug
 >
 > **v1.2** · 新增中英双语界面（跟随系统语言，菜单可切换）· 记忆上次输出目录与模式 · 修复原地覆盖缺输出目录时静默跳过的校验
@@ -137,6 +139,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.3.1** · fixed "Full-width to half-width" mangling Chinese punctuation: the rule now converts **only full-width digits and letters**, leaving Chinese commas, colons, brackets and quotes untouched (previously every 「，」 in a book became 「,」; books numbered with full-width digits still split into chapters correctly)
 >
 > **v1.3** · smart chapter splitting now batch-capable (Web: chapter & save all books at once; EXE: try-split all selected) plus a "Book to split" dropdown · EXE Clean tab gains "Apply to selected books" batch cleaning · **in-window instant language switch** (EXE rebuilds in place, no restart) · online edition log panel open by default · fixed "About" dialog failing to open (placeholder bug)
 >

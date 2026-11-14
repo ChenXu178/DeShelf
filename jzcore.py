@@ -13,7 +13,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.3"
+APP_VER = "v1.3.1"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -168,7 +168,7 @@ RULES = [
     {"id": "trim", "name": "去除行首尾空白", "name_en": "Trim line ends",
      "tip": "清掉每行开头结尾的空格与制表符", "tip_en": "Strip spaces & tabs at the start/end of every line"},
     {"id": "half", "name": "全角转半角", "name_en": "Full-width to half-width",
-     "tip": "仅转换数字、字母与常见标点，不动汉字", "tip_en": "Convert digits, letters & common punctuation; keep Chinese"},
+     "tip": "只转全角数字与字母，中文标点保持原样", "tip_en": "Convert full-width digits & letters only; keep Chinese punctuation"},
     {"id": "indent", "name": "段落首行缩进两格", "name_en": "Indent paragraphs",
      "tip": "给每个非空段落开头补两个全角空格", "tip_en": "Prepend two full-width spaces to each non-empty paragraph"},
 ]
@@ -177,12 +177,13 @@ DEFAULT_ON = ["url", "site", "nav", "moji", "blank2", "trim", "half"]
 
 
 def to_halfwidth(s):
+    """只把全角数字与全角字母转成半角；中文标点（，。：；！？等）一律不动。"""
     out = []
     for ch in s:
         code = ord(ch)
         if code == 0x3000:
             out.append(" ")
-        elif 0xFF01 <= code <= 0xFF5E:
+        elif 0xFF10 <= code <= 0xFF19 or 0xFF21 <= code <= 0xFF3A or 0xFF41 <= code <= 0xFF5A:
             out.append(chr(code - 0xFEE0))
         else:
             out.append(ch)
