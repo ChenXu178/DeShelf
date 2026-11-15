@@ -159,7 +159,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.3.2</span>
+  <span class="ver">v1.3.3</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -315,7 +315,8 @@ const Z = {
   btnHelp:"帮助 Help", btnAbout:"关于 About",
   stEmpty:"无已选书籍", stWait:"处理中…",
   ruleOn:"已启用 {n} 条规则", rPrev:"原文", rClean:"清洗后",
-  prevHint:"仅预览前 500 行，划线红字为将被删除的行",
+  rmStat:"删除 {n} 行", cutStat:"另 {m} 行只裁了行尾网址",
+  prevHint:"仅预览前 500 行：整行划线＝删除；只有网址被划线＝正文保留",
   applyDone:"已清洗 {n} 本，共删除 {m} 行垃圾内容",
   cleanAllDone:"全部所选书籍已清洗",
   cleanNeedSel:"书库中没有已选书籍，请先勾选要清洗的书",
@@ -396,7 +397,8 @@ const E = {
   btnHelp:"Help", btnAbout:"About",
   stEmpty:"No books selected", stWait:"Working…",
   ruleOn:"{n} rules enabled", rPrev:"Original", rClean:"Cleaned",
-  prevHint:"Preview shows the first 500 lines; red strikethrough lines are about to be removed",
+  rmStat:"{n} lines removed", cutStat:"{m} more lines: only the URL tail trimmed",
+  prevHint:"First 500 lines only: fully struck = removed; only the URL struck = text kept",
   applyDone:"Cleaned {n} book(s), removed {m} junk lines",
   cleanAllDone:"All selected books cleaned",
   cleanNeedSel:"No books selected in the library. Tick the books to clean first.",
@@ -449,7 +451,7 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.3.2</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.3.3</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
  +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
  +'<p>技术：单文件 HTML · File System Access（目录模式）/ 拖拽（全浏览器）· TextDecoder 编码识别 · 手写 EPUB 2.0 + ZIP（CompressionStream deflate）。</p>'
@@ -458,7 +460,7 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.3.2</b></p>'
  +'<p>GitHub 主页 / 查看最新版：<a href="https://github.com/podcatcher962/DeShelf/releases" target="_blank">github.com/podcatcher962/DeShelf/releases</a></p>'
  +'<p class="hint">隐私：本页仅加载一个匿名访问计数器（不蒜子），用于统计访问次数；它不接触你的文件，书籍内容始终不出本机。离线打开时计数器不加载，功能不受影响。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.3.2</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.3.3</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
  +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
  +'<p>Tech: single-file HTML · File System Access (directory mode) / drag &amp; drop (every browser) · TextDecoder encoding detection · hand-rolled EPUB 2.0 + ZIP (CompressionStream deflate).</p>'
@@ -644,9 +646,11 @@ const Core = (() => {
   /* ---------- 清洗规则（9 条，与桌面版一致） ---------- */
   const RULES=[
     {id:"url",name:"含网址的行",name_en:"Lines with URLs",
-     tip:"删除出现 http / www / 域名的整行",tip_en:"Remove whole lines containing http / www / domains"},
+     tip:"删除只有网址的行；网址若粘在段尾，只裁掉网址本身，正文保留",
+     tip_en:"Removes URL-only lines; if a URL is glued to a paragraph end, only the URL is trimmed"},
     {id:"site",name:"站点宣传行",name_en:"Site promo lines",
-     tip:"删除“请收藏本站”“笔趣阁”这类推广整行",tip_en:"Remove promo lines like “bookmark us” or scraper-site names"},
+     tip:"删除“请收藏本站”这类推广行；推广语贴在段尾时只裁掉那一截",
+     tip_en:"Removes promo lines; if the promo is glued to a paragraph end, only that part is trimmed"},
     {id:"nav",name:"翻页导航残留",name_en:"Pagination leftovers",
      tip:"删除“上一页”“本章未完”等导航整行",tip_en:"Remove nav-only lines such as “prev page” / “to be continued”"},
     {id:"moji",name:"乱码行",name_en:"Corrupted lines",
@@ -664,10 +668,40 @@ const Core = (() => {
   ];
   const DEFAULT_ON=["url","site","nav","moji","blank2","trim","half"];
 
-  const URL_RE=/(https?:\/\/|www\.|ftp:\/\/|[a-z0-9\-]+\.(com|net|org|cn|cc|me|la|tv|info|xyz)\b)/;
-  const SITE_RE=/(请记住|记住本站|请收藏|收藏本站|本站地址|书籍地址|笔趣|顶点小说|手机阅读|手机版|wap\.|m\.|txt下载|TXT下载|小说下载网|免费小说网|最新网址|首发网址|百度搜索|天才一秒|无弹窗|更新最快|手打版|转载请|本章免费|请到)/;
+  const URL_RE=/(https?:\/\/|www\.|ftp:\/\/|[a-z0-9\-]+\.(com|net|org|cn|cc|me|la|tv|info|xyz)\b)/i;
+  /* 强特征宣传词：正文里几乎不会出现，命中即可疑 */
+  const SITE_RE=/(记住本站|收藏本站|本站地址|书籍地址|笔趣|顶点小说|手机阅读|wap\.|txt下载|TXT下载|小说下载网|免费小说网|最新网址|首发网址|天才一秒|无弹窗|更新最快|手打版|本章免费)/i;
+  /* 备注：请记住/请收藏/请到/转载请/手机版/百度搜索 这些在正常对话里也会出现
+     （“把客人请到屋里”“你百度搜索一下”），故不再作为单独判定广告的依据 */
   const NAV_RE=/^\s*(上一页|下一页|上一章|下一章|返回目录|返回书城|加入书架|加入书签|推荐票|月票|投推荐|打赏|本章未完|未完待续|<--|-->|=====|-----)/;
   const MOJI_RE=/[\ufffd\ue000-\uf8ff]|[\x00-\x08\x0b\x0c\x0e-\x1f]/;
+
+  /* 判定“这行是不是广告”用的尺子 */
+  const AD_TAIL_MAX=64, AD_MIN_BODY=6, AD_SHORT=32, AD_TINY=24, AD_AFTER=10;
+  const AD_HEAD_RE=/(记住|收藏|网址|本站|书站|手机阅读|手机版|最新章|一秒|更新最快|推荐票|月票|笔趣阁|顶点|全文阅读|小说网|手打)/;
+  const SLIM_RE=/[\s\u3000，,。.！!？?、；;：:…\-—－_“”‘’"'（）()《》〈〉【】\[\]·~@#%&*+=|/\\<>^_]/g;
+  function slim(s){return s.replace(SLIM_RE,"").length;}
+  /* 判定一行里的广告：keep 不动 / cut 只裁行尾 / drop 整行丢弃 */
+  function adSplit(s,useUrl,useSite){
+    const mu=useUrl?URL_RE.exec(s):null, ms=useSite?SITE_RE.exec(s):null;
+    if(!mu&&!ms)return["keep",0];
+    const siteFirst=!!ms&&(!mu||ms.index<=mu.index);
+    const start=siteFirst?ms.index:mu.index, end=siteFirst?(ms.index+ms[0].length):(mu.index+mu[0].length);
+    const head=s.slice(0,start);
+    const body=slim(head), total=slim(s);
+    if(siteFirst){
+      if(total<AD_SHORT)return["drop",0];
+      if(body>=AD_MIN_BODY&&s.length-start<=AD_TAIL_MAX)return["cut",start];
+      return["keep",0];
+    }
+    if(AD_HEAD_RE.test(head)&&total<AD_SHORT)return["drop",0];
+    if(body<AD_MIN_BODY){
+      if(body===0&&(total<AD_TINY||AD_HEAD_RE.test(head+s.slice(end))))return["drop",0];
+      return["keep",0];
+    }
+    if(slim(s.slice(end))<=AD_AFTER&&s.length-start<=AD_TAIL_MAX)return["cut",start];
+    return["keep",0];
+  }
 
   /* 只转全角数字(FF10-FF19)与全角字母(FF21-FF3A / FF41-FF5A)，中文标点一律不动 */
   function toHalfwidth(s){
@@ -682,18 +716,30 @@ const Core = (() => {
     return out;
   }
   function cleanText(text,enabled,wantDel){
-    const on=new Set(enabled||[]);let removed=0;let out=[];const del=new Set();
+    const on=new Set(enabled||[]);let removed=0,trimmed=0;let out=[];const del=new Set();const cut=new Map();
     let prevBlank=false;
+    const useUrl=on.has("url"),useSite=on.has("site");
     for(const raw of text.split(/\r\n|\r|\n/)){
-      let s=raw;
-      if(on.has("trim")) s=s.trim();
+      let s=raw,lead=0;
+      if(on.has("trim")){lead=raw.length-raw.replace(/^\s+/,"").length;s=s.trim();}
       if(on.has("half")) s=toHalfwidth(s);
-      let drop=false;
-      if(on.has("url")&&URL_RE.test(s)) drop=true;
-      else if(on.has("site")&&SITE_RE.test(s)) drop=true;
-      else if(on.has("nav")&&NAV_RE.test(s)) drop=true;
-      else if(on.has("moji")&&MOJI_RE.test(s)) drop=true;
+      let d=0,drop=false;
+      if(useUrl||useSite){
+        const r=adSplit(s,useUrl,useSite);
+        if(r[0]==="drop") drop=true;
+        else if(r[0]==="cut") d=r[1];
+      }
+      if(!drop&&!d){
+        if(on.has("nav")&&NAV_RE.test(s)) drop=true;
+        else if(on.has("moji")&&MOJI_RE.test(s)) drop=true;
+      }
       if(drop){removed++;if(wantDel)del.add(raw);continue;}
+      if(d){
+        s=s.slice(0,d).replace(/[ \u3000，,、；;：:]+$/,"");
+        if(!slim(s)){removed++;if(wantDel)del.add(raw);continue;}
+        trimmed++;
+        if(wantDel)cut.set(raw,d+lead);
+      }
       if(on.has("blank")&&!s){removed++;if(wantDel)del.add(raw);continue;}
       if(on.has("blank2")&&!s){
         if(prevBlank){removed++;if(wantDel)del.add(raw);continue;}
@@ -706,7 +752,7 @@ const Core = (() => {
     while(a<b&&!out[a]) a++;
     while(b>a&&!out[b-1]) b--;
     out=out.slice(a,b);
-    return {text:out.join("\n")+(out.length?"\n":""),removed,del};
+    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut};
   }
 
   /* ---------- 分章（对齐 split_chapters） ---------- */
@@ -1321,15 +1367,21 @@ async function previewClean(){
     const headNew=r.text.split("\n").slice(0,500);
     let a='',c=0;
     for(const line of headRaw){
-      const gone=r.del.has(line);
-      a+=(gone?'<span class="del">':'')+esc(line)+(gone?'</span>':'')+"\n";
-      if(gone)c++;
+      if(r.del.has(line)){
+        a+='<span class="del">'+esc(line)+'</span>'+"\n";c++;
+      }else if(r.cut&&r.cut.has(line)){
+        const k=r.cut.get(line);
+        a+=esc(line.slice(0,k))+'<span class="del">'+esc(line.slice(k))+'</span>'+"\n";
+      }else{
+        a+=esc(line)+"\n";
+      }
     }
     $("cleanPane").innerHTML=
       '<div class="pane"><div class="pt"><span>'+esc(T("rPrev"))+' · '+esc(b.title||b.name)+'</span>'
       +'<span>'+esc(T("prevHint"))+'</span></div><pre>'+a+'</pre></div>'
       +'<div class="pane"><div class="pt"><span>'+esc(T("rClean"))+'</span>'
-      +'<span>'+esc(T("ruleOn")).replace(/\{n\}/,rules.length)+' · 删除 '+r.removed+' 行</span></div>'
+      +'<span>'+esc(T("ruleOn")).replace(/\{n\}/,rules.length)+' · '+(T("rmStat")||"删除 {n} 行").replace(/\{n\}/,r.removed)
+      +(r.trimmed?(' · '+(T("cutStat")||"另 {m} 行只裁了行尾").replace(/\{m\}/,r.trimmed)):'')+'</span></div>'
       +'<pre>'+(headNew.map(esc).join("\n")||esc(T("cleanEmpty")))+'</pre></div>';
     $("cleanInfo").textContent=fill(T("prevHint"),{});
   }catch(e){setMsgHint($("cleanInfo"),T("noEpubErr").replace("{e}",e.message));}

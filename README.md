@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.3.3** · 修复「网址粘在段落末尾时，整段正文被当成广告删掉」——很多盗版站的 TXT 会把网址直接贴在每段末尾（…“你什么时候偷走的？”WwW.zhudao.com），上一版按整行删除，整本书的正文会被洗光。现在先判断这行是不是广告：**整行只有广告才整行删，广告只是粘在段尾就只裁掉那一截**，正文一个字不动；同时「请到」「百度搜索」这类正常对话里也会出现的词不再被单独判成广告。预览里能看清哪一段被裁、哪一行被删。（感谢小红书用户 **@芭比Q** 反馈这个问题）
+>
 > **v1.3.2** · 分章不再依赖先清洗：内置规则库支持**全角数字**（第１５章）与「〇」，章号写成全角也能直接分出章节；网页版「试分章节 / 全部一键分章」改为与桌面版一致，先按当前规则清洗再分章（此前未清洗只能分出 1 章，导出时却是另一个结果）
 >
 > **v1.3.1** · 修复「全角转半角」误改中文标点的问题：规则现在**只转换全角数字与字母**，中文的逗号、冒号、括号、引号等一律保持原样（此前整本书的「，」会被改成「,」；章号是全角数字的书仍然能正常分章）
@@ -141,6 +143,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.3.3** · fixed "a URL glued to the end of a paragraph made the whole paragraph look like an ad" — many pirated TXT dumps append the site URL to every paragraph (…“when did you take it?”WwW.zhudao.com). The previous build removed the whole line, which could wipe out an entire book's text. It now decides first whether the line really is an ad: **a line that is only an ad is removed whole; an ad merely glued to a paragraph tail is trimmed off, leaving the text untouched**. Words that also occur in normal dialogue (「请到」, 「百度搜索」) no longer count as ads on their own, and the preview shows exactly which tail was trimmed and which line was removed. (Thanks to **@芭比Q** for reporting it.)
 >
 > **v1.3.2** · chapter splitting no longer requires cleaning first: built-in rules now recognise **full-width digits** (第１５章) and 「〇」, so books numbered in full-width digits split correctly out of the box; the online edition's "Try splitting" / "Split all" now match the desktop edition by cleaning with the active rules before splitting (previously an uncleaned book yielded a single chapter while export produced a different result)
 >

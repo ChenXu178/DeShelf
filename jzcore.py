@@ -13,7 +13,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.3.2"
+APP_VER = "v1.3.3"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -143,20 +143,42 @@ def file_md5(path):
 # ---------------------------------------------------------------- 清洗规则
 
 URL_RE = re.compile(r"(https?://|www\.|ftp://|[a-z0-9\-]+\.(com|net|org|cn|cc|me|la|tv|info|xyz)\b)", re.I)
+# 强特征宣传词：正文里几乎不会出现，命中即可疑
 SITE_RE = re.compile(
-    r"(请记住|记住本站|请收藏|收藏本站|本站地址|书籍地址|笔趣|顶点小说|手机阅读|手机版|"
-    r"wap\.|m\.|txt下载|TXT下载|小说下载网|免费小说网|最新网址|首发网址|百度搜索|"
-    r"天才一秒|无弹窗|更新最快|手打版|转载请|本章免费|请到)",
+    r"(记住本站|收藏本站|本站地址|书籍地址|笔趣|顶点小说|手机阅读|"
+    r"wap\.|txt下载|TXT下载|小说下载网|免费小说网|最新网址|首发网址|"
+    r"天才一秒|无弹窗|更新最快|手打版|本章免费)",
+    re.I,
 )
+# 说明：请记住 / 请收藏 / 请到 / 转载请 / 手机版 / 百度搜索 这些词在正常对话里也会出现
+# （“把客人请到屋里”“你百度搜索一下”），所以不再作为单独判定广告的依据。
+# 单独的 m. 同理去掉：它会把 "Mr." "com." 之类误判，手机域名靠 URL_RE 就能识别。
+
 NAV_RE = re.compile(r"^\s*(上一页|下一页|上一章|下一章|返回目录|返回书城|加入书架|加入书签|"
                     r"推荐票|月票|投推荐|打赏|本章未完|未完待续|<--|-->|=====|-----)")
 MOJI_RE = re.compile(r"[\ufffd\ue000-\uf8ff]|[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
+# 判定“这行是不是广告”用的尺子
+AD_TAIL_MAX = 64    # 网址距离行尾超过这么多字，就不当成粘在段尾的广告
+AD_MIN_BODY = 6     # 广告前面至少要有这么多字，才算“正文 + 广告尾巴”
+AD_SHORT = 32       # 整行短于这个字数、前面又是推广语，就判为广告行
+AD_TINY = 24        # 前面几乎没正文时，整行短于这个字数才丢
+AD_AFTER = 10       # 网址后面还跟着这么多字，说明网址夹在句子中间
+AD_HEAD_RE = re.compile(
+    r"(记住|收藏|网址|本站|书站|手机阅读|手机版|最新章|一秒|更新最快|"
+    r"推荐票|月票|笔趣阁|顶点|全文阅读|小说网|手打)"
+)
+_SLIM_RE = re.compile(
+    r"[\s\u3000，,。.！!？?、；;：:…\-—－_“”‘’\"'（）()《》〈〉【】\[\]·~@#%&*+=|/\\<>^_]"
+)
+
 RULES = [
     {"id": "url", "name": "含网址的行", "name_en": "Lines with URLs",
-     "tip": "删除出现 http / www / 域名的整行", "tip_en": "Remove whole lines containing http / www / domains"},
+     "tip": "删除只有网址的行；网址若粘在段尾，只裁掉网址本身，正文保留",
+     "tip_en": "Removes URL-only lines; if a URL is glued to the end of a paragraph, only the URL is trimmed"},
     {"id": "site", "name": "站点宣传行", "name_en": "Site promo lines",
-     "tip": "删除“请收藏本站”“笔趣阁”这类推广整行", "tip_en": "Remove promo lines like \u201cbookmark us\u201d or scraper-site names"},
+     "tip": "删除“请收藏本站”“笔趣阁”这类推广行；推广语贴在段尾时只裁掉那一截",
+     "tip_en": "Removes promo lines; if the promo is glued to a paragraph end, only that part is trimmed"},
     {"id": "nav", "name": "翻页导航残留", "name_en": "Pagination leftovers",
      "tip": "删除“上一页”“本章未完”等导航整行", "tip_en": "Remove nav-only lines such as \u201cprev page\u201d / \u201cto be continued\u201d"},
     {"id": "moji", "name": "乱码行", "name_en": "Corrupted lines",
@@ -190,30 +212,95 @@ def to_halfwidth(s):
     return "".join(out)
 
 
-def clean_text(text, enabled):
-    """按启用的规则清洗文本，返回 (新文本, 删除行数)。"""
+def _slim(s):
+    """去掉空白与常见标点后的字符数，用来衡量这行还剩多少真内容。"""
+    return len(_SLIM_RE.sub("", s))
+
+
+def _ad_split(s, use_url, use_site):
+    """判定一行里的广告，返回 (动作, 位置)。
+
+    动作：
+      keep — 不当作广告（正文恰好撞到关键词，或网址夹在句子中间）
+      cut  — 只从位置处裁掉行尾那一截，前面的正文保留
+      drop — 整行都是广告，丢弃
+
+    很多盗版站把网址直接粘在段落末尾（“……偷走的？”WwW.xxx.com），
+    旧逻辑按整行删除，会把整本书的正文一起删光，所以这里要分情况。
+    """
+    mu = URL_RE.search(s) if use_url else None
+    ms = SITE_RE.search(s) if use_site else None
+    if not mu and not ms:
+        return "keep", 0
+    site_first = bool(ms) and (not mu or ms.start() <= mu.start())
+    if site_first:
+        start, end = ms.start(), ms.end()
+    else:
+        start, end = mu.start(), mu.end()
+    head = s[:start]
+    body = _slim(head)          # 这段广告前面还剩多少真内容
+    total = _slim(s)            # 整行有多少真内容
+    if site_first:
+        # 命中的是推广语：短行整行删；长行只在推广语贴着行尾时裁掉
+        if total < AD_SHORT:
+            return "drop", 0
+        if body >= AD_MIN_BODY and len(s) - start <= AD_TAIL_MAX:
+            return "cut", start
+        return "keep", 0
+    # 命中的是网址
+    if AD_HEAD_RE.search(head) and total < AD_SHORT:
+        return "drop", 0            # 网址前面是推广语、整行很短 → 广告行
+    if body < AD_MIN_BODY:
+        if body == 0 and (total < AD_TINY or AD_HEAD_RE.search(head + s[end:])):
+            return "drop", 0        # 网址打头、整行就是广告（前后都是推广语）
+        return "keep", 0            # 其余是正文里夹着网址，宁可不动
+    # 正文 + 贴行尾的广告尾巴（后面没有接着正文）→ 只裁尾巴
+    if _slim(s[end:]) <= AD_AFTER and len(s) - start <= AD_TAIL_MAX:
+        return "cut", start
+    # 网址夹在长句中间 → 不动
+    return "keep", 0
+
+
+def clean_text(text, enabled, stats=None):
+    """按启用的规则清洗文本，返回 (新文本, 删除行数)。
+
+    stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）。
+    """
     on = set(enabled or [])
     removed = 0
+    trimmed = 0
     out = []
     prev_blank = False
+    use_url = "url" in on
+    use_site = "site" in on
     for raw in text.splitlines():
         s = raw
         if "trim" in on:
             s = s.strip()
         if "half" in on:
             s = to_halfwidth(s)
+        cut = 0
         drop = False
-        if "url" in on and URL_RE.search(s):
-            drop = True
-        elif "site" in on and SITE_RE.search(s):
-            drop = True
-        elif "nav" in on and NAV_RE.search(s):
-            drop = True
-        elif "moji" in on and MOJI_RE.search(s):
-            drop = True
+        if use_url or use_site:
+            act, pos = _ad_split(s, use_url, use_site)
+            if act == "drop":
+                drop = True
+            elif act == "cut":
+                cut = pos
+        if not drop and not cut:
+            if "nav" in on and NAV_RE.search(s):
+                drop = True
+            elif "moji" in on and MOJI_RE.search(s):
+                drop = True
         if drop:
             removed += 1
             continue
+        if cut:
+            s = s[:cut].rstrip(" \u3000，,、；;：:")
+            if not _slim(s):
+                removed += 1
+                continue
+            trimmed += 1
         if "blank" in on and not s:
             removed += 1
             continue
@@ -237,6 +324,9 @@ def clean_text(text, enabled):
         end -= 1
     if start or end != len(out):
         out = out[start:end]
+    if stats is not None:
+        stats["removed"] = removed
+        stats["trimmed"] = trimmed
     return "\n".join(out) + ("\n" if out else ""), removed
 
 

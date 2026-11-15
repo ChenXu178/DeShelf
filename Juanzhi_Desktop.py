@@ -166,6 +166,7 @@ TEXTS = {
         "clean_hint": "  对第一本勾选的书试跑，左边原文、右边清洗后",
         "col_pre": "清洗前", "col_post": "清洗后",
         "cmp_var": "删除 {0} 行，{1} → {2} 字",
+        "cmp_var_cut": "删除 {0} 行、另 {3} 行只裁了行尾网址，{1} → {2} 字",
         # 页3 分章
         "re_label": "章节正则（留空使用内置中文规则库）：",
         "b_try": "试分章节",
@@ -279,6 +280,7 @@ TEXTS = {
         "clean_hint": "  Dry-run on the first selected book: original left, cleaned right",
         "col_pre": "Original", "col_post": "Cleaned",
         "cmp_var": "{0} lines removed, {1} → {2} chars",
+        "cmp_var_cut": "{0} lines removed, {3} more only had a trailing URL trimmed, {1} → {2} chars",
         "re_label": "Chapter regex (blank = built-in Chinese rules):",
         "b_try": "Try Split",
         "b_try_all": "Try Split (all selected)",
@@ -1080,7 +1082,8 @@ class App:
         try:
             text = jzcore.load_text(b["path"])
             rules = self.active_rules()
-            cleaned, removed = jzcore.clean_text(text, rules)
+            stats = {}
+            cleaned, removed = jzcore.clean_text(text, rules, stats)
         except Exception as e:
             messagebox.showerror(S["d_preview_fail"], str(e))
             return
@@ -1089,8 +1092,11 @@ class App:
             t.delete("1.0", "end")
             t.insert("1.0", "\n".join(s.splitlines()[:400]))
             t.configure(state="disabled")
-        self.cmp_var.set(S["cmp_var"].format(removed, len(text), len(cleaned)))
-        self.log("《%s》规则 %d 条，删除 %d 行" % (b["title"], len(rules), removed))
+        cut = stats.get("trimmed", 0)
+        key = "cmp_var_cut" if cut else "cmp_var"
+        self.cmp_var.set(S[key].format(removed, len(text), len(cleaned), cut))
+        self.log("《%s》规则 %d 条，删除 %d 行，只裁行尾 %d 行"
+                 % (b["title"], len(rules), removed, cut))
 
     def start_clean(self):
         """批量清洗：对勾选书籍按当前规则清洗，结果缓存到内存供后续分章/导出复用。"""
