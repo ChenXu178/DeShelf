@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.3.4** · 新增清洗规则「**简繁重复行（保留简体）**」——下载的书每章同时有简体和繁体两份时，一键删掉繁体那份：相邻成对、整章重复都能认，标题这类没有字形差异的行也会跟着整块删掉；纯繁体书、简体书里只引用一句繁体，一个字都不动。**默认关闭**，需要时在②勾选，先预览再应用。导出面板另加「另存时加后缀」与「原地覆盖原文件（先备份 `.bak`）」，不再堆一堆 `(1)(2)` 副本。
+>
 > **v1.3.3** · 修复「网址粘在段落末尾时，整段正文被当成广告删掉」——很多盗版站的 TXT 会把网址直接贴在每段末尾（…“你什么时候偷走的？”WwW.zhudao.com），上一版按整行删除，整本书的正文会被洗光。现在先判断这行是不是广告：**整行只有广告才整行删，广告只是粘在段尾就只裁掉那一截**，正文一个字不动；同时「请到」「百度搜索」这类正常对话里也会出现的词不再被单独判成广告。预览里能看清哪一段被裁、哪一行被删。（感谢小红书用户 **@芭比Q** 反馈这个问题）
 >
 > **v1.3.2** · 分章不再依赖先清洗：内置规则库支持**全角数字**（第１５章）与「〇」，章号写成全角也能直接分出章节；网页版「试分章节 / 全部一键分章」改为与桌面版一致，先按当前规则清洗再分章（此前未清洗只能分出 1 章，导出时却是另一个结果）
@@ -134,7 +136,7 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 需要批量"原地覆盖写回"原始文件时用桌面版 EXE。
 
 **自检通过**：
-- 核心纯逻辑 46/46 单测（编码识别 / 清洗 9 条规则 / 分章 / EPUB / ZIP）
+- 核心纯逻辑 46/46 单测（编码识别 / 清洗 10 条规则 / 分章 / EPUB / ZIP）
 - 真实浏览器冒烟 18/18（Edge headless · 页面初始化 / 双语切换 / 文件入库 / 清洗 / 分章 / 导出）
 - 双语词典 125 键 + 125 键完全对齐
 
@@ -143,6 +145,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.3.4** · new cleaning rule **“Duplicate simplified/traditional lines”** — when a book carries both a simplified and a traditional copy of every chapter, drop the traditional one in a single pass. Alternating lines and whole duplicated chapters both work, and lines with no glyph difference (chapter titles) go with their block; traditional-only books, and a lone traditional quotation inside a simplified book, are left completely untouched. **Off by default** — tick it in step ②, preview first, then apply. The export panel also gains “suffix when saving as” and “overwrite originals (with `.bak` backup)” so you stop piling up `(1)(2)` copies.
 >
 > **v1.3.3** · fixed "a URL glued to the end of a paragraph made the whole paragraph look like an ad" — many pirated TXT dumps append the site URL to every paragraph (…“when did you take it?”WwW.zhudao.com). The previous build removed the whole line, which could wipe out an entire book's text. It now decides first whether the line really is an ad: **a line that is only an ad is removed whole; an ad merely glued to a paragraph tail is trimmed off, leaving the text untouched**. Words that also occur in normal dialogue (「请到」, 「百度搜索」) no longer count as ads on their own, and the preview shows exactly which tail was trimmed and which line was removed. (Thanks to **@芭比Q** for reporting it.)
 >
@@ -274,7 +278,7 @@ For most "I have a few TXT files and want a readable EPUB for my e-reader" jobs,
 no Python, no install. Reach for the desktop EXE only when you need to batch-overwrite original files in place.
 
 **Self-tests passing**:
-- 46/46 core unit tests (encoding / 9 cleaning rules / chapters / EPUB / ZIP)
+- 46/46 core unit tests (encoding / 10 cleaning rules / chapters / EPUB / ZIP)
 - 18/18 real-browser smoke (Edge headless: init / language / file import / clean / chapters / export)
 - 125 keys × 2 in the bilingual dictionary, fully aligned
 

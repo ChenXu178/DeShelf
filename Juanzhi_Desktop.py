@@ -167,6 +167,7 @@ TEXTS = {
         "col_pre": "清洗前", "col_post": "清洗后",
         "cmp_var": "删除 {0} 行，{1} → {2} 字",
         "cmp_var_cut": "删除 {0} 行、另 {3} 行只裁了行尾网址，{1} → {2} 字",
+        "cmp_jsdup": "（其中简繁重复 {0} 行）",
         # 页3 分章
         "re_label": "章节正则（留空使用内置中文规则库）：",
         "b_try": "试分章节",
@@ -281,6 +282,7 @@ TEXTS = {
         "col_pre": "Original", "col_post": "Cleaned",
         "cmp_var": "{0} lines removed, {1} → {2} chars",
         "cmp_var_cut": "{0} lines removed, {3} more only had a trailing URL trimmed, {1} → {2} chars",
+        "cmp_jsdup": " ({0} of them were script duplicates)",
         "re_label": "Chapter regex (blank = built-in Chinese rules):",
         "b_try": "Try Split",
         "b_try_all": "Try Split (all selected)",
@@ -1094,9 +1096,13 @@ class App:
             t.configure(state="disabled")
         cut = stats.get("trimmed", 0)
         key = "cmp_var_cut" if cut else "cmp_var"
-        self.cmp_var.set(S[key].format(removed, len(text), len(cleaned), cut))
-        self.log("《%s》规则 %d 条，删除 %d 行，只裁行尾 %d 行"
-                 % (b["title"], len(rules), removed, cut))
+        dup = stats.get("jsdup", 0)
+        msg = S[key].format(removed, len(text), len(cleaned), cut)
+        if dup:
+            msg += S["cmp_jsdup"].format(dup)
+        self.cmp_var.set(msg)
+        self.log("《%s》规则 %d 条，删除 %d 行，只裁行尾 %d 行，简繁重复 %d 行"
+                 % (b["title"], len(rules), removed, cut, dup))
 
     def start_clean(self):
         """批量清洗：对勾选书籍按当前规则清洗，结果缓存到内存供后续分章/导出复用。"""
