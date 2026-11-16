@@ -1,4 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
+"""卷帙 DeShelf 打包配置。
+
+封面渲染要 PIL，而 PIL 会把 numpy（连带 19 MB 的 OpenBLAS）和 AVIF 编解码器
+（7.5 MB）一起拖进来 —— 这两个都用不到，排除后 EXE 从 30 MB 回到 17 MB 左右。
+"""
+from PyInstaller.building.datastruct import TOC
+
+# 名字里命中这些就丢掉（只用 JPEG/PNG，不做科学计算）
+_DROP = ("openblas", "numpy", "scipy", "pandas", "matplotlib",
+         "_avif", "PIL.imageqt", "PIL.imagetk", "PIL.imageshow")
+
+
+def _keep(entry):
+    name = str(entry[0]).lower()
+    return not any(k in name for k in _DROP)
 
 
 a = Analysis(
@@ -10,10 +25,14 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['numpy', 'scipy', 'pandas', 'matplotlib'],
     noarchive=False,
     optimize=0,
 )
+
+a.binaries = TOC([b for b in a.binaries if _keep(b)])
+a.datas = TOC([d for d in a.datas if _keep(d)])
+
 pyz = PYZ(a.pure)
 
 exe = EXE(

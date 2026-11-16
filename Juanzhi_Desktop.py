@@ -15,6 +15,11 @@ from collections import Counter
 from tkinter import filedialog, messagebox, ttk
 import tkinter as tk
 
+try:
+    import ctypes
+except ImportError:              # 非 Windows / 精简解释器：全部 DPI 调用自动降级
+    ctypes = None
+
 import jzcore
 
 APP_CN = jzcore.APP_CN
@@ -156,7 +161,14 @@ TEXTS = {
         "col_title": "书名", "col_author": "作者", "col_chars": "字数",
         "col_enc": "编码", "col_chap": "章节", "col_size": "大小", "col_rel": "相对路径",
         # 页2 清洗
-        "grp_rules": "清洗规则", "b_all_rules": "全选规则", "b_def_rules": "恢复默认",
+        "grp_rules": "清洗规则（共 {0} 条 · 可滚动）", "b_all_rules": "全选规则", "b_def_rules": "恢复默认",
+        "b_imp_rules": "导入规则…", "b_exp_rules": "导出规则…", "b_edit_rules": "自定义…",
+        "d_ok": "确定", "d_cancel": "取消",
+        "custom_hint": "每行一条：动作||正则||说明（说明可空）。drop = 删掉整行，cut = 只删掉命中的片段；想忽略大小写写成 drop i；行首加 # 表示这条暂时不用。",
+        "log_rules_loaded": "已载入规则包「{2}」：内置 {0} 条、自定义 {1} 条",
+        "log_rules_bad": "；跳过 {0} 条无效规则",
+        "log_rules_saved": "规则已导出到 {0}",
+        "log_rules_edit": "自定义规则已更新：{0} 条",
         "b_preview": "预览效果",
         "b_clean_apply": "应用到所选书籍",
         "d_rule_none": "未选择清洗规则", "d_rule_none_msg": "请至少勾选一条清洗规则后再应用。",
@@ -181,6 +193,8 @@ TEXTS = {
         "chap_res": "点「试分章节」查看结果",
         "chap_all_done": "试分 {0} 本：共 {1} 章，异常 {2} 本（见日志）",
         "chap_sum": "《{0}》共切出 {1} 章，正文合计 {2} 字",
+        "prog_chap": "试分中 {0}/{1}：《{2}》",
+        "st_chap_done": "试分完成：{0} 本成功 · 共 {1} 章 · 异常 {2} 本",
         # 页4 导出
         "grp_where": "清洗结果的去向",
         "r_new": "输出到新目录（原文件不动，推荐）",
@@ -190,6 +204,9 @@ TEXTS = {
         "f_epub": "EPUB（带目录，推荐）",
         "f_merge": "合并 TXT（整本一个文件）",
         "f_split": "分章 TXT（一章一个文件）",
+        "f_theme": "版面主题", "f_cover": "封面",
+        "cov_auto": "自动：优先同名图片", "cov_default": "生成默认封面",
+        "cov_none": "不加封面",
         "grp_out": "输出目录",
         "b_go": "开始处理",
         "out_note": "处理期间请勿关闭窗口。大批量任务建议先选少量书试跑。",
@@ -218,6 +235,13 @@ TEXTS = {
         "log_csv_ok": "书单已导出：{0}",
         "log_dup_sel": "已选中 {0} 个重复文件，可在书库中取消保留项的勾选后清理。",
         "log_out_final": "原地覆盖",
+        "log_chap_start": "开始批量试分：共 {0} 本 · 清洗规则 {1} 条 · 章节规则 {2}",
+        "log_chap_builtin": "内置规则库",
+        "log_chap_per_book": "[{0}/{1}]《{2}》切出 {3} 章，正文 {4} 字",
+        "log_chap_book_fail": "[{0}/{1}]《{2}》试分失败：{3}",
+        "log_chap_done": "批量试分完成：{0} 本成功 · {1} 本异常 · 共 {2} 章",
+        "book_re": "本书规则", "book_re_clr": "改用全局",
+        "book_re_on": "✔ 本书用专用规则", "book_re_hint": "留空 = 用上面的全局正则",
         # 对话框
         "d_info": "提示", "d_warn": "警告", "d_error": "错误", "d_confirm": "确认",
         "d_close": "关闭",
@@ -272,6 +296,13 @@ TEXTS = {
         "col_title": "Title", "col_author": "Author", "col_chars": "Chars",
         "col_enc": "Encoding", "col_chap": "Chap", "col_size": "Size", "col_rel": "Path",
         "grp_rules": "Cleaning Rules", "b_all_rules": "Check all", "b_def_rules": "Reset",
+        "b_imp_rules": "Import…", "b_exp_rules": "Export…", "b_edit_rules": "Custom…",
+        "d_ok": "OK", "d_cancel": "Cancel",
+        "custom_hint": "One rule per line: action||regex||note. drop = remove the whole line, cut = remove only the match; add i after the action to ignore case; start with # to disable.",
+        "log_rules_loaded": "Loaded rule pack \"{2}\": {0} built-in, {1} custom",
+        "log_rules_bad": "; skipped {0} invalid rules",
+        "log_rules_saved": "Rules exported to {0}",
+        "log_rules_edit": "Custom rules updated: {0}",
         "b_preview": "Preview",
         "b_clean_apply": "Apply to selected books",
         "d_rule_none": "No cleaning rule", "d_rule_none_msg": "Tick at least one cleaning rule first.",
@@ -295,6 +326,15 @@ TEXTS = {
         "chap_res": "Click \u201cTry Split\u201d to preview",
         "chap_all_done": "Tried {0} books: {1} chapters in total, {2} failed (see log)",
         "chap_sum": "\u201c{0}\u201d: {1} chapters, {2} chars total",
+        "prog_chap": "Splitting {0}/{1}: {2}",
+        "st_chap_done": "Split done: {0} books · {1} chapters · {2} failed",
+        "log_chap_start": "Batch split started: {0} books · {1} cleaning rules · chapter regex: {2}",
+        "log_chap_builtin": "built-in rule set",
+        "log_chap_per_book": "[{0}/{1}] {2}: {3} chapters, {4} chars",
+        "log_chap_book_fail": "[{0}/{1}] {2} failed: {3}",
+        "log_chap_done": "Batch split done: {0} books ok · {1} failed · {2} chapters in total",
+        "book_re": "This book", "book_re_clr": "Use global",
+        "book_re_on": "✔ Own rule for this book", "book_re_hint": "Empty = use the global regex above",
         "grp_where": "Where Cleaned Text Goes",
         "r_new": "Output to a new folder (originals untouched, recommended)",
         "r_inplace": "Overwrite in place (.bak backup first)",
@@ -303,6 +343,9 @@ TEXTS = {
         "f_epub": "EPUB (with TOC, recommended)",
         "f_merge": "Merged TXT (one file per book)",
         "f_split": "Per-chapter TXT (one file per chapter)",
+        "f_theme": "Layout", "f_cover": "Cover",
+        "cov_auto": "Auto: same-name image first", "cov_default": "Generate default cover",
+        "cov_none": "No cover",
         "grp_out": "Output Folder",
         "b_go": "Start",
         "out_note": "Keep the window open while processing. For large batches, try a few books first.",
@@ -390,23 +433,113 @@ def safe_name(s, maxlen=60, fallback="未命名"):
     return (s or fallback)[:maxlen]
 
 
-def _dpi(root):
+# ============================================================ DPI / 屏幕几何
+_SCALE = 1.0        # 96 DPI 逻辑像素 → 当前 DPI 物理像素的倍率（125% = 1.25）
+
+
+def px(v):
+    """96 DPI 下的逻辑像素 → 当前 DPI 下的物理像素。
+
+    界面里所有写死的像素尺寸（窗口大小、行高、列宽、内边距、画布坐标）
+    都必须经过这里换算，否则开启系统缩放后只有字号变大、布局不变。
+    """
+    return int(round(v * _SCALE))
+
+
+def _set_dpi_aware():
+    """声明进程 DPI 感知。**必须**在 tk.Tk() 之前调用。
+
+    Tk 只在初始化时按当时的屏幕 DPI 计算一次 tk scaling 并缓存；
+    若像旧代码那样在 Tk() 之后才 SetProcessDpiAwareness(1)，进程此时已
+    变为 DPI 感知（窗口不再被系统位图放大），而 Tk 仍按 96 DPI 出图，
+    于是 125%/150% 下文字与控件全部偏小。
+
+    这里选 System DPI Aware 而非 Per-Monitor：Tk 8.6 不处理
+    WM_DPICHANGED，声明 Per-Monitor 后把窗口拖到另一块不同 DPI 的屏幕
+    会停留在旧的缩放倍率上，反而更糟。
+    """
+    if ctypes is None or os.name != "nt":
+        return
     try:
-        from ctypes import windll
-        windll.shcore.SetProcessDpiAwareness(1)
+        if ctypes.windll.shcore.SetProcessDpiAwareness(1) == 0:   # S_OK
+            return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
     except Exception:
         pass
 
 
-def _center_win(win, w, h):
-    """把窗口放到主屏居中偏上，开屏与主窗同位置切换不会跳动。"""
+def _init_metrics(root):
+    """读取真实 DPI，校准点字号（tk scaling）与像素尺寸（px）的倍率。
+
+    点字号由 tk scaling 缩放、像素尺寸由 px() 缩放，两者用同一个 DPI
+    基准，所以字体与控件保持设计稿的相对比例，不会互相挤压。
+    """
+    global _SCALE
     try:
-        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        dpi = float(root.winfo_fpixels("1i"))
     except Exception:
-        return
-    x = max(0, (sw - w) // 2)
-    y = max(0, (sh - h) // 2 - 12)
-    win.geometry("%dx%d+%d+%d" % (w, h, x, y))
+        dpi = 0.0
+    if not (60.0 <= dpi <= 480.0):        # 取值异常时退回 96 DPI
+        dpi = 96.0
+    # 只放大不缩小：84 DPI 之类的老屏 / 非 Windows 平台保持设计尺寸，
+    # 免得为了「适配」反而把界面整体压小。
+    _SCALE = max(1.0, dpi / 96.0)
+    try:
+        root.tk.call("tk", "scaling", dpi / 72.0)   # 1 point = dpi/72 px
+    except Exception:
+        pass
+    return _SCALE
+
+
+def _work_area():
+    """主显示器工作区（物理像素，已剔除任务栏）；失败返回 None。"""
+    if ctypes is None or os.name != "nt":
+        return None
+    try:
+        class _RECT(ctypes.Structure):
+            _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                        ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+        r = _RECT()
+        # SPI_GETWORKAREA = 0x0030
+        if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0):
+            if r.right > r.left and r.bottom > r.top:
+                return r.right - r.left, r.bottom - r.top, r.left, r.top
+    except Exception:
+        pass
+    return None
+
+
+def _center_win(win, w, h):
+    """把窗口严格居中到主显示器工作区（水平 + 垂直）。
+
+    w/h 以 96 DPI 逻辑像素传入，内部按 DPR 换算并按工作区夹取：
+    · 不再有硬编码的 -12 偏移，所以是真正的几何居中；
+    · 用工作区而不是整屏，任务栏不会把视觉中心顶高；
+    · 开屏与主窗走同一函数，两者中心重合、切换时不会跳动。
+    """
+    try:
+        win.update_idletasks()
+    except Exception:
+        pass
+    W, H = px(w), px(h)
+    area = _work_area()
+    if area:
+        aw, ah, ax, ay = area
+    else:
+        try:
+            aw, ah, ax, ay = win.winfo_screenwidth(), win.winfo_screenheight(), 0, 0
+        except Exception:
+            return None
+    W = max(1, min(W, aw - px(24)))       # 小屏 + 高缩放时别超出可见区域
+    H = max(1, min(H, ah - px(24)))
+    x = ax + (aw - W) // 2
+    y = ay + (ah - H) // 2
+    win.geometry("%dx%d+%d+%d" % (W, H, x, y))
+    return W, H
 
 
 class App:
@@ -426,6 +559,9 @@ class App:
         self.mode_var = tk.StringVar(value=self.cfg.get("mode", "new") or "new")
         self.rule_vars = {r["id"]: tk.BooleanVar(value=r["id"] in jzcore.DEFAULT_ON)
                           for r in jzcore.RULES}
+        # 自定义规则（来自规则包导入 / 自定义编辑），随配置持久化
+        self.custom_rules = [r for r in (self.cfg.get("custom_rules") or [])
+                             if isinstance(r, dict)]
         self.fmt_vars = {"epub": tk.BooleanVar(value=True),
                          "merge": tk.BooleanVar(value=False),
                          "split": tk.BooleanVar(value=False)}
@@ -433,8 +569,8 @@ class App:
         self.prog_var = tk.DoubleVar(value=0)
 
         root.title(self.S["w_title"] % (APP_CN, APP_EN, APP_VER))
-        root.geometry("1080x720")
-        root.minsize(900, 620)
+        root.geometry("%dx%d" % (px(1080), px(760)))
+        root.minsize(px(900), px(620))
         root.configure(bg=BG)
         self._style()
         self._menu()
@@ -465,7 +601,7 @@ class App:
         st.configure("TCheckbutton", background=BG)
         st.configure("TRadiobutton", background=BG)
         st.configure("TNotebook", background=BG)
-        st.configure("Treeview", rowheight=23)
+        st.configure("Treeview", rowheight=px(23))
         st.configure("Accent.TButton", background="#4A7EBB", foreground="white")
         st.configure("Go.TButton", background="#2E7D32", foreground="white")
 
@@ -506,17 +642,17 @@ class App:
 
     def _top(self, root):
         S = self.S
-        f = ttk.Frame(root, padding=(8, 6))
+        f = ttk.Frame(root, padding=(px(8), px(6)))
         f.pack(fill="x")
         ttk.Label(f, text=S["lib_dir"]).pack(side="left")
         e = ttk.Entry(f, textvariable=self.dir_var)
-        e.pack(side="left", fill="x", expand=True, padx=4)
+        e.pack(side="left", fill="x", expand=True, padx=px(4))
         e.bind("<Return>", lambda _e: self.do_scan())
         ttk.Button(f, text=S["browse"], command=self.pick_dir).pack(side="left")
         ttk.Button(f, text=S["scan"], style="Accent.TButton",
-                   command=self.do_scan).pack(side="left", padx=(4, 0))
+                   command=self.do_scan).pack(side="left", padx=(px(4), 0))
         ttk.Button(f, text=S["m_rescan_fresh"],
-                   command=lambda: self.do_scan(fresh=True)).pack(side="left", padx=4)
+                   command=lambda: self.do_scan(fresh=True)).pack(side="left", padx=px(4))
         self.btn_stop = ttk.Button(f, text=S["stop"], command=self.do_stop, state="disabled")
         self.btn_stop.pack(side="left")
 
@@ -524,7 +660,7 @@ class App:
         S = self.S
         nb = ttk.Notebook(root)
         self.nb = nb
-        nb.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+        nb.pack(fill="both", expand=True, padx=px(8), pady=(0, px(4)))
         self.tab_lib = ttk.Frame(nb)
         self.tab_clean = ttk.Frame(nb)
         self.tab_chap = ttk.Frame(nb)
@@ -543,12 +679,12 @@ class App:
         S = self.S
         f = self.tab_lib
         bar = ttk.Frame(f)
-        bar.pack(fill="x", pady=(6, 4))
+        bar.pack(fill="x", pady=(px(6), px(4)))
         for txt, cmd in ((S["m_sel_all"], lambda: self.set_all(True)),
                          (S["m_sel_none"], lambda: self.set_all(False)),
                          (S["m_invert"], self.invert_sel),
                          (S["m_sel_dup"], self.sel_dup)):
-            ttk.Button(bar, text=txt, command=cmd).pack(side="left", padx=2)
+            ttk.Button(bar, text=txt, command=cmd).pack(side="left", padx=px(2))
         ttk.Label(bar, text=S["lib_hint"], foreground="#666666").pack(side="left")
         self.info_var = tk.StringVar(value=S["lib_info"].format(0, 0))
         ttk.Label(bar, textvariable=self.info_var).pack(side="right")
@@ -560,8 +696,8 @@ class App:
         heads = {"sel": "✓", "title": S["col_title"], "author": S["col_author"],
                  "chars": S["col_chars"], "enc": S["col_enc"], "chap": S["col_chap"],
                  "size": S["col_size"], "rel": S["col_rel"]}
-        widths = {"sel": 32, "title": 190, "author": 100, "chars": 80, "enc": 76,
-                  "chap": 56, "size": 78, "rel": 320}
+        widths = {"sel": px(32), "title": px(190), "author": px(100), "chars": px(80),
+                  "enc": px(76), "chap": px(56), "size": px(78), "rel": px(320)}
         for c in cols:
             self.tv.heading(c, text=heads[c])
             self.tv.column(c, width=widths[c], anchor="w" if c in ("title", "author", "rel") else "center")
@@ -576,42 +712,98 @@ class App:
     def _build_clean(self):
         S = self.S
         f = self.tab_clean
-        left = ttk.LabelFrame(f, text=S["grp_rules"], width=280)
-        left.pack(side="left", fill="y", padx=(6, 4), pady=6)
+        left = ttk.LabelFrame(f, text=S["grp_rules"].format(len(jzcore.RULES)),
+                              width=px(304))
+        left.pack(side="left", fill="y", padx=(px(6), px(4)), pady=px(6))
         left.pack_propagate(False)
+
+        # 规则列表单独滚动、底部按钮固定：
+        # 一屏放不下时不至于把最后几条（简繁重复行等）整条裁掉且无处可看。
+        bf = ttk.Frame(left)
+        bf.pack(side="bottom", fill="x", padx=px(8), pady=px(8))
+        ttk.Button(bf, text=S["b_all_rules"],
+                   command=lambda: self.set_rules(True)).pack(side="left")
+        ttk.Button(bf, text=S["b_def_rules"],
+                   command=lambda: self.set_rules(None)).pack(side="left", padx=px(4))
+        bf2 = ttk.Frame(left)
+        bf2.pack(side="bottom", fill="x", padx=px(8))
+        ttk.Button(bf2, text=S["b_imp_rules"],
+                   command=self.import_rules).pack(side="left")
+        ttk.Button(bf2, text=S["b_exp_rules"],
+                   command=self.export_rules).pack(side="left", padx=px(3))
+        ttk.Button(bf2, text=S["b_edit_rules"],
+                   command=self.edit_custom).pack(side="left")
+
+        wrap = ttk.Frame(left)
+        wrap.pack(side="top", fill="both", expand=True)
+        vsb = ttk.Scrollbar(wrap, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        cv = tk.Canvas(wrap, bg=BG, highlightthickness=0, bd=0,
+                       yscrollincrement=px(16))
+        cv.configure(yscrollcommand=vsb.set)
+        vsb.configure(command=cv.yview)
+        cv.pack(side="left", fill="both", expand=True)
+        inner = ttk.Frame(cv)
+        cv_win = cv.create_window((0, 0), window=inner, anchor="nw")
+        self._rules_canvas = cv
+
         en = self.lang == EN
         for r in jzcore.RULES:
             name = r["name_en"] if en else r["name"]
             tip = r["tip_en"] if en else r["tip"]
-            cb = ttk.Checkbutton(left, text=name, variable=self.rule_vars[r["id"]])
-            cb.pack(anchor="w", padx=8, pady=2)
-            ttk.Label(left, text="    " + tip, foreground="#777777",
-                      font=FONT_S, wraplength=250).pack(anchor="w", padx=8)
-        bf = ttk.Frame(left)
-        bf.pack(anchor="w", padx=8, pady=8)
-        ttk.Button(bf, text=S["b_all_rules"], command=lambda: self.set_rules(True)).pack(side="left")
-        ttk.Button(bf, text=S["b_def_rules"], command=lambda: self.set_rules(None)).pack(side="left", padx=4)
+            cb = ttk.Checkbutton(inner, text=name, variable=self.rule_vars[r["id"]])
+            cb.pack(anchor="w", padx=px(8), pady=(px(3), 0))
+            ttk.Label(inner, text="    " + tip, foreground="#777777",
+                      font=FONT_S, wraplength=px(236)).pack(anchor="w", padx=px(8))
+
+        # 内层宽度跟随画布（否则文字按请求宽度排版、右边被切）
+        cv.bind("<Configure>",
+                lambda e: cv.itemconfigure(cv_win, width=e.width))
+        inner.bind("<Configure>",
+                   lambda _e: cv.configure(scrollregion=cv.bbox("all")))
+
+        def _wheel(e):
+            try:
+                first, last = cv.yview()
+            except Exception:
+                return
+            if first <= 0.0 and last >= 1.0:      # 内容不满一屏：不拦滚轮
+                return
+            step = -1 if e.delta > 0 else 1
+            cv.yview_scroll(step * max(1, abs(int(e.delta / 120))), "units")
+
+        def _bind_wheel(w):
+            w.bind("<MouseWheel>", _wheel)
+            try:
+                kids = w.winfo_children()
+            except Exception:
+                return
+            for c in kids:
+                _bind_wheel(c)
+
+        _bind_wheel(cv)
+        _bind_wheel(inner)
 
         right = ttk.Frame(f)
-        right.pack(side="left", fill="both", expand=True, padx=4, pady=6)
+        right.pack(side="left", fill="both", expand=True, padx=px(4), pady=px(6))
         bar = ttk.Frame(right)
         bar.pack(fill="x")
         ttk.Button(bar, text=S["b_preview"], style="Accent.TButton",
                    command=self.preview_clean).pack(side="left")
         self.btn_clean_apply = ttk.Button(bar, text=S["b_clean_apply"],
                                           command=self.start_clean)
-        self.btn_clean_apply.pack(side="left", padx=(6, 0))
+        self.btn_clean_apply.pack(side="left", padx=(px(6), 0))
         ttk.Label(bar, text=S["clean_hint"], foreground="#666666").pack(side="left")
         self.cmp_var = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.cmp_var, foreground="#2E7D32").pack(side="right")
         box = ttk.Frame(right)
-        box.pack(fill="both", expand=True, pady=4)
+        box.pack(fill="both", expand=True, pady=px(4))
         self.txt_before = self._mk_text(box, S["col_pre"])
         self.txt_after = self._mk_text(box, S["col_post"])
 
     def _mk_text(self, parent, title):
         f = ttk.LabelFrame(parent, text=title)
-        f.pack(side="left", fill="both", expand=True, padx=2)
+        f.pack(side="left", fill="both", expand=True, padx=px(2))
         # width 必须给小值：pack 按顺序满足请求宽度，80 字符会吃满空间导致两栏不等分
         t = tk.Text(f, wrap="none", font=MONO, width=30, height=10, bg="#FFFFFF",
                     relief="solid", borderwidth=1)
@@ -625,30 +817,49 @@ class App:
         S = self.S
         f = self.tab_chap
         top = ttk.Frame(f)
-        top.pack(fill="x", padx=8, pady=(8, 4))
+        top.pack(fill="x", padx=px(8), pady=(px(8), px(4)))
         ttk.Label(top, text=S["re_label"]).pack(side="left")
         e = ttk.Entry(top, textvariable=self.custom_re)
-        e.pack(side="left", fill="x", expand=True, padx=4)
-        ttk.Button(top, text=S["b_try"], style="Accent.TButton",
-                   command=self.preview_chap).pack(side="left")
-        ttk.Button(top, text=S["b_try_all"],
-                   command=self.preview_chap_all).pack(side="left", padx=(6, 0))
+        e.pack(side="left", fill="x", expand=True, padx=px(4))
+        self.btn_chap_try = ttk.Button(top, text=S["b_try"], style="Accent.TButton",
+                                       command=self.preview_chap)
+        self.btn_chap_try.pack(side="left")
+        self.btn_chap_all = ttk.Button(top, text=S["b_try_all"],
+                                       command=self.preview_chap_all)
+        self.btn_chap_all.pack(side="left", padx=(px(6), 0))
         pick = ttk.Frame(f)
-        pick.pack(fill="x", padx=8, pady=(2, 0))
+        pick.pack(fill="x", padx=px(8), pady=(px(2), 0))
         ttk.Label(pick, text=S["lab_chap_pick"]).pack(side="left")
         self.chap_pick_text = tk.StringVar()
         self.cb_chap = ttk.Combobox(pick, textvariable=self.chap_pick_text,
                                     state="readonly", width=46)
-        self.cb_chap.pack(side="left", padx=4)
+        self.cb_chap.pack(side="left", padx=px(4))
         ttk.Label(pick, text=S["chap_pick_hint"], foreground="#666666",
                   font=FONT_S).pack(side="left")
+        # 每本书可以有自己的分章正则：留空就用上面的全局正则
+        prow = ttk.Frame(f)
+        prow.pack(fill="x", padx=px(8), pady=(px(4), 0))
+        ttk.Label(prow, text=S["book_re"]).pack(side="left")
+        self.book_re_var = tk.StringVar(value="")
+        e_book = ttk.Entry(prow, textvariable=self.book_re_var)
+        e_book.pack(side="left", fill="x", expand=True, padx=px(4))
+        ttk.Button(prow, text=S["book_re_clr"],
+                   command=self.clear_book_re).pack(side="left")
+        self.re_state = tk.StringVar(value="")
+        ttk.Label(prow, textvariable=self.re_state, foreground="#2E7D32",
+                  font=FONT_S).pack(side="left", padx=px(6))
+        e_book.bind("<Return>", lambda _e: self.store_book_re())
+        e_book.bind("<FocusOut>", lambda _e: self.store_book_re())
+        self.cb_chap.bind("<<ComboboxSelected>>", lambda _e: self.sync_book_re())
+        self._re_book = None
         ttk.Label(f, text=S["chap_hint"],
-                  foreground="#666666", font=FONT_S).pack(anchor="w", padx=8)
+                  foreground="#666666", font=FONT_S).pack(anchor="w", padx=px(8))
         wrap = ttk.Frame(f)
-        wrap.pack(fill="both", expand=True, padx=8, pady=4)
+        wrap.pack(fill="both", expand=True, padx=px(8), pady=px(4))
         self.tv_chap = ttk.Treeview(wrap, columns=("no", "title", "chars"),
                                     show="headings", height=8)
-        for c, w, t in (("no", 60, "#"), ("title", 520, S["col_chap_title"]), ("chars", 100, S["col_chars"])):
+        for c, w, t in (("no", px(60), "#"), ("title", px(520), S["col_chap_title"]),
+                        ("chars", px(100), S["col_chars"])):
             self.tv_chap.heading(c, text=t)
             self.tv_chap.column(c, width=w, anchor="w" if c == "title" else "center")
         sb = ttk.Scrollbar(wrap, orient="vertical", command=self.tv_chap.yview)
@@ -656,48 +867,101 @@ class App:
         sb.pack(side="right", fill="y")
         self.tv_chap.pack(side="left", fill="both", expand=True)
         self.chap_var = tk.StringVar(value=S["chap_res"])
-        ttk.Label(f, textvariable=self.chap_var).pack(anchor="w", padx=8, pady=(0, 6))
+        ttk.Label(f, textvariable=self.chap_var).pack(anchor="w", padx=px(8), pady=(0, px(6)))
 
     def _build_out(self):
         S = self.S
         f = self.tab_out
         g1 = ttk.LabelFrame(f, text=S["grp_where"])
-        g1.pack(fill="x", padx=8, pady=(10, 6))
+        g1.pack(fill="x", padx=px(8), pady=(px(10), px(6)))
         for v, t in (("new", S["r_new"]), ("inplace", S["r_inplace"]), ("none", S["r_none"])):
             ttk.Radiobutton(g1, text=t, value=v, variable=self.mode_var,
-                            command=self.sync_out).pack(anchor="w", padx=10, pady=2)
+                            command=self.sync_out).pack(anchor="w", padx=px(10), pady=px(2))
 
         g2 = ttk.LabelFrame(f, text=S["grp_fmt"])
-        g2.pack(fill="x", padx=8, pady=6)
+        g2.pack(fill="x", padx=px(8), pady=px(6))
         row = ttk.Frame(g2)
-        row.pack(fill="x", padx=10, pady=4)
+        row.pack(fill="x", padx=px(10), pady=px(4))
         ttk.Checkbutton(row, text=S["f_epub"],
-                        variable=self.fmt_vars["epub"]).pack(side="left", padx=(0, 16))
+                        variable=self.fmt_vars["epub"]).pack(side="left", padx=(0, px(16)))
         ttk.Checkbutton(row, text=S["f_merge"],
-                        variable=self.fmt_vars["merge"]).pack(side="left", padx=(0, 16))
+                        variable=self.fmt_vars["merge"]).pack(side="left", padx=(0, px(16)))
         ttk.Checkbutton(row, text=S["f_split"],
                         variable=self.fmt_vars["split"]).pack(side="left")
+        # EPUB 排版主题与封面：只影响导出的 epub，不改正文
+        row2 = ttk.Frame(g2)
+        row2.pack(fill="x", padx=px(10), pady=(0, px(6)))
+        en = self.lang == EN
+        ttk.Label(row2, text=S["f_theme"]).pack(side="left")
+        self.theme_names = [(t["name_en"] if en else t["name"]) for t in jzcore.THEMES]
+        self.cb_theme = ttk.Combobox(row2, state="readonly", width=13,
+                                     values=self.theme_names)
+        self.cb_theme.pack(side="left", padx=(px(4), 0))
+        ttk.Label(row2, text=S["f_cover"]).pack(side="left", padx=(px(16), 0))
+        self.cover_names = [S["cov_auto"], S["cov_default"], S["cov_none"]]
+        self.cb_cover = ttk.Combobox(row2, state="readonly", width=20,
+                                     values=self.cover_names)
+        self.cb_cover.pack(side="left", padx=(px(4), 0))
+        self._restore_epub_opts()
+        self.cb_theme.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
+        self.cb_cover.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
 
         g3 = ttk.LabelFrame(f, text=S["grp_out"])
-        g3.pack(fill="x", padx=8, pady=6)
+        g3.pack(fill="x", padx=px(8), pady=px(6))
         r = ttk.Frame(g3)
-        r.pack(fill="x", padx=10, pady=6)
-        ttk.Entry(r, textvariable=self.out_var).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        r.pack(fill="x", padx=px(10), pady=px(6))
+        ttk.Entry(r, textvariable=self.out_var).pack(side="left", fill="x", expand=True, padx=(0, px(4)))
         ttk.Button(r, text=S["browse"], command=self.pick_out).pack(side="left")
 
         bar = ttk.Frame(f)
-        bar.pack(fill="x", padx=8, pady=10)
+        bar.pack(fill="x", padx=px(8), pady=px(10))
         self.btn_go = ttk.Button(bar, text=S["b_go"], style="Go.TButton", command=self.start_run)
         self.btn_go.pack(side="left")
         self.pb = ttk.Progressbar(bar, variable=self.prog_var, maximum=100)
-        self.pb.pack(side="left", fill="x", expand=True, padx=10)
+        self.pb.pack(side="left", fill="x", expand=True, padx=px(10))
         ttk.Label(f, text=S["out_note"],
-                  foreground="#777777", font=FONT_S).pack(anchor="w", padx=8)
+                  foreground="#777777", font=FONT_S).pack(anchor="w", padx=px(8))
+
+    def _restore_epub_opts(self):
+        """按配置恢复主题/封面选择（配置里存 id，界面上显示名字）。"""
+        tid = self.cfg.get("theme") or "classic"
+        idx = [t["id"] for t in jzcore.THEMES].index(tid) \
+            if tid in [t["id"] for t in jzcore.THEMES] else 0
+        try:
+            self.cb_theme.current(idx)
+        except Exception:
+            pass
+        cm = self.cfg.get("cover") or "auto"
+        key = {"auto": 0, "default": 1, "none": 2}.get(cm, 0)
+        try:
+            self.cb_cover.current(key)
+        except Exception:
+            pass
+
+    def epub_opts(self):
+        """主线程取当前选择，返回 (theme_id, cover_mode)，可直接传给后台线程。"""
+        try:
+            ti = self.cb_theme.current()
+            theme = jzcore.THEMES[ti]["id"] if 0 <= ti < len(jzcore.THEMES) else "classic"
+        except Exception:
+            theme = "classic"
+        try:
+            ci = self.cb_cover.current()
+        except Exception:
+            ci = 0
+        cover = {0: "auto", 1: "default", 2: "none"}.get(ci, "auto")
+        return theme, cover
+
+    def _save_epub_opts(self):
+        theme, cover = self.epub_opts()
+        self.cfg["theme"] = theme
+        self.cfg["cover"] = cover
+        jzcore.save_config(self.cfg)
 
     def _log(self, root):
         S = self.S
-        f = ttk.LabelFrame(root, text=S["grp_log"], height=130)
-        f.pack(fill="x", padx=8, pady=(0, 4))
+        f = ttk.LabelFrame(root, text=S["grp_log"], height=px(130))
+        f.pack(fill="x", padx=px(8), pady=(0, px(4)))
         f.pack_propagate(False)
         self.logbox = tk.Text(f, height=7, font=FONT_S, bg="#FFFFFF",
                               relief="solid", borderwidth=1)
@@ -708,7 +972,8 @@ class App:
 
     def _status(self, root):
         ttk.Label(root, textvariable=self.status_var, anchor="w",
-                  relief="sunken", padding=(6, 2)).pack(fill="x", padx=8, pady=(0, 6))
+                  relief="sunken",
+                  padding=(px(6), px(2))).pack(fill="x", padx=px(8), pady=(0, px(6)))
 
     # ------------------------------------------------------------ 基础操作
     def log(self, msg):
@@ -723,6 +988,14 @@ class App:
                     self.logbox.see("end")
                 elif kind == "book":
                     self.add_book(payload)
+                elif kind == "chaprow":
+                    # 批量试分逐本回填：先写回书籍章数（①书库同步），再追加③页结果行
+                    n, b, cnt = payload
+                    self._set_book_chaps(b, cnt)
+                    if hasattr(self, "tv_chap"):
+                        self.tv_chap.insert("", "end",
+                                            values=(n, b["title"] or os.path.splitext(b["name"])[0],
+                                                    str(cnt)))
                 elif kind == "prog":
                     cur, total, label = payload
                     self.prog_var.set(0 if not total else cur * 100.0 / total)
@@ -738,6 +1011,10 @@ class App:
         self.busy = busy
         self.btn_stop.configure(state="normal" if busy else "disabled")
         self.btn_go.configure(state="disabled" if busy else "normal")
+        # 分章页按钮同步禁用：批量试分/分章与导出、清洗共用同一套后台任务与「停止」
+        for b in (getattr(self, "btn_chap_try", None), getattr(self, "btn_chap_all", None)):
+            if b is not None:
+                b.configure(state="disabled" if busy else "normal")
 
     def do_stop(self):
         self.cancel = True
@@ -813,12 +1090,12 @@ class App:
         S = self.S
         w = tk.Toplevel(self.root)
         w.title(title)
-        w.geometry("640x520")
-        t = tk.Text(w, wrap="word", font=FONT, padx=10, pady=10)
+        _center_win(w, 640, 520)          # 说明窗同样按 DPR 缩放并居中
+        t = tk.Text(w, wrap="word", font=FONT, padx=px(10), pady=px(10))
         t.insert("1.0", body)
         t.configure(state="disabled")
         t.pack(fill="both", expand=True)
-        ttk.Button(w, text=S["d_close"], command=w.destroy).pack(pady=6)
+        ttk.Button(w, text=S["d_close"], command=w.destroy).pack(pady=px(6))
 
     def show_about(self):
         S = self.S
@@ -830,11 +1107,12 @@ class App:
     # ------------------------------------------------------------ 书库
     def add_book(self, info):
         idx = len(self.books)
+        info.setdefault("chapters", -1)      # 章数字段：-1 = 尚未试分
         self.books.append(info)
         rel = info.get("rel", os.path.basename(info["path"]))
         self.tv.insert("", "end", iid=str(idx), values=(
             "✓" if info["sel"] else "", info["title"], info["author"],
-            "{:,}".format(info["chars"]), info["enc"], "-",
+            "{:,}".format(info["chars"]), info["enc"], self.chap_cell(info),
             jzcore.human_size(info["size"]), rel))
         self.refresh_info()
 
@@ -847,6 +1125,35 @@ class App:
             s += self.S["lib_info_dup"].format(d)
         self.info_var.set(s)
 
+    def chap_cell(self, b):
+        """书库「章节」列的显示值：未试分显示 -，试分后显示已切出的章数。
+
+        章数唯一来源是书籍字典的 chapters 字段（scan_file 预置 -1），
+        ③ 分章页试分后写回这里，① 书库列表据此渲染，两页共用同一份状态。
+        """
+        try:
+            n = int(b.get("chapters", -1))
+        except (TypeError, ValueError):
+            n = -1
+        return str(n) if n >= 0 else "-"
+
+    def _set_book_chaps(self, b, n):
+        """把试分结果写回书籍状态，并即时刷新①书库对应行的「章节」单元格。"""
+        b["chapters"] = n
+        try:
+            iid = str(self.books.index(b))
+        except ValueError:
+            return
+        if self.tv.exists(iid):
+            self.tv.set(iid, "chap", self.chap_cell(b))
+
+    def refresh_chap_col(self):
+        """按 books 快照重灌全部「章节」单元格（切回①书库时与分章页对齐）。"""
+        for i, b in enumerate(self.books):
+            iid = str(i)
+            if self.tv.exists(iid):
+                self.tv.set(iid, "chap", self.chap_cell(b))
+
     def reload_rows(self):
         """按 books 快照整表重灌（批量清洗改 chars 后刷新书库列表）。"""
         for row in self.tv.get_children():
@@ -854,7 +1161,7 @@ class App:
         for i, b in enumerate(self.books):
             self.tv.insert("", "end", iid=str(i), values=(
                 "✓" if b["sel"] else "", b["title"], b["author"],
-                "{:,}".format(b["chars"]), b["enc"], "-",
+                "{:,}".format(b["chars"]), b["enc"], self.chap_cell(b),
                 jzcore.human_size(b["size"]), b.get("rel", os.path.basename(b["path"]))))
 
     def dup_count(self):
@@ -1046,6 +1353,8 @@ class App:
                 "books": [{k: v for k, v in b.items() if k != "path"} for b in self.books]})
         elif kind == "run":
             _s, ok, fail, outdir = payload
+            self.reload_rows()          # 回写实际切分章数/字数后重灌书库列表
+            self.mark_dup()
             self.status_var.set(S["st_run_done"].format(ok, fail))
             self.log(S["log_run_done"].format(ok, fail) + "，输出目录 %s" % outdir)
             if outdir and os.path.isdir(outdir) and not self.cancel:
@@ -1058,6 +1367,14 @@ class App:
             self.reload_rows()
             self.status_var.set(S["st_clean_done"].format(ok, "{:,}".format(rm_sum)))
             self.log(S["log_clean_done"].format(ok, "{:,}".format(rm_sum))
+                     + (S["log_stopped"] if cancelled else ""))
+        elif kind == "chap":
+            _s, ok_n, sum_n, bad, cancelled = payload
+            self.refresh_chap_col()
+            self.chap_var.set(S["chap_all_done"].format(ok_n, sum_n, bad))
+            st = S["st_chap_done"].format(ok_n, sum_n, bad)
+            self.status_var.set(st + (S["log_stopped"] if cancelled else ""))
+            self.log(S["log_chap_done"].format(ok_n, bad, sum_n)
                      + (S["log_stopped"] if cancelled else ""))
 
     # ------------------------------------------------------------ 预览
@@ -1075,6 +1392,82 @@ class App:
             v = self.rule_vars[r["id"]]
             v.set(val if val is not None else r["id"] in jzcore.DEFAULT_ON)
 
+    def set_rule_ids(self, ids):
+        """按 id 列表设置内置规则勾选（规则包导入用）。"""
+        want = set(ids or [])
+        for r in jzcore.RULES:
+            self.rule_vars[r["id"]].set(r["id"] in want)
+
+    def _save_custom(self):
+        self.cfg["custom_rules"] = list(self.custom_rules)
+        jzcore.save_config(self.cfg)
+
+    def import_rules(self):
+        S = self.S
+        p = filedialog.askopenfilename(
+            title=S["b_imp_rules"],
+            filetypes=[("卷帙规则包", "*.json"), ("所有文件", "*.*")])
+        if not p:
+            return
+        try:
+            ids, cust, name, bad = jzcore.load_rules_pack(p)
+        except ValueError as e:
+            messagebox.showerror(S["d_error"], str(e))
+            return
+        self.set_rule_ids(ids)
+        self.custom_rules = cust
+        self._save_custom()
+        msg = S["log_rules_loaded"].format(len(ids), len(cust), name or "-")
+        if bad:
+            msg += S["log_rules_bad"].format(bad)
+        self.log(msg)
+        messagebox.showinfo(S["d_info"], msg)
+
+    def export_rules(self):
+        S = self.S
+        p = filedialog.asksaveasfilename(
+            title=S["b_exp_rules"], defaultextension=".json",
+            initialfile="卷帙规则包.json",
+            filetypes=[("卷帙规则包", "*.json")])
+        if not p:
+            return
+        try:
+            jzcore.save_rules_pack(p, self.active_rules(), self.custom_rules)
+        except OSError as e:
+            messagebox.showerror(S["d_error"], str(e))
+            return
+        msg = S["log_rules_saved"].format(p)
+        self.log(msg)
+        messagebox.showinfo(S["d_info"], msg)
+
+    def edit_custom(self):
+        """弹窗编辑自定义规则：一行一条，``动作||正则||说明``。"""
+        S = self.S
+        w = tk.Toplevel(self.root)
+        w.title(S["b_edit_rules"])
+        _center_win(w, 760, 520)
+        ttk.Label(w, text=S["custom_hint"], foreground="#666666", font=FONT_S,
+                  wraplength=px(720), justify="left").pack(anchor="w", padx=px(10),
+                                                          pady=(px(8), px(4)))
+        t = tk.Text(w, wrap="none", font=MONO, bg="#FFFFFF", relief="solid", bd=1)
+        t.pack(fill="both", expand=True, padx=px(10), pady=px(4))
+        t.insert("1.0", jzcore.custom_to_text(self.custom_rules))
+        bar = ttk.Frame(w)
+        bar.pack(fill="x", padx=px(10), pady=px(10))
+
+        def _ok():
+            rules, bad = jzcore.text_to_custom(t.get("1.0", "end"))
+            self.custom_rules = rules
+            self._save_custom()
+            msg = S["log_rules_edit"].format(len(rules))
+            if bad:
+                msg += S["log_rules_bad"].format(bad)
+            self.log(msg)
+            w.destroy()
+
+        ttk.Button(bar, text=S["d_ok"], command=_ok).pack(side="right")
+        ttk.Button(bar, text=S["d_cancel"], command=w.destroy).pack(side="right", padx=px(6))
+
     def preview_clean(self):
         S = self.S
         b = self.first_selected()
@@ -1085,7 +1478,7 @@ class App:
             text = jzcore.load_text(b["path"])
             rules = self.active_rules()
             stats = {}
-            cleaned, removed = jzcore.clean_text(text, rules, stats)
+            cleaned, removed = jzcore.clean_text(text, rules, stats, self.custom_rules)
         except Exception as e:
             messagebox.showerror(S["d_preview_fail"], str(e))
             return
@@ -1132,9 +1525,10 @@ class App:
             self.q.put(("prog", (i - 1, total, S["prog_clean"].format(i, total, b["title"]))))
             try:
                 text = jzcore.load_text(b["path"])
-                text, removed = jzcore.clean_text(text, rules)
+                text, removed = jzcore.clean_text(text, rules, None, self.custom_rules)
                 b["_clean"] = text          # 清洗快照：分章/导出优先使用（与 Web 版一致）
                 b["chars"] = len(text)
+                b["chapters"] = -1          # 正文已变，旧章数作废（与 Web 版一致）
                 rm_sum += removed
                 ok += 1
             except Exception as e:
@@ -1155,6 +1549,51 @@ class App:
             cur = (fb["title"] or os.path.splitext(fb["name"])[0]) if fb else (names[0] if names else "")
         self.chap_pick_text.set(cur or "")
 
+    def _re_for(self, b, fallback=None):
+        """这本书用的分章正则：自己有就用自己的，否则用全局（或调用方传入的 fallback）。
+
+        后台线程不能读 tk 变量，所以调用方必须把全局值经 fallback 传进来。
+        """
+        own = (b.get("chap_re") or "").strip()
+        if own:
+            return own
+        return fallback if fallback is not None else (self.custom_re.get().strip() or None)
+
+    def sync_book_re(self):
+        """切换「试分书籍」时：先把上一步编辑存回原书，再载入新书的规则。"""
+        self.store_book_re()
+        b = self.picked_book()
+        self._re_book = b
+        self.book_re_var.set((b.get("chap_re") or "") if b else "")
+        self.refresh_re_state()
+
+    def store_book_re(self):
+        """把输入框内容写回当前书（空则清掉，回到用全局）。"""
+        b = self._re_book
+        if not b:
+            return
+        val = ""
+        try:
+            val = self.book_re_var.get().strip()
+        except Exception:
+            return
+        if val:
+            b["chap_re"] = val
+        else:
+            b.pop("chap_re", None)
+        self.refresh_re_state()
+
+    def clear_book_re(self):
+        self.book_re_var.set("")
+        self.store_book_re()
+
+    def refresh_re_state(self):
+        try:
+            b = self._re_book
+            self.re_state.set(self.S["book_re_on"] if (b and b.get("chap_re")) else "")
+        except Exception:
+            pass
+
     def picked_book(self):
         """单本试分目标 = 下拉所选；下拉无有效值时回退勾选首本。"""
         self._fill_chap_pick()
@@ -1165,12 +1604,15 @@ class App:
         return self.first_selected()
 
     def _on_tab_changed(self, _e=None):
-        """切到 ③ 分章页时同步试分书下拉。"""
+        """切换页签时对齐两页共享状态：③ 同步试分下拉，① 重刷「章节」列。"""
         try:
-            if self.nb.index("current") == 2:
-                self._fill_chap_pick()
+            idx = self.nb.index("current")
         except Exception:
-            pass
+            return
+        if idx == 2:
+            self._fill_chap_pick()
+        elif idx == 0:
+            self.refresh_chap_col()
 
     def preview_chap(self):
         S = self.S
@@ -1179,14 +1621,16 @@ class App:
         if not b:
             messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
+        self.store_book_re()
         custom = self.custom_re.get().strip() or None
+        custom = self._re_for(b, custom)
         try:
             text = b.get("_clean")
             if text is None:
                 text = jzcore.load_text(b["path"])
                 rules = self.active_rules()
                 if rules:
-                    text, _r = jzcore.clean_text(text, rules)
+                    text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
             chapters = jzcore.split_chapters(text, custom)
         except ValueError as e:
             messagebox.showerror(S["d_re_bad"], str(e))
@@ -1200,6 +1644,7 @@ class App:
             self.tv_chap.insert("", "end", values=(i, t, "{:,}".format(len(body))))
         total = sum(len(x[1]) for x in chapters)
         self.chap_var.set(S["chap_sum"].format(b["title"], len(chapters), "{:,}".format(total)))
+        self._set_book_chaps(b, len(chapters))      # 写回书籍状态 → ① 书库「章节」列同步
         self.log("《%s》试分 %d 章" % (b["title"], len(chapters)))
 
     def _chap_cols(self, batch):
@@ -1208,43 +1653,70 @@ class App:
         self.tv_chap.heading("no", text="#")
         self.tv_chap.heading("title", text=S["col_c_book"] if batch else S["col_chap_title"])
         self.tv_chap.heading("chars", text=S["col_c_chaps"] if batch else S["col_chars"])
-        self.tv_chap.column("title", width=320 if batch else 520)
-        self.tv_chap.column("chars", width=140 if batch else 100)
+        self.tv_chap.column("title", width=px(320) if batch else px(520))
+        self.tv_chap.column("chars", width=px(140) if batch else px(100))
         self._chap_batch = batch
 
     def preview_chap_all(self):
-        """批量试分：对书库中所有勾选的书籍逐本切章，结果按 序号/书名/章节 列出。"""
+        """批量试分：对书库中所有勾选的书籍逐本切章，结果按 序号/书名/章节 列出。
+
+        与「导出分发」一致：真实切章放到后台线程，进度经队列回传主线程，
+        底栏 status_var 实时刷新，运行日志逐本输出一行；「停止」按钮可中断。
+        """
         S = self.S
         sel = [b for b in self.books if b["sel"]]
         if not sel:
             messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
+        if self.busy:
+            return
+        # 正则/清洗规则必须在主线程预取：tk 变量在线程内读取会 RuntimeError
         custom = self.custom_re.get().strip() or None
+        rules = self.active_rules()
+        try:
+            jzcore.split_chapters("", custom)       # 空文本秒过，仅校验自定义正则语法
+        except ValueError as e:
+            messagebox.showerror(S["d_re_bad"], str(e))
+            return
         self._chap_cols(True)
         for i in self.tv_chap.get_children():
             self.tv_chap.delete(i)
+        self.set_busy(True)
+        self.cancel = False
+        self.status_var.set(S["prog_chap"].format(0, len(sel), sel[0]["title"]))
+        self.log(S["log_chap_start"].format(len(sel), len(rules),
+                                            custom or S["log_chap_builtin"]))
+        threading.Thread(target=self.chap_worker,
+                         args=(sel, custom, rules), daemon=True).start()
+
+    def chap_worker(self, sel, custom, rules):
+        S = self.S
+        total = len(sel)
         ok_n = sum_n = bad = 0
-        for b in sel:
+        for i, b in enumerate(sel, 1):
+            if self.cancel:
+                break
+            name = b["title"] or os.path.splitext(b["name"])[0]
+            self.q.put(("prog", (i - 1, total, S["prog_chap"].format(i, total, name))))
             try:
                 text = b.get("_clean")
                 if text is None:
                     text = jzcore.load_text(b["path"])
-                    rules = self.active_rules()
                     if rules:
-                        text, _r = jzcore.clean_text(text, rules)
-                chapters = jzcore.split_chapters(text, custom)
-            except ValueError as e:
-                messagebox.showerror(S["d_re_bad"], str(e))
-                return
+                        text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
+                chapters = jzcore.split_chapters(
+                    text, self._re_for(b, custom))   # 本书有自己的规则就用自己的
             except Exception as e:
                 bad += 1
-                self.log("《%s》试分失败：%s" % (b["title"], e))
+                self.q.put(("log", S["log_chap_book_fail"].format(i, total, name, e)))
                 continue
             ok_n += 1
             sum_n += len(chapters)
-            self.tv_chap.insert("", "end", values=(ok_n, b["title"], str(len(chapters))))
-        self.chap_var.set(S["chap_all_done"].format(ok_n, sum_n, bad))
-        self.log("批量试分：%d 本成功 · %d 本异常 · 共 %d 章" % (ok_n, bad, sum_n))
+            self.q.put(("chaprow", (ok_n, b, len(chapters))))   # 主线程写回章数 + 追加结果行
+            self.q.put(("log", S["log_chap_per_book"].format(
+                i, total, name, len(chapters), "{:,}".format(len(text)))))
+        self.q.put(("prog", (total, total, S["prog_done"])))
+        self.q.put(("done", ("chap", ok_n, sum_n, bad, self.cancel)))
 
     # ------------------------------------------------------------ 执行
     def start_run(self):
@@ -1278,11 +1750,15 @@ class App:
         # 规则/正则必须在主线程预取：tk 变量在线程内读取会 RuntimeError
         rules = self.active_rules()
         custom = self.custom_re.get().strip() or None
+        theme, cover_mode = self.epub_opts()
+        self._save_epub_opts()
         threading.Thread(target=self.run_worker,
-                         args=(sel, fmts, mode, outdir, rules, custom),
+                         args=(sel, fmts, mode, outdir, rules, custom,
+                               theme, cover_mode),
                          daemon=True).start()
 
-    def run_worker(self, sel, fmts, mode, outdir, rules, custom):
+    def run_worker(self, sel, fmts, mode, outdir, rules, custom,
+                   theme="classic", cover_mode="auto"):
         S = self.S
         ok = fail = 0
         if mode != "inplace" and outdir:
@@ -1303,15 +1779,16 @@ class App:
                     text = jzcore.load_text(b["path"])
                     removed = 0
                     if rules:
-                        text, removed = jzcore.clean_text(text, rules)
+                        text, removed = jzcore.clean_text(text, rules, None, self.custom_rules)
                 else:
                     text = b.get("_clean")
                     removed = 0
                     if text is None:
                         text = jzcore.load_text(b["path"])
                         if rules:
-                            text, removed = jzcore.clean_text(text, rules)
-                chapters = jzcore.split_chapters(text, custom)
+                            text, removed = jzcore.clean_text(text, rules, None, self.custom_rules)
+                chapters = jzcore.split_chapters(text, self._re_for(b, custom))
+                b["chapters"] = len(chapters)       # 实际切分结果回写，供①书库展示
                 title = b["title"] or os.path.splitext(b["name"])[0]
                 base = safe_name(title, fallback=S["unnamed"])
                 if mode == "inplace":
@@ -1329,8 +1806,14 @@ class App:
                         f.write(text)
                 if outdir:
                     if "epub" in fmts:
+                        try:
+                            cover = jzcore.cover_for_book(
+                                b["path"], title, b.get("author", ""), cover_mode)
+                        except Exception:
+                            cover = None
                         jzcore.write_epub(self.uniq(outdir, base + ".epub"),
-                                          title, b["author"], chapters)
+                                          title, b["author"], chapters,
+                                          cover=cover, theme=theme)
                     # “输出到新目录”落盘的 TXT 与合并 TXT 内容等价，避免生成重复文件
                     if "merge" in fmts and mode != "new":
                         jzcore.save_txt(chapters, self.uniq(outdir, base + ".txt"), merge=True)
@@ -1380,11 +1863,13 @@ class _Splash:
         win.overrideredirect(True)
         win.attributes("-topmost", True)
         win.configure(bg=SPLASH_BG)
-        _center_win(win, SPLASH_W, SPLASH_H)
-        c = tk.Canvas(win, width=SPLASH_W, height=SPLASH_H, bg=SPLASH_BG,
-                      highlightthickness=0, bd=0)
-        c.pack()
+        # 画布随窗口尺寸自适应：_paint 按画布实际尺寸等比缩放并居中绘制
+        c = self.cv = tk.Canvas(win, width=px(SPLASH_W), height=px(SPLASH_H),
+                                bg=SPLASH_BG, highlightthickness=0, bd=0)
+        c.pack(fill="both", expand=True)
         self._paint(c)
+        c.bind("<Configure>", lambda _e: self._paint(c))
+        _center_win(win, SPLASH_W, SPLASH_H)      # 严格水平 + 垂直居中
         try:
             win.attributes("-alpha", 0.0)
         except tk.TclError:
@@ -1395,37 +1880,60 @@ class _Splash:
         win.bind("<Key>", self._skip)
         win.focus_force()
         win.update_idletasks()
+        self._paint(c)                            # 映射后按真实像素再绘一次
 
     def _paint(self, c):
+        """在 560x340 的设计坐标系里绘制，再按画布实际尺寸等比缩放并居中。
+
+        所有坐标经 X()/Y() 平移缩放，文字用负字号（像素）跟随 k，
+        因此窗口尺寸或 DPR 如何变化，海报内容始终水平垂直居中且不拉伸。
+        """
         S = self.S
-        W, H = SPLASH_W, SPLASH_H
-        cx = W // 2
+        c.delete("all")
+        W, H = c.winfo_width(), c.winfo_height()
+        if W < 2 or H < 2:                        # 尚未映射：先用设计尺寸
+            W, H = px(SPLASH_W), px(SPLASH_H)
+        k = min(W / float(SPLASH_W), H / float(SPLASH_H))   # 等比，不拉伸版式
+        ox = (W - SPLASH_W * k) / 2.0             # 水平居中偏移
+        oy = (H - SPLASH_H * k) / 2.0             # 垂直居中偏移
+
+        def X(x):
+            return ox + x * k
+
+        def Y(y):
+            return oy + y * k
+
+        def P(v):                                 # 线宽 / 字号（像素）
+            return max(1, int(round(v * k)))
+
         g, ln = SPLASH_GOLD, SPLASH_LINE
+        cx = X(SPLASH_W / 2.0)
         # 细金外框
-        c.create_rectangle(11, 11, W - 11, H - 11, outline=g, width=2)
+        c.create_rectangle(X(11), Y(11), X(SPLASH_W - 11), Y(SPLASH_H - 11),
+                           outline=g, width=P(2))
         # 四角回形小装饰（沿框延伸的短金线）
         L = 22
-        c.create_line(11, 11, 11 + L, 11, fill=g, width=3)
-        c.create_line(11, 11, 11, 11 + L, fill=g, width=3)
-        c.create_line(W - 11, 11, W - 11 - L, 11, fill=g, width=3)
-        c.create_line(W - 11, 11, W - 11, 11 + L, fill=g, width=3)
-        c.create_line(11, H - 11, 11 + L, H - 11, fill=g, width=3)
-        c.create_line(11, H - 11, 11, H - 11 - L, fill=g, width=3)
-        c.create_line(W - 11, H - 11, W - 11 - L, H - 11, fill=g, width=3)
-        c.create_line(W - 11, H - 11, W - 11, H - 11 - L, fill=g, width=3)
-        # 主标题「卷帙」：楷体大字
-        c.create_text(cx, 88, text=APP_CN, font=("KaiTi", 58),
+        for x0, y0, dx, dy in ((11, 11, 1, 0), (11, 11, 0, 1),
+                               (SPLASH_W - 11, 11, -1, 0), (SPLASH_W - 11, 11, 0, 1),
+                               (11, SPLASH_H - 11, 1, 0), (11, SPLASH_H - 11, 0, -1),
+                               (SPLASH_W - 11, SPLASH_H - 11, -1, 0),
+                               (SPLASH_W - 11, SPLASH_H - 11, 0, -1)):
+            c.create_line(X(x0), Y(y0), X(x0 + dx * L), Y(y0 + dy * L),
+                          fill=g, width=P(3))
+        # 主标题「卷帙」：楷体大字（负字号 = 像素，避免被 tk scaling 二次放大）
+        c.create_text(cx, Y(88), text=APP_CN, font=("KaiTi", -P(77)),
                       fill=SPLASH_INK, anchor="n")
         # 英文名（字母间隔拉宽，模拟字距）
-        c.create_text(cx, 172, text=" ".join(APP_EN), font=(FONT[0], 13),
+        c.create_text(cx, Y(172), text=" ".join(APP_EN), font=(FONT[0], -P(17)),
                       fill=SPLASH_GOLD, anchor="n")
         # 一句定位
-        c.create_text(cx, 212, text=S["sp_tag"],
-                      font=(FONT[0], 11), fill=SPLASH_GRAY, anchor="n")
+        c.create_text(cx, Y(212), text=S["sp_tag"],
+                      font=(FONT[0], -P(15)), fill=SPLASH_GRAY, anchor="n")
         # 分隔线 + 底部信息
-        c.create_line(cx - 90, 250, cx + 90, 250, fill=ln, width=1)
-        c.create_text(cx, 272, text=S["sp_bottom"].format(APP_VER),
-                      font=(FONT[0], 9), fill=SPLASH_DIM, anchor="n")
+        c.create_line(X(SPLASH_W / 2.0 - 90), Y(250),
+                      X(SPLASH_W / 2.0 + 90), Y(250), fill=ln, width=P(1))
+        c.create_text(cx, Y(272), text=S["sp_bottom"].format(APP_VER),
+                      font=(FONT[0], -P(12)), fill=SPLASH_DIM, anchor="n")
 
     # ------------------------------------------------------------ 动画
     def fade_in(self, done):
@@ -1515,12 +2023,13 @@ class _Splash:
 
 def _boot(root):
     app = App(root)
-    _center_win(root, 1080, 720)
+    _center_win(root, 1080, 760)      # 与开屏海报同一套居中对齐逻辑
 
 
 def main():
+    _set_dpi_aware()                 # 必须在 tk.Tk() 之前：Tk 只初始化一次缩放
     root = tk.Tk()
-    _dpi(root)
+    _init_metrics(root)              # 必须在任何控件/画布创建之前
     if os.environ.get("JUANZHI_NO_SPLASH"):     # 测试/调试逃生门
         _boot(root)
         root.mainloop()

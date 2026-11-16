@@ -97,6 +97,32 @@ console.log("== 清洗规则 ==");
   ok("全角转半角仅动数字字母，中文标点保留", r4.text.split("\n")[0] === "A：b（c）d，e。f「g」123ABC", r4.text.split("\n")[0]);
 }
 
+console.log("== 行尾粘网址（盗版站常见形态，不能整段删掉） ==");
+{
+  const para = "她听我分析的头头是道，目光里写满了敬佩，等我说完后，歪着头看着桌上那把枪喃喃自语说：“这把枪怎么很面熟？”她忽然意识到了什么，瞪着我问：“你什么时候偷走的？”WwW.zhudao.com";
+  const sample = [
+    para,
+    "zhudao.com 【猪猪岛】小说章节更新最快",
+    "一秒记住【猪猪岛】手机版阅读网址：m.zhudao.com",
+    "“你刚才倒下的时候。”",
+    "把客人请到屋里坐下，倒了杯热茶。",
+    "你上百度搜索一下就知道我说的是真的。",
+    "他去过很多地方，比如那个叫 www.example.com 的站子，后来也走了很久很久才回来，路上的风景很好，天上的云很低，他一直记着那句话。",
+  ].join("\n");
+  const r = Core.cleanText(sample, ["url", "site", "trim"], true);
+  const lines = r.text.split("\n");
+  ok("正文段落保住（只裁网址）", lines[0] === para.replace("WwW.zhudao.com", ""), lines[0]);
+  ok("网址打头的广告行整行删除", !r.text.includes("【猪猪岛】小说章节更新最快"));
+  ok("推广语在前的短行整行删除", !r.text.includes("手机版阅读网址"));
+  ok("cut 只记录了被裁的那一段", r.cut && r.cut.size === 1, r.cut && r.cut.size);
+  ok("cut 位置落在网址开头", r.cut.get(para) === para.indexOf("WwW."), r.cut.get(para));
+  ok("trimmed 计数为 1", r.trimmed === 1, r.trimmed);
+  ok("“请到”不再误判整行删除", r.text.includes("把客人请到屋里"));
+  ok("“百度搜索”不再误判整行删除", r.text.includes("你上百度搜索一下"));
+  ok("网址夹在长句中间不动", r.text.includes("比如那个叫 www.example.com 的站子") && !r.cut.has(lines.find(l => l.includes("www.example.com"))));
+  ok("正文一个字都没少", r.text.includes(para.slice(0, 40)));
+}
+
 console.log("== 分章 ==");
 {
   const text = [

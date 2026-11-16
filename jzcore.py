@@ -5,6 +5,7 @@
 """
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -13,7 +14,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.3.4"
+APP_VER = "v1.4.0"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -46,10 +47,74 @@ def decode(data, enc):
 
 # ---------------------------------------------------------------- 元信息
 
-_TITLE_IN_TEXT = re.compile(r"^\s*(?:书名|标题|题目|小说名)\s*[:：]\s*(.+?)\s*$")
-_AUTHOR_IN_TEXT = re.compile(r"^\s*(?:作者|作\s*者)\s*[:：]\s*(.+?)\s*$")
+# 正文里的字段标识。标识可以在行首，也可以跟在同一行前一个字段后面（用空白或分隔符隔开），
+# 但前面必须是空白/分隔符，免得把「这本书的作者：某某」这类叙述句当成元信息。
+_TITLE_LABELS = r"(?:书名|标题|题\s*目|小说名)"
+_AUTHOR_LABELS = r"(?:作者|作\s*者)"
+_FIELD_LABELS = r"(?:%s|%s)" % (_TITLE_LABELS, _AUTHOR_LABELS)
+_LABEL_HEAD = r"(?:^|(?<=[\s\u3000,，;；、|｜/／]))"
+_TITLE_IN_TEXT = re.compile(_LABEL_HEAD + _TITLE_LABELS + r"\s*[:：]\s*")
+_AUTHOR_IN_TEXT = re.compile(_LABEL_HEAD + _AUTHOR_LABELS + r"\s*[:：]\s*")
+# 同一行挤着多个字段时，值到此为止
+_FIELD_END = re.compile(r"\s*%s\s*[:：]" % _FIELD_LABELS)
 _BRACKET = re.compile(r"《(.+?)》")
 _JUNK = re.compile(r"[（(].*?[]）)]|\[[^\]]*\]|\.txt$|\.TXT$", re.I)
+
+# 文件名里常见的作者标识，可用 guess_meta_detail(author_keys=...) 替换
+AUTHOR_KEYS = ("作者", "著者", "编者", "编著", "著")
+# 零宽/BOM/方向控制符，常混在下载来的文件名里
+_INVIS = re.compile("[\ufeff\u200b-\u200f\u2028\u2029\u2060]")
+# 方括号里的名字：[作者]书名、书名[作者]；圆括号多是版本信息，不算
+_BRACKET_AUTHOR = re.compile(r"[\[【]([^\[\]【】]{1,20})[\]】]")
+# 版本 / 来源类标签，出现在方括号或标识后面时不是作者
+_META_TAGS = {
+    "全本", "全集", "全书", "完本", "完结", "完结本", "连载", "精校", "精校版",
+    "校对", "校对版", "修订版", "珍藏版", "收藏版", "无删减", "未删节", "手打",
+    "手打版", "全文", "全文字", "txt", "text", "下载", "免费", "最新章节",
+}
+# 占位词：出现了也不算识别出作者
+_AUTHOR_BAD = {
+    "未知", "佚名", "无名", "不详", "暂无", "无", "作者", "n/a", "na",
+    "unknown", "null", "none",
+}
+
+
+def _author_keys_re(keys=None):
+    """把标识元组编成正则分支，长标识在前（编著 先于 著）。"""
+    return "|".join(re.escape(k) for k in sorted(keys or AUTHOR_KEYS, key=len, reverse=True))
+
+
+def _author_re(keys=None):
+    """「作者标识 + 作者名」的匹配式。
+
+    标识后面必须跟冒号或者空白，否则「著作权法」「名著合集」会被误当成作者行；
+    名字里碰到下一个「作者：」就停，免得「作者：甲作者：乙」拼成「甲作者」。
+    """
+    body = _author_keys_re(keys)
+    return re.compile(
+        r"(?:%s)\s*(?:[:：]\s*|\s+)"
+        r"((?:(?!(?:%s)\s*[:：])[^\s\[\]【】()（）《》_\-—－:：,，。;；、])+)" % (body, body))
+
+
+def _cut_field(s):
+    """把字段值截到下一个「书名：」「作者：」等标识之前，并去掉残留分隔符。"""
+    m = _FIELD_END.search(s)
+    if m:
+        s = s[:m.start()]
+    return s.strip(" \t\u3000,，;；|｜/／、")
+
+
+def _clean_author(s):
+    """清洗作者串，去掉扩展名残留、书名号、多余空格与不可见字符。"""
+    s = _INVIS.sub("", s or "")
+    s = re.sub(r"(?:\.(?:txt|text))+$", "", s.strip(), flags=re.I)
+    s = s.strip(" \t\u3000-—－_·.,，。;；:：、<>《》|｜/／\"'“”‘’")
+    s = re.sub(r"\s+", " ", s).strip()
+    if not s or len(s) > 20 or s.isdigit():
+        return ""
+    if s.lower() in _AUTHOR_BAD or s in _META_TAGS:
+        return ""
+    return s
 
 
 def _clean_name(name):
@@ -58,38 +123,79 @@ def _clean_name(name):
     return re.sub(r"\s+", " ", name).strip()
 
 
-def guess_meta(filename, text):
-    """从文件名与正文开头推断 (书名, 作者)。"""
-    base = os.path.splitext(os.path.basename(filename))[0]
-    title, author = "", ""
+def guess_meta_detail(filename, text, author_keys=None):
+    """推断书名与作者，并给出各自的来源，无法识别时明确标为 "none"。
 
-    head = "\n".join(text.splitlines()[:25])
-    for line in head.splitlines():
-        m = _TITLE_IN_TEXT.match(line)
-        if m and not title:
-            title = m.group(1).strip()
-        m = _AUTHOR_IN_TEXT.match(line)
-        if m and not author:
-            author = m.group(1).strip()
+    author_keys 可替换文件名里的作者标识（默认 AUTHOR_KEYS）。
+    返回 {"title", "author", "title_from", "author_from"}，
+    来源取 "text"（正文明写）/ "filename"（文件名）/ "none"（没识别出来）。
+    """
+    title, author = "", ""
+    title_from = author_from = "none"
+
+    # 1) 正文优先：前 25 行里的「书名：」「作者：」，同一行有多个字段也能分别取到
+    for line in (text or "").splitlines()[:25]:
+        if not title:
+            m = _TITLE_IN_TEXT.search(line)
+            if m:
+                cand = _cut_field(line[m.end():])
+                if cand:
+                    title, title_from = cand, "text"
+        if not author:
+            m = _AUTHOR_IN_TEXT.search(line)
+            if m:
+                cand = _clean_author(_cut_field(line[m.end():]))
+                if cand:
+                    author, author_from = cand, "text"
+
+    # 2) 文件名：去掉 BOM/隐藏字符与所有 .txt 尾巴，只留主名
+    base = _INVIS.sub("", os.path.basename(filename or ""))
+    base = re.sub(r"(?:\.(?:txt|text))+$", "", base, flags=re.I)
 
     m = _BRACKET.search(base)
     if m and not title:
-        title = m.group(1).strip()
+        cand = m.group(1).strip()
+        if cand:
+            title, title_from = cand, "filename"
 
+    # 3) 文件名：方括号里的名字（[作者]书名 / 书名[作者]）
     rest = _BRACKET.sub("", base)
+    for m in _BRACKET_AUTHOR.finditer(rest):
+        cand = _clean_author(m.group(1))
+        if cand:
+            if not author:
+                author, author_from = cand, "filename"
+            rest = rest.replace(m.group(0), " ")
+            break
+
+    # 4) 文件名：「作者：xxx」等标识，只认第一个；正文已有作者时也照样剔出书名
+    m = _author_re(author_keys).search(rest)
+    if m:
+        if not author:
+            cand = _clean_author(m.group(1))
+            if cand:
+                author, author_from = cand, "filename"
+        rest = rest.replace(m.group(0), " ")
+
     rest = _clean_name(rest)
     if rest:
         parts = [p for p in rest.split(" ") if p]
-        if not title:
-            title = parts[0]
+        if not title and parts:
+            title, title_from = parts[0], "filename"
         if not author and len(parts) >= 2:
-            cand = parts[-1]
-            if 1 < len(cand) <= 12 and not cand.isdigit():
-                author = cand
+            cand = _clean_author(parts[-1])
+            if cand and 1 < len(cand) <= 12:
+                author, author_from = cand, "filename"
 
-    if not title:
-        title = _clean_name(base) or base
-    return title.strip(), author.strip()
+    return {"title": title.strip(), "author": author,
+            "title_from": title_from, "author_from": author_from}
+
+
+def guess_meta(filename, text):
+    """从文件名与正文开头推断 (书名, 作者)，书名兜底为文件名本身。"""
+    d = guess_meta_detail(filename, text)
+    title = d["title"] or _clean_name(os.path.splitext(os.path.basename(filename or ""))[0])
+    return (title.strip() or os.path.basename(filename or "")), d["author"]
 
 
 def count_chars(text):
@@ -432,12 +538,14 @@ def _ad_split(s, use_url, use_site):
     return "keep", 0
 
 
-def clean_text(text, enabled, stats=None):
+def clean_text(text, enabled, stats=None, custom=None):
     """按启用的规则清洗文本，返回 (新文本, 删除行数)。
 
     stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）。
+    custom 是自定义规则列表（见 compile_custom），在内置规则之后执行。
     """
     on = set(enabled or [])
+    cust = compile_custom(custom)
     removed = 0
     trimmed = 0
     out = []
@@ -472,6 +580,20 @@ def clean_text(text, enabled, stats=None):
                 removed += 1
                 continue
             trimmed += 1
+        # 自定义规则：drop 整行丢弃，cut 只挖掉命中的片段（挖空了交给空行规则处理）
+        if cust:
+            for rx, act in cust:
+                m = rx.search(s)
+                if not m:
+                    continue
+                if act == "cut":
+                    s = s[:m.start()] + s[m.end():]
+                else:
+                    drop = True
+                break
+            if drop:
+                removed += 1
+                continue
         if "blank" in on and not s:
             removed += 1
             continue
@@ -510,6 +632,174 @@ def clean_text(text, enabled, stats=None):
     return "\n".join(out) + ("\n" if out else ""), removed
 
 
+# ---------------------------------------------------------------- 自定义规则包
+
+RULES_PACK_FORMAT = "deshelf-rules"
+RULES_PACK_VERSION = 1
+
+
+def compile_custom(rules):
+    """把自定义规则编译成 [(正则, 动作)]，无效项直接跳过（不抛异常）。
+
+    动作：drop = 命中就删掉整行；cut = 只删掉命中的片段，其余保留。
+    """
+    out = []
+    for r in rules or []:
+        if not isinstance(r, dict):
+            continue
+        if r.get("enabled") is False:
+            continue
+        pat = (r.get("pattern") or "").strip()
+        if not pat:
+            continue
+        flags = 0
+        if "i" in (r.get("flags") or ""):
+            flags |= re.I
+        if "m" in (r.get("flags") or ""):
+            flags |= re.M
+        try:
+            out.append((re.compile(pat, flags),
+                        "cut" if r.get("action") == "cut" else "drop"))
+        except re.error:
+            continue
+    return out
+
+
+def export_rules_pack(enabled, custom, name=""):
+    """把当前规则状态打包成可分享的 dict（内置开关 + 自定义规则）。"""
+    ids = set(enabled or [])
+    builtin = [r["id"] for r in RULES if r["id"] in ids]
+    return {
+        "format": RULES_PACK_FORMAT,
+        "version": RULES_PACK_VERSION,
+        "name": name or "我的清洗规则",
+        "app": APP_CN + " " + APP_EN + " " + APP_VER,
+        "builtin": builtin,
+        "custom": [dict(r) for r in (custom or []) if isinstance(r, dict)],
+    }
+
+
+def parse_rules_pack(data):
+    """校验并解析规则包，返回 (builtin_ids, custom_list, name)。
+
+    只认 deshelf-rules；内置 id 不认识的忽略，避免旧包在新版里报错。
+    """
+    if not isinstance(data, dict):
+        raise ValueError("规则包内容不是 JSON 对象")
+    if data.get("format") != RULES_PACK_FORMAT:
+        raise ValueError("不是卷帙规则包：缺少 format=%s" % RULES_PACK_FORMAT)
+    known = set(r["id"] for r in RULES)
+    ids = [i for i in (data.get("builtin") or []) if i in known]
+    cust = []
+    bad = 0
+    for r in (data.get("custom") or []):
+        if not isinstance(r, dict):
+            bad += 1
+            continue
+        if not (r.get("pattern") or "").strip():
+            bad += 1
+            continue
+        try:
+            re.compile(r["pattern"])
+        except re.error:
+            bad += 1
+            continue
+        item = {"name": str(r.get("name") or "")[:40],
+                "pattern": r["pattern"],
+                "action": "cut" if r.get("action") == "cut" else "drop",
+                "flags": "".join(c for c in str(r.get("flags") or "") if c in "im"),
+                "enabled": r.get("enabled") is not False}
+        cust.append(item)
+    return ids, cust, str(data.get("name") or ""), bad
+
+
+def load_rules_pack(path):
+    """从文件读规则包，返回 (builtin_ids, custom_list, name, bad)。"""
+    try:
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ValueError("读不了规则包：%s" % e)
+    return parse_rules_pack(data)
+
+
+def save_rules_pack(path, enabled, custom, name=""):
+    pack = export_rules_pack(enabled, custom, name)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(pack, f, ensure_ascii=False, indent=1)
+    return path
+
+
+def custom_to_text(custom):
+    """把自定义规则写成一行一条的文本，方便用户直接编辑和分享。
+
+    格式：`动作||正则||说明`（说明可空）。动作 drop = 整行删除，cut = 只删命中片段；
+    想忽略大小写写成 `drop i`；行首加 # 表示这条临时停用。
+    用 || 而不是空格分隔，是为了正则里的前导空格、制表符能原样往返。
+    """
+    lines = ["# 每行一条：动作||正则||说明（说明可空）",
+             "# drop = 整行删除，cut = 只删掉命中的片段；忽略大小写写成 drop i",
+             "# 行首加 # 表示这条暂时不用"]
+    for r in custom or []:
+        if not isinstance(r, dict):
+            continue
+        act = "cut" if r.get("action") == "cut" else "drop"
+        fl = "".join(c for c in str(r.get("flags") or "") if c in "im")
+        if fl:
+            act += " " + fl
+        if r.get("enabled") is False:
+            act = "#" + act
+        lines.append("%s||%s||%s" % (act, r.get("pattern", ""), r.get("name", "")))
+    return "\n".join(lines) + "\n"
+
+
+def text_to_custom(text):
+    """把上面那种文本解析回规则列表；坏行跳过并计数，返回 (rules, skipped)。"""
+    rules = []
+    bad = 0
+    for ln in (text or "").splitlines():
+        raw = ln.rstrip()
+        if not raw.strip():
+            continue
+        enabled = True
+        if raw.lstrip().startswith("#"):
+            trial = raw.lstrip()[1:].lstrip()
+            # 只有「#drop||…」这种才是被停用的规则，普通注释行一律跳过
+            if re.match(r"^(drop|cut)(?:\s+[imsx]{1,3})?\|\|", trial, re.I):
+                enabled = False
+                raw = trial
+            else:
+                continue            # 纯注释行
+        raw = raw.strip()
+        if "||" in raw:
+            parts = raw.split("||")
+            head = parts[0].strip()
+            pat = parts[1] if len(parts) > 1 else ""
+            note = parts[2].strip() if len(parts) > 2 else ""
+        else:
+            # 手写兼容：`drop 正则`，正则里的空格会被吃掉，建议用 ||
+            m = re.match(r"^(drop|cut)\b\s*(.*)$", raw, re.I)
+            if not m:
+                bad += 1
+                continue
+            head, pat, note = m.group(1), m.group(2), ""
+        m2 = re.match(r"^(drop|cut)(?:\s+([imsx]{1,3}))?$", head, re.I)
+        if not m2 or not pat.strip():
+            bad += 1
+            continue
+        try:
+            re.compile(pat)
+        except re.error:
+            bad += 1
+            continue
+        rules.append({"name": note.strip()[:40], "pattern": pat,
+                      "action": m2.group(1).lower(),
+                      "flags": (m2.group(2) or "").lower(),
+                      "enabled": enabled})
+    return rules, bad
+
+
+
 # ---------------------------------------------------------------- 分章
 
 CHAPTER_PATTERNS = [
@@ -518,6 +808,8 @@ CHAPTER_PATTERNS = [
     r"(?:序章|序言|楔子|引子|尾声|後记|后记|番外|终章|結局|结局|完本)[^\n]{0,40}",
 ]
 MAX_TITLE_LEN = 50
+# 开头这几行算元信息：只由它们组成的「开篇」不单独成章
+_META_LINE = re.compile(r"^(?:书名|标题|题\s*目|小说名|作\s*者|著\s*者|简介|内容简介|内容介绍)\s*[:：]")
 
 
 def split_chapters(text, custom=None):
@@ -561,6 +853,12 @@ def split_chapters(text, custom=None):
         chapters.append((cur_title, body))
     elif chapters and cur_title not in ("开篇",):
         chapters[-1] = (chapters[-1][0], chapters[-1][1] + "\n" + cur_title)
+    # 「开篇」只装着书名/作者/简介这类元信息时不留成章：epub 的 metadata 已有这些
+    if chapters and chapters[0][0] == "开篇":
+        keep = [ln for ln in chapters[0][1].splitlines()
+                if ln.strip() and not _META_LINE.match(ln.strip())]
+        if not keep:
+            chapters.pop(0)
     if not chapters:
         chapters = [("全文", text.strip())]
     return chapters
@@ -593,10 +891,307 @@ def _esc(s):
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-CSS = """body{margin:1.2em 1em;line-height:1.75;}
-h2{font-size:1.25em;margin:1.4em 0 .8em;text-align:center;font-weight:normal;}
-p{margin:0 0 .6em;text-indent:2em;font-size:1em;}
-"""
+# ---------------------------------------------------------------- EPUB 版面主题
+
+# 只换 style.css，不动正文与章节结构：同一本书换主题，epub 里除 css 外逐字节相同。
+THEMES = [
+    {"id": "classic", "name": "传统书籍", "name_en": "Classic print",
+     "desc": "宋体 · 首行缩进两字 · 行距宽松", "desc_en": "Song serif, indent, relaxed"},
+    {"id": "reading", "name": "现代阅读", "name_en": "Modern reading",
+     "desc": "段间空一行 · 不缩进 · 黑体标题", "desc_en": "Spaced paragraphs, no indent"},
+    {"id": "compact", "name": "紧凑省纸", "name_en": "Compact",
+     "desc": "小行距 · 密排 · 适合快速通读", "desc_en": "Tight leading, dense"},
+    {"id": "large", "name": "大字易读", "name_en": "Large print",
+     "desc": "字号放大 · 行距更宽 · 护眼", "desc_en": "Bigger type, wider leading"},
+]
+
+_THEME_CSS = {
+    "classic": '@charset "utf-8";\n'
+               'body{margin:1.2em 1em;line-height:1.75;'
+               'font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
+               'h2{font-size:1.25em;margin:1.4em 0 .8em;text-align:center;'
+               'font-weight:normal;line-height:1.4;}\n'
+               'p{margin:0 0 .6em;text-indent:2em;font-size:1em;}\n',
+
+    "reading": '@charset "utf-8";\n'
+               'body{margin:1.5em 1.25em;line-height:1.9;'
+               'font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
+               'h2{font-family:"Heiti SC","STHeiti","SimHei",sans-serif;font-size:1.1em;'
+               'margin:1.2em 0 1.1em;text-align:left;font-weight:600;letter-spacing:.02em;}\n'
+               'p{margin:0 0 1em;text-indent:0;font-size:1em;}\n',
+
+    "compact": '@charset "utf-8";\n'
+               'body{margin:.7em .8em;line-height:1.45;'
+               'font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
+               'h2{font-size:1.1em;margin:.9em 0 .5em;text-align:center;font-weight:normal;}\n'
+               'p{margin:0;text-indent:2em;font-size:.95em;}\n',
+
+    "large": '@charset "utf-8";\n'
+             'body{margin:1.5em 1.2em;line-height:2.05;font-size:1.15em;'
+             'font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
+             'h2{font-size:1.3em;margin:1.6em 0 1em;text-align:center;font-weight:normal;}\n'
+             'p{margin:0 0 .7em;text-indent:2em;}\n',
+}
+
+
+def theme_css(tid):
+    """取主题的 style.css 正文；未知 id 退回第一个（传统书籍），保证老调用不受影响。"""
+    return _THEME_CSS.get(tid or "", _THEME_CSS["classic"])
+
+
+def theme_by_id(tid):
+    for t in THEMES:
+        if t["id"] == tid:
+            return t
+    return THEMES[0]
+
+
+# ---------------------------------------------------------------- EPUB 封面
+
+COVER_SIZE = (600, 800)              # 3:4，与常见阅读器缩略图比例一致
+_COVER_IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
+
+# 系统里的中文字体，按偏好排序（楷体最像线装书，给书名用）。
+# 不把字体打进 EXE：楷体 11 MB、雅黑 19 MB，而 Windows 必然装了其中至少一种；
+# 全找不到时封面照做，只是不写字（几何版），不会报错。
+_COVER_FONTS = (
+    "C:/Windows/Fonts/simkai.ttf",        # 楷体
+    "C:/Windows/Fonts/STKAITI.TTF",       # 华文楷体
+    "C:/Windows/Fonts/STXIHEI.TTF",
+    "C:/Windows/Fonts/msyh.ttc",          # 微软雅黑
+    "C:/Windows/Fonts/simhei.ttf",        # 黑体
+    "C:/Windows/Fonts/simsun.ttc",        # 宋体
+    "/System/Library/Fonts/Supplemental/Songti.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/arphic/uming.ttc",
+)
+
+_cover_font_cache = {}
+
+
+def _load_font(size):
+    """按偏好加载中文字体，返回 PIL 字体对象；都不可用返回 None。"""
+    if size in _cover_font_cache:
+        return _cover_font_cache[size]
+    font = None
+    try:
+        from PIL import ImageFont
+    except Exception:
+        _cover_font_cache[size] = None
+        return None
+    for path in _COVER_FONTS:
+        try:
+            if not os.path.exists(path):
+                continue
+            font = ImageFont.truetype(path, size)
+            break
+        except Exception:
+            continue
+    _cover_font_cache[size] = font
+    return font
+
+
+def _book_stem(path):
+    base = os.path.basename(path or "")
+    base = re.sub(r"(?:\.(?:txt|text))+$", "", base, flags=re.I)
+    return base.strip()
+
+
+def find_cover_image(txt_path, title=""):
+    """找这本书同名的图片当封面（就是用户说的「当前目录下的同名图片」）。
+
+    只认同名：<主名>.jpg / <主名>.cover.jpg / <书名>.jpg。
+    不拿目录里随便一张 cover.jpg 兜底 —— 一个目录几十本书时会被全串成同一张。
+    """
+    folder = os.path.dirname(os.path.abspath(txt_path or "."))
+    if not os.path.isdir(folder):
+        return None
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return None
+    imgs = {}
+    for n in names:
+        stem, ext = os.path.splitext(n)
+        if ext.lower() in _COVER_IMG_EXTS and stem.strip():
+            imgs.setdefault(stem.strip().lower(), os.path.join(folder, n))
+    if not imgs:
+        return None
+    keys = []
+    for cand in (_book_stem(txt_path), (title or "").strip()):
+        cand = cand.strip().lower()
+        if not cand:
+            continue
+        keys += [cand, cand + ".cover", cand + "-cover", cand + "_cover"]
+    for k in keys:
+        if k in imgs:
+            return imgs[k]
+    return None
+
+
+def prepare_cover_image(path, max_side=1600, quality=88):
+    """把找到的封面图统一转成 JPEG，返回 (data, name, media_type, w, h)。
+
+    阅读器对 webp/gif/bmp 支持参差，统一 JPEG 最省事；顺带把超大图缩到
+    max_side 内，免得一张封面把 epub 撑到几 MB。PIL 不可用时 jpg/png 原样嵌入。
+    """
+    try:
+        from PIL import Image
+    except Exception:
+        Image = None
+    if Image is not None:
+        try:
+            im = Image.open(path)
+            im.load()
+            if im.mode != "RGB":
+                im = im.convert("RGB")
+            w, h = im.size
+            if max(w, h) > max_side:
+                k = float(max_side) / max(w, h)
+                im = im.resize((max(1, int(w * k)), max(1, int(h * k))),
+                               Image.LANCZOS)
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=quality, optimize=True)
+            return buf.getvalue(), "cover.jpg", "image/jpeg", im.size[0], im.size[1]
+        except Exception:
+            pass
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png"):
+        return None
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    if not data:
+        return None
+    jpg = ext in (".jpg", ".jpeg")
+    return (data, "cover.jpg" if jpg else "cover.png",
+            "image/jpeg" if jpg else "image/png", 0, 0)
+
+
+def make_cover(title, author="", size=COVER_SIZE):
+    """画一张默认封面：宣纸底 + 双层旧金细框 + 竖排楷体书名 + 作者 + 落款。
+
+    返回 (data, "cover.jpg", "image/jpeg", w, h)；PIL 不可用返回 None
+    （该 epub 就不带封面，与旧版行为一致，不抛异常）。
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except Exception:
+        return None
+    W, H = size
+    PAPER = (246, 241, 228)
+    INK = (47, 42, 36)
+    GOLD = (198, 180, 148)
+    GRAY = (120, 110, 96)
+    FAINT = (176, 162, 138)
+
+    im = Image.new("RGB", (W, H), PAPER)
+    d = ImageDraw.Draw(im)
+    d.rectangle([18, 18, W - 19, H - 19], outline=GOLD, width=2)
+    d.rectangle([30, 30, W - 31, H - 31], outline=GOLD, width=1)
+
+    text = (title or "未命名").strip() or "未命名"
+    n = len(text)
+
+    # 字号与列数：在「可用宽高」内找最大的字号，竖排传统从右往左分列
+    avail_h = H - 2 * 150
+    avail_w = W - 2 * 130
+    size_px, per_col, cols = 40, n, 1
+    # 先求「一列就能放下」的最大字号：短书名单列最像书，别拆成 3+1 那种
+    for s in range(112, 24, -2):
+        if n * s * 1.15 <= avail_h and s * 1.35 <= avail_w:
+            size_px, per_col, cols = s, n, 1
+            break
+    else:
+        for s in range(112, 24, -2):
+            per = max(1, int(avail_h / (s * 1.15)))
+            c = -(-n // per)                # 向上取整，不用 math 模块
+            if c * (s * 1.35) <= avail_w:
+                size_px, per_col, cols = s, per, c
+                break
+
+    font = _load_font(size_px)
+    if font is not None:
+        col_w = size_px * 1.35
+        total = cols * col_w - (col_w - size_px)
+        x_right = W / 2.0 + total / 2.0 - size_px / 2.0
+        # 竖排是顶齐的：多列时各列首字同一条水平线（按最长一列居中），
+        # 只有单列才按实际字数居中，否则短列会缩到中间显得零散。
+        first = min(per_col, n)
+        block_h = first * size_px * 1.15
+        y0 = (H - block_h) / 2.0
+        for ci in range(cols):
+            chunk = text[ci * per_col:(ci + 1) * per_col]
+            if not chunk:
+                continue
+            cx = x_right - ci * col_w
+            y = y0
+            for ch in chunk:
+                try:
+                    tw = d.textlength(ch, font=font)
+                except Exception:
+                    tw = size_px
+                d.text((cx - tw / 2.0, y), ch, font=font, fill=INK)
+                y += size_px * 1.15
+        # 第一列上下各一道短金线，像线装书的鱼尾
+        line_half = size_px * 0.62
+        d.line([x_right - line_half, y0 - size_px * 0.55,
+                x_right + line_half, y0 - size_px * 0.55], fill=GOLD, width=2)
+        d.line([x_right - line_half, y0 + block_h + size_px * 0.38,
+                x_right + line_half, y0 + block_h + size_px * 0.38],
+               fill=GOLD, width=2)
+
+    if author:
+        fs = 32
+        fa = _load_font(fs)
+        while fa is not None and fs > 16:
+            try:
+                aw = d.textlength(author, font=fa)
+            except Exception:
+                aw = 0
+            if aw <= W - 150:
+                break
+            fs -= 2
+            fa = _load_font(fs)
+        if fa is not None:
+            try:
+                aw = d.textlength(author, font=fa)
+            except Exception:
+                aw = 0
+            d.text(((W - aw) / 2.0, H - 128), author, font=fa, fill=GRAY)
+
+    fb = _load_font(22)
+    if fb is not None:
+        tag = APP_CN + " · " + APP_EN
+        try:
+            tw = d.textlength(tag, font=fb)
+        except Exception:
+            tw = 0
+        d.text(((W - tw) / 2.0, H - 66), tag, font=fb, fill=FAINT)
+
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=90, optimize=True)
+    return buf.getvalue(), "cover.jpg", "image/jpeg", W, H
+
+
+def cover_for_book(txt_path, title, author="", mode="auto"):
+    """按模式为这本书准备封面，返回 (data, name, mime, w, h) 或 None。
+
+    mode: "none" 不带封面 / "default" 只生成默认封面 /
+          "auto"（默认）先找同名图片，找不到再生成默认封面
+    """
+    if mode == "none":
+        return None
+    if mode != "default":
+        found = find_cover_image(txt_path, title)
+        if found:
+            got = prepare_cover_image(found)
+            if got:
+                return got
+    return make_cover(title, author)
+
 
 CONTAINER = """<?xml version='1.0' encoding='utf-8'?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -606,9 +1201,30 @@ CONTAINER = """<?xml version='1.0' encoding='utf-8'?>
 </container>
 """
 
+_COVER_PAGE = """<?xml version='1.0' encoding='utf-8'?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <title>封面</title>
+  <style type="text/css">html,body{margin:0;padding:0;height:100%;}
+div.cover{height:100%;text-align:center;}
+div.cover img{max-width:100%;max-height:100%;}</style>
+</head>
+<body>
+  <div class="cover"><img src="__COVER_SRC__" alt="封面"/></div>
+</body>
+</html>
+"""
 
-def write_epub(path, title, author, chapters):
-    """用标准库 zipfile 手写 EPUB 2.0（含 toc.ncx，兼容绝大多数阅读器）。"""
+
+def write_epub(path, title, author, chapters, cover=None, theme="classic"):
+    """用标准库 zipfile 手写 EPUB 2.0（含 toc.ncx，兼容绝大多数阅读器）。
+
+    cover: cover_for_book / make_cover / prepare_cover_image 的返回值，
+           None 表示不带封面（与旧版输出一致）
+    theme: THEMES 里的 id，只影响 style.css
+    """
     uid = "urn:uuid:" + str(uuid.uuid4())
     title = title or "未命名"
     author = author or "佚名"
@@ -634,6 +1250,25 @@ def write_epub(path, title, author, chapters):
             "    </navPoint>" % (i, i, _esc(ctitle), i)
         )
 
+    has_cover = bool(cover)
+    cover_name = ""
+    cover_meta = ""
+    spine_cover = ""
+    guide = ""
+    if has_cover:
+        cdata, cover_name, cmime = cover[0], cover[1], cover[2]
+        # EPUB2 认 <meta name="cover">；EPUB3 认 properties="cover-image"，
+        # 两个都写，老阅读器和新阅读器都能取到缩略图。
+        cover_meta = '    <meta name="cover" content="cover-img"/>\n'
+        manifest.insert(0, '    <item id="cover-img" href="%s" media-type="%s"/>'
+                        % (cover_name, cmime))
+        manifest.insert(1, '    <item id="cover" href="cover.xhtml" '
+                           'media-type="application/xhtml+xml"/>')
+        spine_cover = '    <itemref idref="cover"/>\n'
+        guide = ('  <guide>\n'
+                 '    <reference type="cover" title="封面" href="cover.xhtml"/>\n'
+                 '  </guide>\n')
+
     opf = (
         "<?xml version='1.0' encoding='utf-8'?>\n"
         '<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="BookId">\n'
@@ -643,15 +1278,18 @@ def write_epub(path, title, author, chapters):
         "    <dc:creator opf:role=\"aut\">%s</dc:creator>\n"
         "    <dc:language>zh-CN</dc:language>\n"
         "    <dc:identifier id=\"BookId\">%s</dc:identifier>\n"
+        "%s"
         "  </metadata>\n"
         "  <manifest>\n"
         '    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>\n'
         '    <item id="css" href="style.css" media-type="text/css"/>\n'
         "%s\n"
         "  </manifest>\n"
-        '  <spine toc="ncx">\n%s\n  </spine>\n'
+        '  <spine toc="ncx">\n%s%s\n  </spine>\n'
+        "%s"
         "</package>\n"
-    ) % (_esc(title), _esc(author), uid, "\n".join(manifest), "\n".join(spine))
+    ) % (_esc(title), _esc(author), uid, cover_meta,
+         "\n".join(manifest), spine_cover, "\n".join(spine), guide)
 
     ncx = (
         "<?xml version='1.0' encoding='utf-8'?>\n"
@@ -668,7 +1306,12 @@ def write_epub(path, title, author, chapters):
         z.writestr("META-INF/container.xml", CONTAINER, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/content.opf", opf, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/toc.ncx", ncx, zipfile.ZIP_DEFLATED)
-        z.writestr("OEBPS/style.css", CSS, zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/style.css", theme_css(theme), zipfile.ZIP_DEFLATED)
+        if has_cover:
+            z.writestr("OEBPS/" + cover_name, cdata, zipfile.ZIP_DEFLATED)
+            z.writestr("OEBPS/cover.xhtml",
+                       _COVER_PAGE.replace("__COVER_SRC__", cover_name),
+                       zipfile.ZIP_DEFLATED)
         for i, ctitle, html_body in pages:
             page = (
                 "<?xml version='1.0' encoding='utf-8'?>\n"
@@ -681,7 +1324,6 @@ def write_epub(path, title, author, chapters):
             ) % (_esc(ctitle), _esc(ctitle), html_body)
             z.writestr("OEBPS/c%04d.xhtml" % i, page, zipfile.ZIP_DEFLATED)
     return path
-
 
 # ---------------------------------------------------------------- 索引
 

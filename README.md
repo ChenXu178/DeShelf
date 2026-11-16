@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.4.0** · 七个改进：**①规则列表可滚动**（窗口小 / 系统缩放 125% 时最后几条不再被裁掉）；**②EPUB 封面**——自动把同目录下的同名图片打包当封面，没有图片就生成一张米色宣纸底的默认封面（竖排楷体书名 + 作者）；**③四套版面主题**（传统书籍 / 现代阅读 / 紧凑省纸 / 大字易读）；**④清洗规则导入导出**——规则包是 JSON，可分享、可自己加正则，不必改代码；**⑤每本书单独的分章正则**（③页「本书规则」，留空用全局）；**⑥高分屏适配**（125%/150% 缩放下界面不再变小）；**⑦修掉几处问题**：批量试分不再卡界面、书库「章节」列从空变成实际章数、书名作者识别更准（方括号作者、多字段同行、隐藏字符）、开头的「书名：/作者：」不再单独占一章。
+>
 > **v1.3.4** · 新增清洗规则「**简繁重复行（保留简体）**」——下载的书每章同时有简体和繁体两份时，一键删掉繁体那份：相邻成对、整章重复都能认，标题这类没有字形差异的行也会跟着整块删掉；纯繁体书、简体书里只引用一句繁体，一个字都不动。**默认关闭**，需要时在②勾选，先预览再应用。导出面板另加「另存时加后缀」与「原地覆盖原文件（先备份 `.bak`）」，不再堆一堆 `(1)(2)` 副本。
 >
 > **v1.3.3** · 修复「网址粘在段落末尾时，整段正文被当成广告删掉」——很多盗版站的 TXT 会把网址直接贴在每段末尾（…“你什么时候偷走的？”WwW.zhudao.com），上一版按整行删除，整本书的正文会被洗光。现在先判断这行是不是广告：**整行只有广告才整行删，广告只是粘在段尾就只裁掉那一截**，正文一个字不动；同时「请到」「百度搜索」这类正常对话里也会出现的词不再被单独判成广告。预览里能看清哪一段被裁、哪一行被删。（感谢小红书用户 **@芭比Q** 反馈这个问题）
@@ -136,7 +138,7 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 需要批量"原地覆盖写回"原始文件时用桌面版 EXE。
 
 **自检通过**：
-- 核心纯逻辑 46/46 单测（编码识别 / 清洗 10 条规则 / 分章 / EPUB / ZIP）
+- 核心纯逻辑 46/46 单测（编码识别 / 清洗 10 条规则（可加自定义） / 分章 / EPUB / ZIP）
 - 真实浏览器冒烟 18/18（Edge headless · 页面初始化 / 双语切换 / 文件入库 / 清洗 / 分章 / 导出）
 - 双语词典 125 键 + 125 键完全对齐
 
@@ -145,6 +147,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.4.0** · Seven improvements: the **rule list scrolls** (the last rules are no longer clipped on small windows or at 125% scaling); **EPUB covers** — a same-named image in the same folder is packed as the cover, otherwise a default rice-paper cover with the vertical title is generated; **four layout themes** (classic print / modern reading / compact / large print); **rule packs** import & export as JSON, so you can add your own regexes without touching code; **per-book chapter regex** (the “this book” field in step ③); **HiDPI awareness**; and fixes — batch splitting no longer freezes the window, the chapter column shows real counts, book title/author detection is more accurate, and a leading “Title:/Author:” header no longer becomes its own chapter.
 >
 > **v1.3.4** · new cleaning rule **“Duplicate simplified/traditional lines”** — when a book carries both a simplified and a traditional copy of every chapter, drop the traditional one in a single pass. Alternating lines and whole duplicated chapters both work, and lines with no glyph difference (chapter titles) go with their block; traditional-only books, and a lone traditional quotation inside a simplified book, are left completely untouched. **Off by default** — tick it in step ②, preview first, then apply. The export panel also gains “suffix when saving as” and “overwrite originals (with `.bak` backup)” so you stop piling up `(1)(2)` copies.
 >
@@ -278,7 +282,7 @@ For most "I have a few TXT files and want a readable EPUB for my e-reader" jobs,
 no Python, no install. Reach for the desktop EXE only when you need to batch-overwrite original files in place.
 
 **Self-tests passing**:
-- 46/46 core unit tests (encoding / 10 cleaning rules / chapters / EPUB / ZIP)
+- 46/46 core unit tests (encoding / 10 cleaning rules (plus your own) / chapters / EPUB / ZIP)
 - 18/18 real-browser smoke (Edge headless: init / language / file import / clean / chapters / export)
 - 125 keys × 2 in the bilingual dictionary, fully aligned
 
