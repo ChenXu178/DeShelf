@@ -14,7 +14,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.5.1"
+APP_VER = "v1.5.2"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -359,6 +359,24 @@ T2S_PAIRS = (
     "鴛鸳鴝鸲鴞鸮鴟鸱鴣鸪鴦鸯鴨鸭鴯鸸鴰鸹鴴鸻鴷䴕鴻鸿鴿鸽鵁䴔鵂鸺鵃鸼鵐鹀鵑鹃鵒鹆鵓鹁鵜鹈鵝鹅鵠鹄鵡鹉鵪鹌鵬鹏鵮鹐鵯鹎鵰雕鵲鹊鵷鹓鵾鹍鶄䴖鶇鸫鶉鹑鶊鹒鶓鹋鶖鹙鶘鹕鶚鹗鶡鹖鶥鹛鶩鹜鶪䴗鶬鸧鶯莺鶲鹟鶴鹤鶹鹠鶺鹡鶻鹘鶼鹣鶿鹚鷀鹚鷁鹢鷂鹞鷄鸡鷉䴘鷊鹝鷓鹧"
     "鷖鹥鷗鸥鷙鸷鷚鹨鷥鸶鷦鹪鷫鹔鷯鹩鷲鹫鷳鹇鷴鹇鷸鹬鷹鹰鷺鹭鷽鸴鸂㶉鸇鹯鸊䴙鸌鹱鸏鹲鸕鸬鸘鹴鸚鹦鸛鹳鸝鹂鸞鸾鹵卤鹹咸鹺鹾鹼碱鹽盐麗丽麥麦麩麸麪面麫面麯曲麴曲麵面麼么麽么黃黄黌黉點点黨党黲黪黴霉黶黡黷黩黽黾黿鼋鼂鼌鼉鼍鼕冬鼴鼹齊齐齋斋齎赍齏齑齒齿"
     "齔龀齕龁齗龂齙龅齜龇齟龃齠龆齡龄齣出齦龈齧啮齪龊齬龉齲龋齶腭齷龌龍龙龎厐龐庞龑䶮龔龚龕龛龜龟鿁䜤鿓鿒"
+    # ---- 下列 547 对由 zhconv 的 zh2Hans 补齐（2026-11-16）----
+    # 旧表漏了「妳→你」「暱→昵」「瞭→了」这类常用字，缺一个映射整行就对不上，
+    # 简繁去重会成片失效（用户反馈「清洗后还有繁体残留」）。
+    # 只用于比对，不改写正文；著/瞭 同时在 _AMBI 里，不参与繁体打分。
+    "㒺罔㓂寇㕁却㕑厨㕘参㕥以㘔㗷㘭坳㝛宿㝠冥㠀岛㠯以㠶帆㡌帽㢘廉㤙恩㥦惬㨗捷㨪晃㨿据㩗携㩦携㪚散㪟敦㬉暖㬪叠㯭橹㱃饮㳒法㴱深㼝碗㽞留㿜瘪䈰筲䊀糊䗬蜂䘏恤䘑脉䘚卒䛐词"
+    "䛡话䝔獾䠀蹚䠶射䥥镰䬃飒䭾驮䰟魂䳘鹅䶊衄丣卯乗乘乹干亁干亝斋亱夜亷廉亾亡俻备倐倏倣仿倸睬傚效僊仙働动儌侥兎兔兠兜冄冉冐冒冺泯凢凡凴凭刦劫刧劫刼劫剉锉剏创剙创剳札"
+    "剹戮劒剑効效勅敕勌倦勦剿匟炕匲奁匳奁厀膝厰厂吚咿呌叫呪咒咊和哶咩唕唣唘启唚吣啎忤啑喋啗啖啣衔嗁啼嘑呼嘠嘎嘷嗥噉啖囓啮囙因圅函坿附垜垛垵埯塟葬塲场墖塔壻婿夘卯妬妒"
+    "妳你妷侄姉姊姙妊姪侄姸妍婣姻婬淫媍妇媿愧嫰嫩嬝袅嬭奶嬾懒孼孽宂冗寃冤寑寝寳宝尅克尒尔尙尚尟鲜尠鲜屛屏屭屃岅坂峝峒嶃崭嶴岙巵卮帀匝帋纸帬裙幇帮幑徽幙幕幚帮庻庶庽寓"
+    "廐厩廵巡廹迫廻回彞彝徃往徧遍怱匆怳恍恠怪恡吝悤匆惏婪惥恿惷蠢愽博慙惭慴慑慽戚憇憩戞戛戯戏戹厄抝拗挵弄捄救掽碰揑捏揫揪揷插揹背搆构搇揿搉榷搤扼搥捶搨拓搯掏搾榨摃扛"
+    "撡操撦扯擕携擧举攩挡攷考敂叩敍叙敺驱旤祸旹时旾春昬昏暱昵曡叠朞期朢望朶朵杴锨枱台栁柳栞刊栢柏栰筏桒桑桮杯桺柳椗碇椶棕椷缄椾笺楥楦槕桌橜橛櫈凳櫺棂欝郁欵款歛敛歴历"
+    "殀夭毧绒毬球氊毡氷冰汚污涖莅淛浙湼涅滛淫潄漱澁涩濇涩濶阔灋法灠漤烖灾煑煮煗暖熈熙燄焰爗烨牋笺牎窗牐闸牓榜牕窗牠它狥徇猂悍猨猿獘毙獧狷玅妙琖盏瑇玳瑯琅璢瑠甎砖甖罂"
+    "甞尝甦苏甯宁畂亩畆亩畧略畮亩畱留疎疏疘肛疿痱痐蛔痲痳痺痹瘉愈瘖喑癄憔癅瘤癈废皐皋皜皓皷鼓盇盍盌碗眎视眡视睠眷睪睾瞇眯瞖翳瞭了矁瞅矙瞰砲炮碪砧磟碌礆硷祘算秊年秌秋"
+    "秖只稉粳稬糯稭秸稾稿穤糯穨颓穽阱窓窗窰窑窻窗竝并竢俟筞策筩筒筯箸箒帚箠棰篛箬簒篡簮簪簷檐籐藤粃秕粧妆紥扎絏绁緐繁緜绵緥褓繐穗繖伞繙翻繦襁罇樽罋瓮罸罚羗羌羢绒翄翅"
+    "翶翱耡锄肎肯肐胳肧胚胷胸脃脆脇胁脗吻腁胼膓肠臈腊臋臀臕膘臙胭臝裸臯皋舩船艢樯艪橹芲花茘荔荳豆菕芲萲萱著着葠参蓡参蔕蒂蕚萼蕿萱薳䓕藼萱蘐萱蘓苏蘤花蚘蛔蛕蛔蜋螂蜖蛔"
+    "蜨蝶蝯猿蝱虻螎融螡蚊蟁蚊蟇蟆蠏蟹蠒茧蠭蜂衂衄衇脉衞卫衺邪袟帙袵衽裌袷裠裙褭袅襃褒襆幞襍杂覇霸覊羁覔觅覩睹觝抵詶酬誖悖謌歌譅䜧譌讹譔撰讁谪讐雠豓艳貛獾賉恤賛赞賷赍"
+    "趂趁跥跺踁胫踫碰蹏蹄蹧糟蹵蹴躭耽躳躬躶裸輙辄輭软辠罪辢辣辤辞辳农迻移逈迥逥回逩奔逬迸遉侦遯遁酖鸩酧酬醆盏醕醇醯酰醻酬醼宴釬焊鉄铁銲焊鋂镅鍫锹鍳鉴鎗枪鎻锁鏚戚鐗锏"
+    "鑀锿鑚钻鑛矿鑤刨鑵罐镟旋閙闹閧哄闚窥阨厄阬坑陗峭陜陕陻堙陿狭隂阴隄堤隖坞隣邻隷隶靭韧靱韧鞀鼗鞵鞋韈袜韤袜韮韭頟额頼赖顇悴顋腮顦憔飃飘飜翻飤饲餁饪餹糖餻糕餽馈饍膳"
+    "饝馍駈驱騐验騣鬃驘骡骽腿骾鲠髈膀髥髯鬀剃鬉鬃鬦斗鬪斗鬰郁鴈雁鵞鹅鵶鸦鷈䴘鷰燕鷿䴙鸎莺鹻碱鼃蛙鼇鳌鼈鳖齇齄鿐䲤"
 )
 
 # 简繁两体都在用的字：参与归一、但不算繁体分，避免误删
@@ -400,72 +418,170 @@ def _trad_score(s):
     return sum(1 for c in s if c in t and c not in _AMBI)
 
 
+# 简繁去重的阈值：两端（Python / Web）必须完全一致，改数字要一起改。
+_DD_ANCHOR   = 8     # 首/尾锚点取几个字（候选检索用）
+_DD_MINLEN   = 8     # 单行模糊比对的最短归一化长度
+_DD_FUZZY    = 0.9   # 单行模糊：bigram 包含率门槛
+_DD_RATIO    = 1.6   # 长度比上限，防止长短悬殊的两行被误配
+_DD_BLK_LEN  = 6     # 块内近似配对的最短长度
+_DD_BLK_SIM  = 0.6   # 块内近似配对的包含率门槛
+_DD_BLK_RUN  = 8     # 成块至少几行才认定为副本
+_DD_BLK_VOTE = 4     # 偏移至少要几票才去试
+_DD_BLK_TOP  = 8     # 最多试前几个偏移
+_DD_BLK_EXT  = 30    # 块两端最多再扫几行
+
+
+def _bi(k):
+    """归一化字符串的二元组集合。"""
+    if len(k) < 2:
+        return {k} if k else set()
+    return {k[i:i + 2] for i in range(len(k) - 1)}
+
+
+def _over(a, b):
+    """bigram 包含率（不是 Jaccard）：一边多插了几个乱码字，交集几乎不变，
+    Jaccard 会被拉到及格线下，包含率才认得出「仍是同一句」。"""
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
+
+
 def dedupe_script_dup(lines):
     """同一段正文有简繁两份时删繁体那份，返回 (保留的行, 删掉的行)。
 
-    判据与 Web 版一致：
+    三步，两端一致：
       1) 繁→简归一后文本相同、字面不同、繁体字更多 → 删；
-      2) 整章「简体一份 + 繁体一份」时，标题这类没有字形差异的行靠块对齐整块删。
+      2) 盗版站常在其中一份里乱插字（网址、乱码、伪字），归一后对不上，
+         按 bigram 包含率认成同一句 → 删繁体那份；
+      3) 整章「简体一份 + 繁体一份」时，连「螢幕/屏幕」这类两岸用词差异
+         也会让单行比对失手，于是按偏移找出成对的整块，整块删繁体那份。
     """
     n = len(lines)
-    info = [None] * n
-    lowest = {}
+    keys = [""] * n
+    sc = [0] * n
     for i, s in enumerate(lines):
         if not s:
             continue
-        key = _norm_key(s)
-        if not key:
-            continue
-        score = _trad_score(s)
-        info[i] = (key, score)
-        best = lowest.get(key)
-        if best is None or score < best:
-            lowest[key] = score
+        k = _norm_key(s)
+        keys[i] = k
+        if k:
+            sc[i] = _trad_score(s)
+
     gone = set()
-    for i, it in enumerate(info):
-        if it and lowest[it[0]] < it[1]:
+
+    # ---- 1) 同一个归一化文本里，比最简那份更繁的行 ----
+    lowest = {}
+    for i in range(n):
+        k = keys[i]
+        if not k:
+            continue
+        b = lowest.get(k)
+        if b is None or sc[i] < b:
+            lowest[k] = sc[i]
+    for i in range(n):
+        k = keys[i]
+        if k and lowest[k] < sc[i]:
             gone.add(i)
-    if gone:
-        base = set(gone)          # 第一遍的判定，块补齐时不再改动它
-        near = [-1] * n
-        last = {}
-        for i, it in enumerate(info):
-            if not it:
-                continue
-            prev = last.get(it[0])
-            if prev is not None:
-                near[i] = prev
-            if i not in base:
-                last[it[0]] = i
-        done = set()
-        for j in sorted(base):
-            i = near[j]
-            if i < 0:
-                continue
-            d = j - i
-            if d <= 0:
-                continue
 
-            def paired(k, d=d):
-                return (0 <= k < n and 0 <= k + d < n and info[k] and info[k + d]
-                        and info[k][0] == info[k + d][0])
+    gs = [None] * n
+    for i in range(n):
+        if len(keys[i]) >= _DD_BLK_LEN:
+            gs[i] = _bi(keys[i])
 
-            s0 = e0 = i
-            while paired(s0 - 1):
-                s0 -= 1
-            while paired(e0 + 1):
+    # ---- 2) 模糊：一边插了乱码，归一化文本对不上，但仍是同一句 ----
+    index = {}
+    for i in range(n):
+        k = keys[i]
+        if len(k) < _DD_MINLEN:
+            continue
+        for p in (k[:_DD_ANCHOR], k[-_DD_ANCHOR:]):
+            index.setdefault(p, []).append(i)
+    for i in range(n):
+        k = keys[i]
+        if len(k) < _DD_MINLEN or sc[i] <= 0:
+            continue
+        best, bj = 0.0, -1
+        for j in index.get(k[:_DD_ANCHOR], ()) + index.get(k[-_DD_ANCHOR:], ()):
+            if j == i or j in gone or sc[j] >= sc[i]:
+                continue
+            a, b = len(k), len(keys[j])
+            if max(a, b) > min(a, b) * _DD_RATIO + 2:
+                continue
+            c = _over(gs[i], gs[j])
+            if c > best or (c == best and (bj < 0 or j < bj)):
+                best, bj = c, j
+        if best >= _DD_FUZZY:
+            gone.add(i)
+
+    # ---- 3) 块对齐：按偏移投票找出成对的整块 ----
+    pos = {}
+    for i in range(n):
+        k = keys[i]
+        if len(k) < 4:
+            continue
+        pos.setdefault(k[:_DD_ANCHOR], []).append(i)
+    votes = {}
+    for ps in pos.values():
+        m = len(ps)
+        if m < 2 or m > 8:
+            continue
+        for a in range(m):
+            for b in range(a + 1, m):
+                d = ps[b] - ps[a]
+                votes[d] = votes.get(d, 0) + 1
+    order = sorted(votes.items(), key=lambda kv: (-kv[1], kv[0]))[:_DD_BLK_TOP]
+
+    def near(t, d):
+        """位置 t 与 t+d 是否算同一句（允许一边插了噪声字）。"""
+        if t < 0 or t + d >= n:
+            return False
+        ka, kb = keys[t], keys[t + d]
+        if not ka or not kb:
+            return False
+        if ka == kb:
+            return True
+        if len(ka) < _DD_BLK_LEN or len(kb) < _DD_BLK_LEN:
+            return False
+        if max(len(ka), len(kb)) > min(len(ka), len(kb)) * _DD_RATIO + 2:
+            return False
+        return _over(gs[t], gs[t + d]) >= _DD_BLK_SIM
+
+    for d, sup in order:
+        if sup < _DD_BLK_VOTE:
+            break
+        limit = n - d
+        t = 0
+        while t < limit:
+            if not near(t, d):
+                t += 1
+                continue
+            s0 = e0 = t
+            while e0 + 1 < limit and near(e0 + 1, d):
                 e0 += 1
-            if e0 - s0 + 1 < 2:
-                continue                      # 单独一对不足以证明是整块副本
-            if not any(lines[k] != lines[k + d] for k in range(s0, e0 + 1)):
-                continue                      # 两块字面完全一样 = 原文自身重复，不碰
-            if s0 in done:
-                continue
-            done.add(s0)
-            for k in range(s0, e0 + 1):
-                t = k + d
-                if t not in base:
-                    gone.add(t)
+            if e0 - s0 + 1 >= _DD_BLK_RUN:
+                same = True
+                for k in range(s0, e0 + 1):
+                    if lines[k] != lines[k + d]:
+                        same = False
+                        break
+                if not same:            # 两块字面完全一样 = 原文自身重复，不碰
+                    lo, hi, c = s0, e0, 0
+                    while lo > 0 and c < _DD_BLK_EXT and near(lo - 1, d):
+                        lo -= 1
+                        c += 1
+                    c = 0
+                    while hi + 1 < limit and c < _DD_BLK_EXT and near(hi + 1, d):
+                        hi += 1
+                        c += 1
+                    for k in range(lo, hi + 1):
+                        if sc[k] > sc[k + d]:
+                            gone.add(k)
+                        elif sc[k + d] > sc[k]:
+                            gone.add(k + d)
+                    t = hi + 1
+                    continue
+            t = e0 + 1
+
     kept, dels = [], []
     for i, s in enumerate(lines):
         if i in gone:

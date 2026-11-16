@@ -52,13 +52,13 @@ EXPECT = [
 ]
 
 
-def run_python(text):
+def run_python(text, rules=None):
     st = {}
-    out, removed = jzcore.clean_text(text, RULES, st)
+    out, removed = jzcore.clean_text(text, rules or RULES, st)
     return {"text": out, "removed": removed, "trimmed": st.get("trimmed", 0)}
 
 
-def run_web(text):
+def run_web(text, rules=None):
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.dirname(here)
     fd, tmp = tempfile.mkstemp(suffix=".txt")
@@ -66,7 +66,7 @@ def run_web(text):
     try:
         io.open(tmp, "w", encoding="utf-8", newline="").write(text)
         r = subprocess.run(
-            ["node", os.path.join(here, "_dump_clean.mjs"), tmp, json.dumps(RULES)],
+            ["node", os.path.join(here, "_dump_clean.mjs"), tmp, json.dumps(rules or RULES)],
             capture_output=True, cwd=root,
         )
         if r.returncode != 0:
@@ -74,6 +74,45 @@ def run_web(text):
         return json.loads(r.stdout.decode("utf-8"))
     finally:
         os.remove(tmp)
+
+
+# —— 简繁双份语料：盗版站常见形态，繁體版 + 简体版 各一份，其中一行还被插了网址 ——
+DUAL = "\n".join([
+    "第一章　雨夜",
+    "##########  繁體版  ##########",
+    "雨停之後，她把窗推開一條縫，讓潮氣散出去。",
+    "「妳真的不打算告訴他？」室友靠在門邊問。",
+    "她沒回答，只是把濕透的外套掛在椅背上。",
+    "桌曆上那頁還停在上週三，紅筆圈著的日期被水泡得發皺。",
+    "樓下有人按了兩次門鈴，又走遠了。",
+    "她把窗簾拉嚴，屋子裡只剩冰箱低低的嗡鳴聲。",
+    "那聲音持續了很久，久到她開始懷疑自己聽錯了。",
+    "##########  简体版  ##########",
+    "雨停之后，她把窗推开一条缝，让潮气散出去。",
+    "「妳真的不打算告诉他？」室友靠在门边问。",
+    "她没回答，只是把湿透的外套挂在椅背上www.zwdu.com。",
+    "桌历上那页还停在上周三，红笔圈着的日期被水泡得发皱。",
+    "楼下有人按了两次门铃，又走远了。",
+    "她把窗帘拉严，屋子里只剩冰箱低低的嗡鸣声。",
+    "那声音持续了很久，久到她开始怀疑自己听错了。",
+])
+
+# 纯简体文本：一行都不许动
+SIMPLY = "\n".join([
+    "第一章　雨夜",
+    "雨停之后，她把窗推开一条缝，让潮气散出去。",
+    "「你真的不打算告诉他？」室友靠在门边问。",
+    "她没回答，只是把湿透的外套挂在椅背上。",
+    "楼下有人按了两次门铃，又走远了。",
+])
+
+
+def _trad_left(text):
+    out = []
+    for ln in text.split("\n"):
+        if jzcore._trad_score(ln) >= 2:
+            out.append(ln)
+    return out
 
 
 def main():
@@ -123,6 +162,20 @@ def main():
     chk("removed 相同", py["removed"] == web["removed"], (py["removed"], web["removed"]))
     chk("trimmed 相同", py["trimmed"] == web["trimmed"], (py["trimmed"], web["trimmed"]))
     chk("裁剪位置相同", len(web["cuts"]) == py["trimmed"], web["cuts"])
+
+    print("== 简繁重复行 ==")
+    jd_rules = ["jsdup"]
+    jd = run_python(DUAL, jd_rules)
+    jd_web = run_web(DUAL, jd_rules)
+    left = _trad_left(jd["text"])
+    chk("繁体那几行全部删掉", not left, left[:3])
+    chk("简体正文一句不少", "雨停之后" in jd["text"] and "怀疑自己听错了" in jd["text"]
+        and "冰箱低低的嗡鸣声" in jd["text"])
+    chk("Python / Web 逐字相同", jd["text"] == jd_web["text"],
+        None if jd["text"] == jd_web["text"] else (jd["text"][:200], jd_web["text"][:200]))
+    chk("删除计数相同", jd["removed"] == jd_web["removed"], (jd["removed"], jd_web["removed"]))
+    plain = run_python(SIMPLY, jd_rules)
+    chk("纯简体文本一字不动", plain["text"].strip("\n") == SIMPLY and plain["removed"] == 0, plain["removed"])
 
     print("\n结果: %d 通过, %d 失败" % (ok, fail))
     return 1 if fail else 0

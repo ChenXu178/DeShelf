@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.5.2** · 两处修复：**①简繁去重不再漏删**——繁→简字表补齐了 547 个常用字（旧表漏了「妳→你」「暱→昵」「瞭→了」这类，缺一个映射整行就对不上，整块繁体因此留了下来）；再叠两层判据：一边被插了网址/乱码的，按 bigram 包含率认回同一句；整章简繁两份的，按偏移找出成对整块整块删。用户发来的第五章样本：繁体行 138 → 残留 1。**②窗口底色统一**——卡片里的控件一直是灰底（判断控件类型的代码写错了类名，长期空转），白卡上冒出一个个灰方块；现在全线铺白、描边加深、页签条与进度槽配色跟上。
+>
 > **v1.5.1** · 两处收尾：**①「关于」升级为「版权与许可」窗口**——MIT 全文、署名要求的逐条说明、第三方组件清单、免责条款都在里面，可一键「复制说明全文」或「复制 MIT 全文」。**②主要按键上色**——次级但常用的按键（全选/反选/试分全部/导入导出规则/浏览）改成浅蓝底，主操作仍是实心蓝、执行写盘仍是实心绿，一眼能分出主次。**③顶栏右侧加了语言开关**——中文界面显示 `EN`、英文界面显示 `中文`，不用再去菜单里找「语言」两个字（菜单项也改成了双语「语言 Language」）。
 >
 > **v1.5.0** · 桌面版两件事：**①「添加文件…」**——不必先选整个目录，直接挑几个 txt 进书库（网页版早就有的入口，现在补上了）；可选文件不必在书库目录里，导出的相对路径会显示成 `..\` 开头；手滑加错了，右键「从列表移除（不删文件）」。**②界面重做皮肤**——原来的灰底 + 凹陷分组框是 tkinter 默认主题的老观感，现在换成浅底卡片 + 1px 描边 + 分层按钮（主操作实心蓝、执行实心绿），表格行高与表头也重新配过色。功能逻辑一行没动。
@@ -163,6 +165,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.5.2** · Two fixes: **① script-duplicate removal no longer leaves traditional lines behind** — the T→S character table was missing 547 common characters (no mapping for 妳→你, 暱→昵, 瞭→了 …), and one missing mapping makes a whole line fail to match, so entire traditional blocks survived; it now also matches lines by bigram containment (covers inserted URLs/garbage) and removes whole mirrored blocks by offset. On the user-submitted five-chapter sample: 138 traditional lines → 1 left. **② The window background is finally consistent** — widgets inside cards had kept their grey fill (the widget-type check compared the wrong class names and had silently done nothing for ages), so grey rectangles showed up on white cards; everything is white now, with a deeper hairline and matching tab strip / progress trough.
 >
 > **v1.5.1** · Two finishing touches: **① “About” became a “Copyright & License” window** — the full MIT text, a point-by-point explanation of the attribution requirement, the third-party list and the disclaimer, with one-click “Copy the full text” / “Copy the MIT text”. **② Primary buttons got colour** — secondary-but-frequent actions (select all/invert/try all/import-export rules/browse) now use a light blue fill, while the primary action stays solid blue and the write action stays solid green. **③ A language switch now sits at the right end of the top bar** — it reads `EN` in the Chinese UI and `中文` in the English one, so nobody has to hunt for the word “Language” in a menu (the menu item is bilingual too).
 >

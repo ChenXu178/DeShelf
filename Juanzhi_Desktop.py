@@ -26,9 +26,12 @@ APP_CN = jzcore.APP_CN
 APP_EN = jzcore.APP_EN
 APP_VER = jzcore.APP_VER
 AUTHOR = "© 永远的兰兰 · Lanlan Eternal"
-BG = "#EDEFF1"
-CARD = "#FAFBFC"
-LINE = "#C9CCD1"
+# 底色与卡片都往白里调：tkinter 画不出圆角和阴影，底色一深就成了
+# 「白块贴在灰板上」，反而更花。留 3 个色阶的差足够分出层，
+# 又不会在卡片缝隙和大片空白处露出显眼的灰。
+BG = "#F5F6F8"
+CARD = "#FFFFFF"
+LINE = "#D3D8DE"   # 细线：太白的分组框在白底上看不出来
 INK = "#232629"
 MUTED = "#5F6670"
 BLUE = "#2F6FB0"
@@ -752,11 +755,12 @@ class App:
         st.configure(".", background=BG, font=FONT, foreground=INK)
 
         # ---- 容器 ----
-        for name, bg in (("TFrame", BG), ("Card.TFrame", CARD),
-                         ("TLabel", BG), ("Card.TLabel", CARD),
-                         ("TCheckbutton", BG), ("Card.TCheckbutton", CARD),
-                         ("TRadiobutton", BG), ("Card.TRadiobutton", CARD)):
-            st.configure(name, background=bg)
+        # 所有容器底层一律铺白：卡片是白的，控件若还留着灰底，就会在卡片里
+        # 冒出一个个灰方块——这正是「背景颜色不统一」的来源。
+        for name in ("TFrame", "Card.TFrame", "TLabel", "Card.TLabel",
+                     "TCheckbutton", "Card.TCheckbutton",
+                     "TRadiobutton", "Card.TRadiobutton"):
+            st.configure(name, background=CARD)
         st.configure("TLabel", foreground=INK)
         st.configure("Muted.TLabel", foreground=MUTED)
         st.configure("CardMuted.TLabel", background=CARD, foreground=MUTED)
@@ -807,13 +811,14 @@ class App:
                bordercolor=[("active", "#7FA9D6")])
 
         # ---- 页签：选中项白底并往下压 2px，像贴在内容上 ----
-        st.configure("TNotebook", background=BG, bordercolor=LINE,
+        # 页签条本身也用白底，否则顶栏白 → 页签灰 → 内容白，窗口被切成三截。
+        st.configure("TNotebook", background=CARD, bordercolor=LINE,
                      borderwidth=px1, tabmargins=(px(2), px(3), px(2), 0))
-        st.configure("TNotebook.Tab", background="#E3E6EA", foreground=MUTED,
+        st.configure("TNotebook.Tab", background="#E9EDF2", foreground=MUTED,
                      bordercolor=LINE, padding=(px(14), px(5)),
-                     lightcolor="#E3E6EA", darkcolor="#E3E6EA")
+                     lightcolor="#E9EDF2", darkcolor="#E9EDF2")
         st.map("TNotebook.Tab",
-               background=[("selected", CARD), ("active", "#EDEFF2")],
+               background=[("selected", CARD), ("active", "#F1F4F8")],
                foreground=[("selected", INK)],
                expand=[("selected", (0, 0, 0, px(2)))])
 
@@ -844,8 +849,8 @@ class App:
                      arrowcolor=MUTED, padding=(px(4), px(3)))
 
         # ---- 进度条 / 滚动条 / 分隔线 ----
-        st.configure("TProgressbar", troughcolor="#E3E6EA", background=BLUE,
-                     bordercolor=LINE, lightcolor=BLUE, darkcolor=BLUE,
+        st.configure("TProgressbar", troughcolor="#EBEEF2", background=BLUE,
+                     bordercolor="#EBEEF2", lightcolor=BLUE, darkcolor=BLUE,
                      thickness=px(10))
         st.configure("TScrollbar", background="#D3D7DC", troughcolor=BG,
                      bordercolor=BG, arrowcolor=MUTED, width=px(12),
@@ -864,25 +869,39 @@ class App:
             pass
 
     def _cardify(self, w):
-        """卡片内的 ttk 控件切到 Card.* 变体，否则灰底方块会糊在白卡上。"""
+        """卡片内的 ttk 控件切到 Card.* 变体，否则灰底方块会糊在白卡上。
+
+        注意 ttk 控件的 winfo_class() 是 TFrame / TLabel / TCheckbutton，
+        不是 Frame / Label —— 早先按后者判断，这个函数一直是空转的，
+        所以卡片里永远是灰底，整个窗口看着一块白一块灰。
+        """
         try:
             kids = w.winfo_children()
         except tk.TclError:
             return
         for c in kids:
             cls = c.winfo_class()
-            if cls in ("Frame", "Label", "Checkbutton", "Radiobutton"):
+            if cls in ("TFrame", "TLabel", "TCheckbutton", "TRadiobutton"):
                 try:
                     cur = str(c.cget("style") or "")
                 except tk.TclError:
                     cur = "x"
                 if not cur:
-                    c.configure(style="Card." + cls)
-            elif cls == "Canvas":
+                    try:
+                        c.configure(style="Card." + cls)
+                    except tk.TclError:
+                        pass
+            elif cls in ("Frame", "Label", "Canvas", "Text"):
+                # 原生控件没有 style，直接刷底色
                 try:
-                    c.configure(bg=CARD, highlightthickness=0)
+                    c.configure(bg=CARD)
                 except tk.TclError:
                     pass
+                if cls == "Canvas":
+                    try:
+                        c.configure(highlightthickness=0)
+                    except tk.TclError:
+                        pass
             self._cardify(c)
 
     def _menu(self):
@@ -951,10 +970,12 @@ class App:
         nb = ttk.Notebook(root)
         self.nb = nb
         nb.pack(fill="both", expand=True, padx=px(8), pady=(0, px(4)))
-        self.tab_lib = ttk.Frame(nb)
-        self.tab_clean = ttk.Frame(nb)
-        self.tab_chap = ttk.Frame(nb)
-        self.tab_out = ttk.Frame(nb)
+        # 每页也铺白底：页里放的卡片本来就是白的，页底留灰只会在卡片周围
+        # 露出一圈灰边，看着像没铺满。
+        self.tab_lib = ttk.Frame(nb, style="Card.TFrame")
+        self.tab_clean = ttk.Frame(nb, style="Card.TFrame")
+        self.tab_chap = ttk.Frame(nb, style="Card.TFrame")
+        self.tab_out = ttk.Frame(nb, style="Card.TFrame")
         nb.add(self.tab_lib, text=S["tab1"])
         nb.add(self.tab_clean, text=S["tab2"])
         nb.add(self.tab_chap, text=S["tab3"])
