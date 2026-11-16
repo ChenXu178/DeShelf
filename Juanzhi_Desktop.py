@@ -148,11 +148,121 @@ The software is provided “as is”. The author accepts no liability for data
 loss or damage. Please confirm you have a backup before using “Overwrite”.
 """
 
+ABOUT_ZH = """版权与许可 · Copyright & License
+
+卷帙 DeShelf {ver}
+本地 TXT 整理工具：扫描 · 清洗 · 分章 · 导出 EPUB / TXT。
+纯离线运行——不联网、不上传、不下载任何书籍内容，全部处理只在这台电脑上完成。
+
+【作者与署名】
+© 2026 永远的兰兰 (Lanlan Eternal)
+https://github.com/podcatcher962/DeShelf
+
+【开源许可：MIT License】
+本软件以 MIT 许可发布。任何人均可免费使用、复制、修改、合并、发布、再授权
+乃至销售本软件的副本，包括商业用途；不用付费，也不用事先告知作者。
+
+MIT 只有一条硬性条件——保留作者署名：
+· 任何副本或实质性部分中，必须保留版权声明与完整的 MIT 许可文本
+  （即源码仓库根目录的 LICENSE 文件；点下方「复制 MIT 全文」可取原文）。
+· 你可以改代码、改软件名、闭源分发，但不能删掉
+  「Copyright (c) 2026 Lanlan Eternal」，也不能把作者改成自己的名字后
+  声称原创。
+· 二次分发（含打包进你自己的产品）时，请在「关于」页或随附文档中
+  保留本署名与 MIT 许可全文。
+
+引用或推荐时建议注明：
+卷帙 DeShelf © 2026 永远的兰兰 (Lanlan Eternal)，MIT License。
+
+【第三方组件】
+· Python 3.12 —— PSF License Agreement
+· Tcl/Tk（tkinter）—— BSD-style License
+· Pillow（PIL）—— MIT-CMU License
+· OpenCC 简繁对照表 —— Apache License 2.0（仅用于比对，不改写正文）
+
+封面使用的楷体是 Windows 自带字体（simkai.ttf）：本软件不打包、不分发任何
+字体文件；换到其它系统会自动回退到可用字体。
+各组件的完整许可声明见仓库根目录的 THIRD-PARTY-NOTICES.md。
+
+【免责】
+软件按「现状」提供，不附带任何明示或暗示的担保。清洗与分章规则可能误删或
+误判内容；桌面版「原地覆盖」会自动生成 .bak 备份，但仍建议处理前自行备份。
+因使用本工具造成的数据丢失、版权或法律纠纷，由使用者自行承担。
+"""
+
+ABOUT_EN = """Copyright & License
+
+DeShelf {ver}
+A local TXT organizer: scan · clean · split · export EPUB / TXT.
+Fully offline — no network, no uploads, no downloads of any book content.
+
+[ Author & attribution ]
+© 2026 Lanlan Eternal
+https://github.com/podcatcher962/DeShelf
+
+[ License: MIT ]
+This software is released under the MIT License. Anyone may use, copy, modify,
+merge, publish, sublicense and/or sell copies of it — including commercially —
+free of charge and without asking the author first.
+
+MIT has exactly one hard requirement: keep the author's attribution.
+· Every copy, or substantial portion of the Software, must retain the copyright
+  notice and the full MIT permission notice (the LICENSE file at the repository
+  root; “Copy the MIT text” below gives you the exact wording).
+· You may change the code, rename the app, or ship it closed-source — but you
+  may not remove “Copyright (c) 2026 Lanlan Eternal”, and you may not put your
+  own name on it and claim it as original work.
+· When redistributing (including bundling it into your own product), keep this
+  attribution and the MIT text in the About screen or the bundled docs.
+
+Suggested credit: DeShelf © 2026 Lanlan Eternal, MIT License.
+
+[ Third-party components ]
+· Python 3.12 — PSF License Agreement
+· Tcl/Tk (tkinter) — BSD-style License
+· Pillow (PIL) — MIT-CMU License
+· OpenCC character tables — Apache License 2.0 (comparison only; text is never rewritten)
+
+The cover uses KaiTi shipped with Windows (simkai.ttf): no font file is bundled
+or redistributed — other systems fall back to an available font.
+Full notices: THIRD-PARTY-NOTICES.md at the repository root.
+
+[ Disclaimer ]
+Provided “as is”, without warranty of any kind. Cleaning and chapter rules may
+drop or misjudge content; “Overwrite” on the desktop always writes a .bak
+backup, but please keep your own backup anyway. Any data loss, copyright or
+legal issue arising from use of this tool is the user's responsibility.
+"""
+
+MIT_TEXT = """MIT License
+
+Copyright (c) 2026 Lanlan Eternal
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+
 TEXTS = {
     ZH: {
         # 窗口 / 菜单
         "w_title": "%s %s %s",
-        "m_file": "文件", "m_lib": "书库", "m_lang": "语言", "m_help": "帮助",
+        "m_file": "文件", "m_lib": "书库", "m_lang": "语言 Language", "m_help": "帮助",
         "m_pick_dir": "选择目录…", "m_rescan": "重新扫描",
         "m_rescan_fresh": "重新扫描（忽略缓存）", "m_quit": "退出",
         "m_sel_all": "全选", "m_sel_none": "全不选", "m_invert": "反选",
@@ -287,6 +397,9 @@ TEXTS = {
         "about_repo": "GitHub 主页 / 查看最新版：\nhttps://github.com/podcatcher962/DeShelf/releases",
         "usage_title": "使用说明", "disclaimer_title": "免责声明",
         "help_text": HELP_ZH, "disclaimer_text": DISC_ZH,
+        "about_win": "版权与许可", "about_sub": "纯本地离线工具 · 扫描 · 清洗 · 分章 · 导出",
+        "about_body": ABOUT_ZH,
+        "b_copy_about": "复制说明全文", "b_copy_mit": "复制 MIT 全文",
         # 右键菜单
         "m_open_loc": "打开文件位置", "m_open_note": "用记事本打开",
         "m_copy_path": "复制完整路径",
@@ -300,7 +413,7 @@ TEXTS = {
     },
     EN: {
         "w_title": "%s %s %s",
-        "m_file": "File", "m_lib": "Library", "m_lang": "Language", "m_help": "Help",
+        "m_file": "File", "m_lib": "Library", "m_lang": "Language 语言", "m_help": "Help",
         "m_pick_dir": "Choose folder…", "m_rescan": "Rescan",
         "m_rescan_fresh": "Rescan (ignore cache)", "m_quit": "Exit",
         "m_sel_all": "Select all", "m_sel_none": "Select none", "m_invert": "Invert",
@@ -426,6 +539,10 @@ TEXTS = {
         "about_repo": "GitHub homepage / latest release:\nhttps://github.com/podcatcher962/DeShelf/releases",
         "usage_title": "User Guide", "disclaimer_title": "Disclaimer",
         "help_text": HELP_EN, "disclaimer_text": DISC_EN,
+        "about_win": "Copyright & License",
+        "about_sub": "Fully offline · scan · clean · split · export",
+        "about_body": ABOUT_EN,
+        "b_copy_about": "Copy the full text", "b_copy_mit": "Copy the MIT text",
         "m_open_loc": "Open file location", "m_open_note": "Open with Notepad",
         "m_copy_path": "Copy full path",
         "m_remove_book": "Remove from list (file kept)",
@@ -675,6 +792,20 @@ class App:
                                ("active", bg_d)],
                    foreground=[("disabled", "#F0F2F4")])
 
+        # 浅蓝描边：次级但重要的按键（全选/试分全部/规则包等），
+        # 白底太素、实心又抢主按钮的戏
+        st.configure("Soft.TButton", background="#D7E6F8", foreground="#174D85",
+                     bordercolor="#9DC0E4", lightcolor="#D7E6F8",
+                     darkcolor="#D7E6F8", focuscolor="#D7E6F8",
+                     padding=(px(10), px(4)))
+        st.map("Soft.TButton",
+               background=[("disabled", "#EDF1F5"), ("pressed", "#BCD4EF"),
+                           ("active", "#C8DEF6")],
+               lightcolor=[("pressed", "#BCD4EF"), ("active", "#C8DEF6")],
+               darkcolor=[("pressed", "#BCD4EF"), ("active", "#C8DEF6")],
+               foreground=[("disabled", "#9BAAB8")],
+               bordercolor=[("active", "#7FA9D6")])
+
         # ---- 页签：选中项白底并往下压 2px，像贴在内容上 ----
         st.configure("TNotebook", background=BG, bordercolor=LINE,
                      borderwidth=px1, tabmargins=(px(2), px(3), px(2), 0))
@@ -793,12 +924,19 @@ class App:
         S = self.S
         f = ttk.Frame(root, padding=(px(10), px(7)), style="Card.TFrame")
         f.pack(fill="x", padx=px(8), pady=(px(6), px(6)))
+        # 语言开关直接放在界面上：中文界面显示「EN」，英文界面显示「中文」。
+        # 只挂在菜单里的话，不懂中文的人根本找不到「语言」那一项。
+        ttk.Button(f, text=("EN" if self.lang == ZH else "中文"),
+                   style="Soft.TButton",
+                   command=lambda: self.switch_lang(EN if self.lang == ZH else ZH)
+                   ).pack(side="right", padx=(px(6), 0))
         ttk.Label(f, text=S["lib_dir"]).pack(side="left")
         e = ttk.Entry(f, textvariable=self.dir_var)
         e.pack(side="left", fill="x", expand=True, padx=px(4))
         e.bind("<Return>", lambda _e: self.do_scan())
-        ttk.Button(f, text=S["browse"], command=self.pick_dir).pack(side="left")
-        ttk.Button(f, text=S["b_add_files"],
+        ttk.Button(f, text=S["browse"], style="Soft.TButton",
+                   command=self.pick_dir).pack(side="left")
+        ttk.Button(f, text=S["b_add_files"], style="Accent.TButton",
                    command=self.pick_files).pack(side="left", padx=(px(4), 0))
         ttk.Button(f, text=S["scan"], style="Accent.TButton",
                    command=self.do_scan).pack(side="left", padx=(px(4), 0))
@@ -836,7 +974,8 @@ class App:
                          (S["m_sel_none"], lambda: self.set_all(False)),
                          (S["m_invert"], self.invert_sel),
                          (S["m_sel_dup"], self.sel_dup)):
-            ttk.Button(bar, text=txt, command=cmd).pack(side="left", padx=(0, px(4)))
+            ttk.Button(bar, text=txt, style="Soft.TButton",
+                       command=cmd).pack(side="left", padx=(0, px(4)))
         ttk.Label(bar, text=S["lib_hint"], foreground=MUTED).pack(side="left", padx=px(6))
         self.info_var = tk.StringVar(value=S["lib_info"].format(0, 0))
         ttk.Label(bar, textvariable=self.info_var, foreground=MUTED).pack(side="right")
@@ -879,9 +1018,9 @@ class App:
                    command=lambda: self.set_rules(None)).pack(side="left", padx=px(4))
         bf2 = ttk.Frame(left)
         bf2.pack(side="bottom", fill="x", padx=px(8))
-        ttk.Button(bf2, text=S["b_imp_rules"],
+        ttk.Button(bf2, text=S["b_imp_rules"], style="Soft.TButton",
                    command=self.import_rules).pack(side="left")
-        ttk.Button(bf2, text=S["b_exp_rules"],
+        ttk.Button(bf2, text=S["b_exp_rules"], style="Soft.TButton",
                    command=self.export_rules).pack(side="left", padx=px(3))
         ttk.Button(bf2, text=S["b_edit_rules"],
                    command=self.edit_custom).pack(side="left")
@@ -938,11 +1077,11 @@ class App:
         # 内层宽度跟随画布（否则文字按请求宽度排版、右边被切）
         def _on_cv_conf(e):
             cv.itemconfigure(cv_win, width=e.width)
-            self.after(30, lambda: _sync(*cv.yview()))
+            self.root.after(30, lambda: _sync(*cv.yview()))
 
         def _on_inner_conf(_e):
             cv.configure(scrollregion=cv.bbox("all"))
-            self.after(30, lambda: _sync(*cv.yview()))
+            self.root.after(30, lambda: _sync(*cv.yview()))
 
         cv.bind("<Configure>", _on_cv_conf)
         inner.bind("<Configure>", _on_inner_conf)
@@ -977,6 +1116,7 @@ class App:
         ttk.Button(bar, text=S["b_preview"], style="Accent.TButton",
                    command=self.preview_clean).pack(side="left")
         self.btn_clean_apply = ttk.Button(bar, text=S["b_clean_apply"],
+                                          style="Go.TButton",
                                           command=self.start_clean)
         self.btn_clean_apply.pack(side="left", padx=(px(6), 0))
         ttk.Label(bar, text=S["clean_hint"], foreground="#666666").pack(side="left")
@@ -1013,6 +1153,7 @@ class App:
                                        command=self.preview_chap)
         self.btn_chap_try.pack(side="left")
         self.btn_chap_all = ttk.Button(top, text=S["b_try_all"],
+                                       style="Soft.TButton",
                                        command=self.preview_chap_all)
         self.btn_chap_all.pack(side="left", padx=(px(6), 0))
         pick = ttk.Frame(f)
@@ -1288,18 +1429,63 @@ class App:
         w = tk.Toplevel(self.root)
         w.title(title)
         _center_win(w, 640, 520)          # 说明窗同样按 DPR 缩放并居中
-        t = tk.Text(w, wrap="word", font=FONT, padx=px(10), pady=px(10))
+        # 按钮先占位：正文 expand=True 会把后 pack 的按钮挤成 0 高
+        ttk.Button(w, text=S["d_close"],
+                   command=w.destroy).pack(side="bottom", pady=px(8))
+        t = tk.Text(w, wrap="word", font=FONT, padx=px(12), pady=px(10),
+                    relief="flat", borderwidth=0, highlightthickness=0)
         t.insert("1.0", body)
         t.configure(state="disabled")
-        t.pack(fill="both", expand=True)
-        ttk.Button(w, text=S["d_close"], command=w.destroy).pack(pady=px(6))
+        t.pack(fill="both", expand=True, padx=px(6), pady=(px(6), 0))
 
     def show_about(self):
+        """版权与许可：MIT 全文、署名要求、第三方组件、免责。
+        用带滚动的窗口而不是 messagebox——内容长了 messagebox 会截断。"""
         S = self.S
-        messagebox.showinfo(
-            S["about_title"] % (APP_CN, APP_EN),
-            "%s %s %s\n\n%s\n\n%s\n\n%s"
-            % (APP_CN, APP_EN, APP_VER, S["about_what"], S["about_repo"], AUTHOR))
+        w = tk.Toplevel(self.root)
+        w.title(S["about_win"])
+        w.configure(bg=BG)
+        w.transient(self.root)
+        _center_win(w, 700, 600)
+
+        head = tk.Frame(w, bg=CARD, highlightthickness=1,
+                        highlightbackground=LINE)
+        head.pack(fill="x", padx=px(10), pady=(px(10), px(6)))
+        tk.Label(head, text=S["about_title"] % (APP_CN, APP_EN + " " + APP_VER),
+                 bg=CARD, fg=INK, font=FONT_B).pack(anchor="w", padx=px(12),
+                                                    pady=(px(9), px(1)))
+        tk.Label(head, text=S["about_sub"], bg=CARD, fg=MUTED,
+                 font=FONT_S).pack(anchor="w", padx=px(12), pady=(0, px(9)))
+
+        full = S["about_body"].format(ver=APP_VER)
+
+        # 底栏先 pack(side="bottom") 占位，再让正文 expand 吃掉剩余高度
+        bar = tk.Frame(w, bg=BG)
+        bar.pack(side="bottom", fill="x", padx=px(10), pady=px(10))
+        ttk.Button(bar, text=S["b_copy_about"], style="Soft.TButton",
+                   command=lambda: self._clip(full)).pack(side="left")
+        ttk.Button(bar, text=S["b_copy_mit"], style="Soft.TButton",
+                   command=lambda: self._clip(MIT_TEXT)).pack(side="left", padx=px(6))
+        ttk.Button(bar, text=S["d_close"],
+                   command=w.destroy).pack(side="right")
+
+        body = tk.Frame(w, bg=BG)
+        body.pack(fill="both", expand=True, padx=px(10))
+        txt = tk.Text(body, wrap="word", font=FONT, bg="#FFFFFF", fg=INK,
+                      relief="flat", borderwidth=0, highlightthickness=1,
+                      highlightbackground=LINE, highlightcolor=BLUE,
+                      padx=px(12), pady=px(10), spacing3=px(2))
+        sb = ttk.Scrollbar(body, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
+        txt.insert("1.0", full)
+        txt.configure(state="disabled")
+
+    def _clip(self, text):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.root.update_idletasks()
 
     # ------------------------------------------------------------ 书库
     def add_book(self, info):

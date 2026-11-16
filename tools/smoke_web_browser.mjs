@@ -48,7 +48,12 @@ try {
       errors.push("exception: " + (d.exception ? d.exception.description : d.text));
     } else if (m.method === "Log.entryAdded" && m.params.entry.level === "error") {
       const txt = m.params.entry.text || "";
-      if (/busuanzi/i.test(txt)) return;   // 第三方访问统计脚本加载噪音，不算应用错误
+      const url = m.params.entry.url || "";
+      if (/busuanzi|ibruce/i.test(txt) || /busuanzi|ibruce/i.test(url)) return;  // 访问计数器，离线必 404
+      // 离线/无网时第三方脚本的加载失败只走 Log 域，应用自身的异常走 Runtime.exceptionThrown，
+      // 所以这里可以安全地忽略「资源加载失败」，否则每次离线跑都会误报
+      if (/Failed to load resource/i.test(txt) &&
+          /ERR_FILE_NOT_FOUND|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION/i.test(txt)) return;
       errors.push("console.error: " + txt);
     }
   };
@@ -69,7 +74,7 @@ try {
 
   // 1. 初始渲染
   let r = await evalv("({rules:document.querySelectorAll('.rule').length, h2:document.querySelector('#pane0 h2').textContent, nav:document.querySelector('#stepNav .st b').textContent})");
-  ok("规则网格 9 条", r.val && r.val.rules === 9, JSON.stringify(r.err || r.val));
+  ok("规则网格 10 条", r.val && r.val.rules === 10, JSON.stringify(r.err || r.val));
   ok("中文标题渲染", r.val && /书库/.test(r.val.h2), r.err || (r.val && r.val.h2));
   ok("无初始化报错", errors.length === 0, errors.join(" | "));
 
@@ -167,10 +172,11 @@ try {
   })()`);
   console.log("  · 分章诊断:", JSON.stringify(dbg.val||dbg.err, null, 1));
   ok("分章 select 有书", dbg.val && dbg.val.n === 1 && dbg.val.selVal === "0", JSON.stringify(dbg.val||dbg.err));
-  // 样本含「书名/作者」元信息行 → 首章前形成「开篇」章（与桌面版 python 行为一致）
-  ok("分章识别出 5 章(开篇+4)", dbg.val && dbg.val.chs === 5, JSON.stringify(dbg.val));
+  // 样本含「书名/作者」元信息行：v1.4.0 起纯元信息的「开篇」不再单独成章，
+  // 所以这里是 4 章、首章就是正文第一个标题（与桌面版 python 行为一致）
+  ok("分章识别出 4 章", dbg.val && dbg.val.chs === 4, JSON.stringify(dbg.val));
   let titles = await evalv(`window._lastTry ? window._lastTry.chs.map(c=>c.t) : []`);
-  ok("首章为开篇(含元信息)", titles.val && titles.val[0] === "开篇", JSON.stringify(titles.val));
+  ok("首章是正文标题而非开篇", titles.val && titles.val[0] === "序章 引子", JSON.stringify(titles.val));
   ok("含序章与第3章", titles.val && titles.val.includes("序章 引子") && titles.val.includes("第3章 终章"), JSON.stringify(titles.val));
   if (dbg.val && dbg.val.chs > 0) {
     await evalv(`window.applyChapters()`);

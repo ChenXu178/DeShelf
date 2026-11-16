@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.5.1** · 两处收尾：**①「关于」升级为「版权与许可」窗口**——MIT 全文、署名要求的逐条说明、第三方组件清单、免责条款都在里面，可一键「复制说明全文」或「复制 MIT 全文」。**②主要按键上色**——次级但常用的按键（全选/反选/试分全部/导入导出规则/浏览）改成浅蓝底，主操作仍是实心蓝、执行写盘仍是实心绿，一眼能分出主次。**③顶栏右侧加了语言开关**——中文界面显示 `EN`、英文界面显示 `中文`，不用再去菜单里找「语言」两个字（菜单项也改成了双语「语言 Language」）。
+>
 > **v1.5.0** · 桌面版两件事：**①「添加文件…」**——不必先选整个目录，直接挑几个 txt 进书库（网页版早就有的入口，现在补上了）；可选文件不必在书库目录里，导出的相对路径会显示成 `..\` 开头；手滑加错了，右键「从列表移除（不删文件）」。**②界面重做皮肤**——原来的灰底 + 凹陷分组框是 tkinter 默认主题的老观感，现在换成浅底卡片 + 1px 描边 + 分层按钮（主操作实心蓝、执行实心绿），表格行高与表头也重新配过色。功能逻辑一行没动。
 
 > **v1.4.0** · 七个改进：**①规则列表可滚动**（窗口小 / 系统缩放 125% 时最后几条不再被裁掉）；**②EPUB 封面**——自动把同目录下的同名图片打包当封面，没有图片就生成一张米色宣纸底的默认封面（竖排楷体书名 + 作者）；**③四套版面主题**（传统书籍 / 现代阅读 / 紧凑省纸 / 大字易读）；**④清洗规则导入导出**——规则包是 JSON，可分享、可自己加正则，不必改代码；**⑤每本书单独的分章正则**（③页「本书规则」，留空用全局）；**⑥高分屏适配**（125%/150% 缩放下界面不再变小）；**⑦修掉几处问题**：批量试分不再卡界面、书库「章节」列从空变成实际章数、书名作者识别更准（方括号作者、多字段同行、隐藏字符）、开头的「书名：/作者：」不再单独占一章。
@@ -100,6 +102,18 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 因使用本工具产生的任何版权或法律问题由使用者自行承担。软件按"现状"提供，
 作者不对数据丢失或损坏承担责任；使用"原地覆盖"前请先确认备份。
 
+### 许可与署名
+
+本项目以 [MIT License](LICENSE) 发布：可以自由使用、修改、合并、再分发（含商业用途），不用付费，也不用事先告知。
+
+**唯一硬性条件：保留作者署名。** 任何副本或实质性部分都必须保留版权声明与完整的 MIT 许可文本——也就是仓库根目录的 `LICENSE`。你可以改代码、改软件名、闭源分发，但不能删掉 `Copyright (c) 2026 Lanlan Eternal`，也不能改成自己的名字后声称原创。二次分发（含打包进你自己的产品）时，请在「关于」页或随附文档里保留本署名与 MIT 全文。
+
+引用时建议注明：`卷帙 DeShelf © 2026 永远的兰兰 (Lanlan Eternal)，MIT License`。
+
+第三方组件见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)：Python 3.12（PSF License）、Tcl/Tk（BSD-style）、Pillow（MIT-CMU）、OpenCC 简繁对照表（Apache-2.0，仅用于比对）。封面所用楷体是 Windows 自带字体，本项目不打包、不分发任何字体文件。
+
+程序内「帮助 → 关于」有同一份说明，可一键复制全文或 MIT 原文。
+
 ### 卷帙 Web 版（同一份 HTML · 本地或在线双栖）
 
 除桌面 EXE 外，卷帙还提供**单文件 HTML 版** `DeShelf.html`（78 KB，单击即用、零依赖），
@@ -149,6 +163,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.5.1** · Two finishing touches: **① “About” became a “Copyright & License” window** — the full MIT text, a point-by-point explanation of the attribution requirement, the third-party list and the disclaimer, with one-click “Copy the full text” / “Copy the MIT text”. **② Primary buttons got colour** — secondary-but-frequent actions (select all/invert/try all/import-export rules/browse) now use a light blue fill, while the primary action stays solid blue and the write action stays solid green. **③ A language switch now sits at the right end of the top bar** — it reads `EN` in the Chinese UI and `中文` in the English one, so nobody has to hunt for the word “Language” in a menu (the menu item is bilingual too).
 >
 > **v1.5.0** · Two desktop-only changes: **① “Add files…”** — pick a few TXT files straight into the library instead of scanning a whole folder (the web build already had this); files outside the library folder are fine, their relative path just starts with `..\`, and a mis-click can be undone via right-click → “Remove from list (file kept)”. **② New skin** — the old grey panels with sunken group boxes were the stock tkinter look; now it is light cards with 1px borders and layered buttons (accent blue for primary, green for the run action), plus retuned table row height and headers. No behaviour changed.
 
@@ -244,6 +260,18 @@ download or upload anything, and neither provides nor stores any book content �
 splits and converts files that already exist on the user's machine. Users are responsible for
 ensuring they have the legal right to process their files. Provided "as is"; the author is not
 liable for any data loss. Back up before using in-place overwrite.
+
+### License & attribution
+
+Released under the [MIT License](LICENSE): use, copy, modify, merge and redistribute freely, including commercially — no fee, and no need to ask first.
+
+**The one hard requirement is attribution.** Every copy or substantial portion must retain the copyright notice and the full MIT text (the `LICENSE` file at the repository root). You may change the code, rename the app or ship it closed-source, but you may not remove `Copyright (c) 2026 Lanlan Eternal`, and you may not put your own name on it and claim it as original work. When redistributing (including bundling it into your own product), keep this attribution and the MIT text in the About screen or the bundled docs.
+
+Suggested credit: `DeShelf © 2026 Lanlan Eternal, MIT License`.
+
+Third-party components are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md): Python 3.12 (PSF), Tcl/Tk (BSD-style), Pillow (MIT-CMU), OpenCC character tables (Apache-2.0, comparison only). The cover uses KaiTi shipped with Windows — no font file is bundled or redistributed.
+
+The in-app “Help → About” screen carries the same text, with one-click copy for the full notice or the MIT wording.
 
 ### DeShelf Web (single-file HTML · local or online)
 
