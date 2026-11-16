@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.5.0** · 桌面版两件事：**①「添加文件…」**——不必先选整个目录，直接挑几个 txt 进书库（网页版早就有的入口，现在补上了）；可选文件不必在书库目录里，导出的相对路径会显示成 `..\` 开头；手滑加错了，右键「从列表移除（不删文件）」。**②界面重做皮肤**——原来的灰底 + 凹陷分组框是 tkinter 默认主题的老观感，现在换成浅底卡片 + 1px 描边 + 分层按钮（主操作实心蓝、执行实心绿），表格行高与表头也重新配过色。功能逻辑一行没动。
+
 > **v1.4.0** · 七个改进：**①规则列表可滚动**（窗口小 / 系统缩放 125% 时最后几条不再被裁掉）；**②EPUB 封面**——自动把同目录下的同名图片打包当封面，没有图片就生成一张米色宣纸底的默认封面（竖排楷体书名 + 作者）；**③四套版面主题**（传统书籍 / 现代阅读 / 紧凑省纸 / 大字易读）；**④清洗规则导入导出**——规则包是 JSON，可分享、可自己加正则，不必改代码；**⑤每本书单独的分章正则**（③页「本书规则」，留空用全局）；**⑥高分屏适配**（125%/150% 缩放下界面不再变小）；**⑦修掉几处问题**：批量试分不再卡界面、书库「章节」列从空变成实际章数、书名作者识别更准（方括号作者、多字段同行、隐藏字符）、开头的「书名：/作者：」不再单独占一章。
 >
 > **v1.3.4** · 新增清洗规则「**简繁重复行（保留简体）**」——下载的书每章同时有简体和繁体两份时，一键删掉繁体那份：相邻成对、整章重复都能认，标题这类没有字形差异的行也会跟着整块删掉；纯繁体书、简体书里只引用一句繁体，一个字都不动。**默认关闭**，需要时在②勾选，先预览再应用。导出面板另加「另存时加后缀」与「原地覆盖原文件（先备份 `.bak`）」，不再堆一堆 `(1)(2)` 副本。
@@ -148,6 +150,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
 >
+> **v1.5.0** · Two desktop-only changes: **① “Add files…”** — pick a few TXT files straight into the library instead of scanning a whole folder (the web build already had this); files outside the library folder are fine, their relative path just starts with `..\`, and a mis-click can be undone via right-click → “Remove from list (file kept)”. **② New skin** — the old grey panels with sunken group boxes were the stock tkinter look; now it is light cards with 1px borders and layered buttons (accent blue for primary, green for the run action), plus retuned table row height and headers. No behaviour changed.
+
 > **v1.4.0** · Seven improvements: the **rule list scrolls** (the last rules are no longer clipped on small windows or at 125% scaling); **EPUB covers** — a same-named image in the same folder is packed as the cover, otherwise a default rice-paper cover with the vertical title is generated; **four layout themes** (classic print / modern reading / compact / large print); **rule packs** import & export as JSON, so you can add your own regexes without touching code; **per-book chapter regex** (the “this book” field in step ③); **HiDPI awareness**; and fixes — batch splitting no longer freezes the window, the chapter column shows real counts, book title/author detection is more accurate, and a leading “Title:/Author:” header no longer becomes its own chapter.
 >
 > **v1.3.4** · new cleaning rule **“Duplicate simplified/traditional lines”** — when a book carries both a simplified and a traditional copy of every chapter, drop the traditional one in a single pass. Alternating lines and whole duplicated chapters both work, and lines with no glyph difference (chapter titles) go with their block; traditional-only books, and a lone traditional quotation inside a simplified book, are left completely untouched. **Off by default** — tick it in step ②, preview first, then apply. The export panel also gains “suffix when saving as” and “overwrite originals (with `.bak` backup)” so you stop piling up `(1)(2)` copies.

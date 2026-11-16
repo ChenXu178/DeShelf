@@ -26,9 +26,21 @@ APP_CN = jzcore.APP_CN
 APP_EN = jzcore.APP_EN
 APP_VER = jzcore.APP_VER
 AUTHOR = "© 永远的兰兰 · Lanlan Eternal"
-BG = "#F0F0F0"
+BG = "#EDEFF1"
+CARD = "#FAFBFC"
+LINE = "#C9CCD1"
+INK = "#232629"
+MUTED = "#5F6670"
+BLUE = "#2F6FB0"
+BLUE_D = "#24598F"
+GREEN = "#2E8B57"
+GREEN_D = "#237043"
+RED = "#C0392B"
+HOVER = "#E8EBEF"
+PRESS = "#DDE2E7"
 FONT = ("Microsoft YaHei UI", 9)
 FONT_S = ("Microsoft YaHei UI", 8)
+FONT_B = ("Microsoft YaHei UI", 9, "bold")
 MONO = ("Consolas", 9)
 
 # ---- 开屏海报配色（书卷风深底 + 金线）----
@@ -150,6 +162,13 @@ TEXTS = {
         "lang_busy_msg": "请等待当前任务完成后再切换语言。",
         # 顶部栏
         "lib_dir": "书库目录：", "browse": "浏览…", "scan": "扫描",
+        "b_add_files": "添加文件…", "d_pick_files": "选择要加入书库的文本文件",
+        "b_rescan": "重新扫描",
+        "flt_txt": "文本文件", "flt_all": "所有文件",
+        "st_add_files": "已添加 {0} 个文件{1}",
+        "log_add_files": "  已添加 {0} 个文件；跳过 {1} 个（重复或读不了）",
+        "log_root_fallback": "  未选书库目录，已改用该文件所在目录：{0}",
+        "log_add_skip_only": "（跳过 {0} 个）",
         "stop": "停止",
         # 页标签
         "tab1": " 1 扫描入库 ", "tab2": " 2 批量清洗 ",
@@ -271,6 +290,8 @@ TEXTS = {
         # 右键菜单
         "m_open_loc": "打开文件位置", "m_open_note": "用记事本打开",
         "m_copy_path": "复制完整路径",
+        "m_remove_book": "从列表移除（不删文件）",
+        "log_book_removed": "  已从列表移除：{0}",
         # 通用
         "unnamed": "未命名",
         # 开屏
@@ -288,6 +309,13 @@ TEXTS = {
         "lang_busy": "Busy",
         "lang_busy_msg": "Please wait for the current task to finish before switching language.",
         "lib_dir": "Library folder:", "browse": "Browse…", "scan": "Scan",
+        "b_add_files": "Add files…", "d_pick_files": "Choose text files to add",
+        "b_rescan": "Rescan",
+        "flt_txt": "Text files", "flt_all": "All files",
+        "st_add_files": "Added {0} file(s){1}",
+        "log_add_files": "  Added {0} file(s); skipped {1} (duplicate or unreadable)",
+        "log_root_fallback": "  No library folder set — using the file's folder: {0}",
+        "log_add_skip_only": " ({0} skipped)",
         "stop": "Stop",
         "tab1": " 1 Scan Library ", "tab2": " 2 Batch Clean ",
         "tab3": " 3 Split Chapters ", "tab4": " 4 Export ",
@@ -400,6 +428,8 @@ TEXTS = {
         "help_text": HELP_EN, "disclaimer_text": DISC_EN,
         "m_open_loc": "Open file location", "m_open_note": "Open with Notepad",
         "m_copy_path": "Copy full path",
+        "m_remove_book": "Remove from list (file kept)",
+        "log_book_removed": "  Removed from list: {0}",
         "unnamed": "Untitled",
         "sp_tag": "Scan · Clean · Split · Export",
         "sp_bottom": "{0} · Fully offline · Click or press any key to skip",
@@ -590,22 +620,139 @@ class App:
 
     # ------------------------------------------------------------ 界面
     def _style(self):
+        """卡片式扁平皮肤。
+
+        tkinter 画不了圆角和阴影，能做的是把「凹陷灰框 + 一样重的按钮」换成
+        「浅底 + 1px 描边 + 分层按钮」，观感立刻从 Win98 拉到现代系统工具。
+        色值故意和网页版同一套，两端看起来才像同一个软件。
+        """
         st = ttk.Style()
         try:
             st.theme_use("clam")
         except tk.TclError:
             pass
-        st.configure(".", background=BG, font=FONT)
-        st.configure("TFrame", background=BG)
-        st.configure("TLabel", background=BG)
-        st.configure("TLabelframe", background=BG)
-        st.configure("TLabelframe.Label", background=BG)
-        st.configure("TCheckbutton", background=BG)
-        st.configure("TRadiobutton", background=BG)
-        st.configure("TNotebook", background=BG)
-        st.configure("Treeview", rowheight=px(23))
-        st.configure("Accent.TButton", background="#4A7EBB", foreground="white")
-        st.configure("Go.TButton", background="#2E7D32", foreground="white")
+        px1 = px(1)
+        st.configure(".", background=BG, font=FONT, foreground=INK)
+
+        # ---- 容器 ----
+        for name, bg in (("TFrame", BG), ("Card.TFrame", CARD),
+                         ("TLabel", BG), ("Card.TLabel", CARD),
+                         ("TCheckbutton", BG), ("Card.TCheckbutton", CARD),
+                         ("TRadiobutton", BG), ("Card.TRadiobutton", CARD)):
+            st.configure(name, background=bg)
+        st.configure("TLabel", foreground=INK)
+        st.configure("Muted.TLabel", foreground=MUTED)
+        st.configure("CardMuted.TLabel", background=CARD, foreground=MUTED)
+        st.configure("Title.TLabel", background=CARD, foreground=INK, font=FONT_B)
+
+        # ---- 分组框：去凹槽，改成 1px 描边的卡片 ----
+        st.configure("Card.TLabelframe", background=CARD, bordercolor=LINE,
+                     borderwidth=px1, relief="solid")
+        st.configure("Card.TLabelframe.Label", background=CARD, foreground=MUTED,
+                     font=FONT_S)
+
+        # ---- 按钮：默认描边白底，主按钮实心蓝，行动按钮实心绿 ----
+        st.configure("TButton", background="#FFFFFF", foreground=INK,
+                     bordercolor="#C3C8CE", lightcolor="#FFFFFF",
+                     darkcolor="#FFFFFF", focuscolor="#FFFFFF",
+                     padding=(px(10), px(4)), relief="flat",
+                     borderwidth=px1)
+        st.map("TButton",
+               background=[("disabled", "#F2F3F5"), ("pressed", PRESS),
+                           ("active", HOVER)],
+               lightcolor=[("pressed", PRESS), ("active", HOVER)],
+               darkcolor=[("pressed", PRESS), ("active", HOVER)],
+               foreground=[("disabled", "#A8ADB4")],
+               bordercolor=[("active", "#B4B9BF")])
+
+        for name, bg, bg_d in (("Accent.TButton", BLUE, BLUE_D),
+                               ("Go.TButton", GREEN, GREEN_D)):
+            st.configure(name, background=bg, foreground="#FFFFFF",
+                         bordercolor=bg_d, lightcolor=bg, darkcolor=bg,
+                         focuscolor=bg, padding=(px(14), px(5)))
+            st.map(name,
+                   background=[("disabled", "#B9C4CF"), ("pressed", bg_d),
+                               ("active", bg_d)],
+                   foreground=[("disabled", "#F0F2F4")])
+
+        # ---- 页签：选中项白底并往下压 2px，像贴在内容上 ----
+        st.configure("TNotebook", background=BG, bordercolor=LINE,
+                     borderwidth=px1, tabmargins=(px(2), px(3), px(2), 0))
+        st.configure("TNotebook.Tab", background="#E3E6EA", foreground=MUTED,
+                     bordercolor=LINE, padding=(px(14), px(5)),
+                     lightcolor="#E3E6EA", darkcolor="#E3E6EA")
+        st.map("TNotebook.Tab",
+               background=[("selected", CARD), ("active", "#EDEFF2")],
+               foreground=[("selected", INK)],
+               expand=[("selected", (0, 0, 0, px(2)))])
+
+        # ---- 表格 ----
+        st.configure("Treeview", background=CARD, fieldbackground=CARD,
+                     foreground=INK, rowheight=px(26), bordercolor=LINE,
+                     borderwidth=px1, font=FONT, lightcolor=LINE, darkcolor=LINE)
+        st.configure("Treeview.Heading", background="#E7EAED", foreground="#3C4147",
+                     font=FONT_B, relief="flat", padding=(px(6), px(5)),
+                     bordercolor=LINE)
+        st.map("Treeview.Heading", background=[("active", "#DFE3E7")])
+        st.map("Treeview", background=[("selected", "#D6E4F2")],
+               foreground=[("selected", INK)])
+
+        # ---- 输入类 ----
+        st.configure("TEntry", fieldbackground="#FFFFFF", foreground=INK,
+                     bordercolor=LINE, lightcolor="#FFFFFF", darkcolor="#FFFFFF",
+                     insertcolor=INK, padding=(px(6), px(3)))
+        st.map("TEntry", bordercolor=[("focus", BLUE)],
+               lightcolor=[("focus", BLUE)])
+        st.configure("TCombobox", fieldbackground="#FFFFFF", background=CARD,
+                     foreground=INK, bordercolor=LINE, arrowcolor=MUTED,
+                     padding=(px(5), px(3)))
+        st.map("TCombobox", bordercolor=[("focus", BLUE)],
+               fieldbackground=[("readonly", "#FFFFFF")],
+               foreground=[("readonly", INK)])
+        st.configure("TSpinbox", fieldbackground="#FFFFFF", bordercolor=LINE,
+                     arrowcolor=MUTED, padding=(px(4), px(3)))
+
+        # ---- 进度条 / 滚动条 / 分隔线 ----
+        st.configure("TProgressbar", troughcolor="#E3E6EA", background=BLUE,
+                     bordercolor=LINE, lightcolor=BLUE, darkcolor=BLUE,
+                     thickness=px(10))
+        st.configure("TScrollbar", background="#D3D7DC", troughcolor=BG,
+                     bordercolor=BG, arrowcolor=MUTED, width=px(12),
+                     lightcolor="#D3D7DC", darkcolor="#D3D7DC")
+        st.map("TScrollbar", background=[("active", "#C3C8CE")])
+        st.configure("TSeparator", background=LINE)
+
+        # 下拉列表（这是原生 Listbox，只能走 option 数据库）
+        try:
+            self.root.option_add("*TCombobox*Listbox.background", "#FFFFFF")
+            self.root.option_add("*TCombobox*Listbox.foreground", INK)
+            self.root.option_add("*TCombobox*Listbox.selectBackground", BLUE)
+            self.root.option_add("*TCombobox*Listbox.selectForeground", "#FFFFFF")
+            self.root.option_add("*TCombobox*Listbox.borderWidth", px1)
+        except tk.TclError:
+            pass
+
+    def _cardify(self, w):
+        """卡片内的 ttk 控件切到 Card.* 变体，否则灰底方块会糊在白卡上。"""
+        try:
+            kids = w.winfo_children()
+        except tk.TclError:
+            return
+        for c in kids:
+            cls = c.winfo_class()
+            if cls in ("Frame", "Label", "Checkbutton", "Radiobutton"):
+                try:
+                    cur = str(c.cget("style") or "")
+                except tk.TclError:
+                    cur = "x"
+                if not cur:
+                    c.configure(style="Card." + cls)
+            elif cls == "Canvas":
+                try:
+                    c.configure(bg=CARD, highlightthickness=0)
+                except tk.TclError:
+                    pass
+            self._cardify(c)
 
     def _menu(self):
         S = self.S
@@ -644,19 +791,22 @@ class App:
 
     def _top(self, root):
         S = self.S
-        f = ttk.Frame(root, padding=(px(8), px(6)))
-        f.pack(fill="x")
+        f = ttk.Frame(root, padding=(px(10), px(7)), style="Card.TFrame")
+        f.pack(fill="x", padx=px(8), pady=(px(6), px(6)))
         ttk.Label(f, text=S["lib_dir"]).pack(side="left")
         e = ttk.Entry(f, textvariable=self.dir_var)
         e.pack(side="left", fill="x", expand=True, padx=px(4))
         e.bind("<Return>", lambda _e: self.do_scan())
         ttk.Button(f, text=S["browse"], command=self.pick_dir).pack(side="left")
+        ttk.Button(f, text=S["b_add_files"],
+                   command=self.pick_files).pack(side="left", padx=(px(4), 0))
         ttk.Button(f, text=S["scan"], style="Accent.TButton",
                    command=self.do_scan).pack(side="left", padx=(px(4), 0))
-        ttk.Button(f, text=S["m_rescan_fresh"],
+        ttk.Button(f, text=S["b_rescan"],
                    command=lambda: self.do_scan(fresh=True)).pack(side="left", padx=px(4))
         self.btn_stop = ttk.Button(f, text=S["stop"], command=self.do_stop, state="disabled")
         self.btn_stop.pack(side="left")
+        self._cardify(f)
 
     def _tabs(self, root):
         S = self.S
@@ -681,19 +831,19 @@ class App:
         S = self.S
         f = self.tab_lib
         bar = ttk.Frame(f)
-        bar.pack(fill="x", pady=(px(6), px(4)))
+        bar.pack(fill="x", padx=px(2), pady=(px(8), px(6)))
         for txt, cmd in ((S["m_sel_all"], lambda: self.set_all(True)),
                          (S["m_sel_none"], lambda: self.set_all(False)),
                          (S["m_invert"], self.invert_sel),
                          (S["m_sel_dup"], self.sel_dup)):
-            ttk.Button(bar, text=txt, command=cmd).pack(side="left", padx=px(2))
-        ttk.Label(bar, text=S["lib_hint"], foreground="#666666").pack(side="left")
+            ttk.Button(bar, text=txt, command=cmd).pack(side="left", padx=(0, px(4)))
+        ttk.Label(bar, text=S["lib_hint"], foreground=MUTED).pack(side="left", padx=px(6))
         self.info_var = tk.StringVar(value=S["lib_info"].format(0, 0))
-        ttk.Label(bar, textvariable=self.info_var).pack(side="right")
+        ttk.Label(bar, textvariable=self.info_var, foreground=MUTED).pack(side="right")
 
         cols = ("sel", "title", "author", "chars", "enc", "chap", "size", "rel")
         wrap = ttk.Frame(f)
-        wrap.pack(fill="both", expand=True)
+        wrap.pack(fill="both", expand=True, padx=px(2), pady=(0, px(4)))
         self.tv = ttk.Treeview(wrap, columns=cols, show="headings", selectmode="extended")
         heads = {"sel": "✓", "title": S["col_title"], "author": S["col_author"],
                  "chars": S["col_chars"], "enc": S["col_enc"], "chap": S["col_chap"],
@@ -715,7 +865,7 @@ class App:
         S = self.S
         f = self.tab_clean
         left = ttk.LabelFrame(f, text=S["grp_rules"].format(len(jzcore.RULES)),
-                              width=px(304))
+                              width=px(304), style="Card.TLabelframe")
         left.pack(side="left", fill="y", padx=(px(6), px(4)), pady=px(6))
         left.pack_propagate(False)
 
@@ -818,6 +968,7 @@ class App:
 
         _bind_wheel(cv)
         _bind_wheel(inner)
+        self._cardify(left)
 
         right = ttk.Frame(f)
         right.pack(side="left", fill="both", expand=True, padx=px(4), pady=px(6))
@@ -837,15 +988,17 @@ class App:
         self.txt_after = self._mk_text(box, S["col_post"])
 
     def _mk_text(self, parent, title):
-        f = ttk.LabelFrame(parent, text=title)
+        f = ttk.LabelFrame(parent, text=title, style="Card.TLabelframe")
         f.pack(side="left", fill="both", expand=True, padx=px(2))
         # width 必须给小值：pack 按顺序满足请求宽度，80 字符会吃满空间导致两栏不等分
         t = tk.Text(f, wrap="none", font=MONO, width=30, height=10, bg="#FFFFFF",
-                    relief="solid", borderwidth=1)
+                    relief="flat", borderwidth=0, highlightthickness=1,
+                    highlightbackground=LINE, highlightcolor=BLUE)
         sb = ttk.Scrollbar(f, orient="vertical", command=t.yview)
         t.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        t.pack(fill="both", expand=True)
+        sb.pack(side="right", fill="y", padx=(0, px(4)), pady=px(4))
+        t.pack(fill="both", expand=True, padx=px(4), pady=px(4))
+        self._cardify(f)
         return t
 
     def _build_chap(self):
@@ -907,13 +1060,13 @@ class App:
     def _build_out(self):
         S = self.S
         f = self.tab_out
-        g1 = ttk.LabelFrame(f, text=S["grp_where"])
+        g1 = ttk.LabelFrame(f, text=S["grp_where"], style="Card.TLabelframe")
         g1.pack(fill="x", padx=px(8), pady=(px(10), px(6)))
         for v, t in (("new", S["r_new"]), ("inplace", S["r_inplace"]), ("none", S["r_none"])):
             ttk.Radiobutton(g1, text=t, value=v, variable=self.mode_var,
                             command=self.sync_out).pack(anchor="w", padx=px(10), pady=px(2))
 
-        g2 = ttk.LabelFrame(f, text=S["grp_fmt"])
+        g2 = ttk.LabelFrame(f, text=S["grp_fmt"], style="Card.TLabelframe")
         g2.pack(fill="x", padx=px(8), pady=px(6))
         row = ttk.Frame(g2)
         row.pack(fill="x", padx=px(10), pady=px(4))
@@ -941,7 +1094,7 @@ class App:
         self.cb_theme.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
         self.cb_cover.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
 
-        g3 = ttk.LabelFrame(f, text=S["grp_out"])
+        g3 = ttk.LabelFrame(f, text=S["grp_out"], style="Card.TLabelframe")
         g3.pack(fill="x", padx=px(8), pady=px(6))
         r = ttk.Frame(g3)
         r.pack(fill="x", padx=px(10), pady=px(6))
@@ -956,6 +1109,8 @@ class App:
         self.pb.pack(side="left", fill="x", expand=True, padx=px(10))
         ttk.Label(f, text=S["out_note"],
                   foreground="#777777", font=FONT_S).pack(anchor="w", padx=px(8))
+        for g in (g1, g2, g3):
+            self._cardify(g)
 
     def _restore_epub_opts(self):
         """按配置恢复主题/封面选择（配置里存 id，界面上显示名字）。"""
@@ -995,20 +1150,27 @@ class App:
 
     def _log(self, root):
         S = self.S
-        f = ttk.LabelFrame(root, text=S["grp_log"], height=px(130))
+        f = ttk.LabelFrame(root, text=S["grp_log"], height=px(130),
+                           style="Card.TLabelframe")
         f.pack(fill="x", padx=px(8), pady=(0, px(4)))
         f.pack_propagate(False)
         self.logbox = tk.Text(f, height=7, font=FONT_S, bg="#FFFFFF",
-                              relief="solid", borderwidth=1)
+                              relief="flat", borderwidth=0, highlightthickness=1,
+                              highlightbackground=LINE, highlightcolor=BLUE)
         sb = ttk.Scrollbar(f, orient="vertical", command=self.logbox.yview)
         self.logbox.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        self.logbox.pack(fill="both", expand=True)
+        sb.pack(side="right", fill="y", padx=(0, px(4)), pady=px(4))
+        self.logbox.pack(fill="both", expand=True, padx=px(4), pady=px(4))
+        self._cardify(f)
 
     def _status(self, root):
-        ttk.Label(root, textvariable=self.status_var, anchor="w",
-                  relief="sunken",
-                  padding=(px(6), px(2))).pack(fill="x", padx=px(8), pady=(0, px(6)))
+        """状态栏：不用 sunken（那是 3D 凹槽感），改成一条细横线压住。"""
+        bar = ttk.Frame(root)
+        bar.pack(fill="x", padx=px(8), pady=(0, px(6)))
+        ttk.Separator(bar, orient="horizontal").pack(fill="x", pady=(0, px(3)))
+        ttk.Label(bar, textvariable=self.status_var, anchor="w",
+                  foreground=MUTED, font=FONT_S,
+                  padding=(px(2), 0)).pack(fill="x")
 
     # ------------------------------------------------------------ 基础操作
     def log(self, msg):
@@ -1252,7 +1414,24 @@ class App:
         m.add_separator()
         m.add_command(label=S["m_copy_path"],
                       command=lambda: self.copy_path(b["path"]))
+        m.add_separator()
+        m.add_command(label=S["m_remove_book"],
+                      command=lambda: self.remove_book(b))
         m.tk_popup(event.x_root, event.y_root)
+
+    def remove_book(self, b):
+        """只从列表里移除，不动磁盘文件（手滑添加的文件靠这个收拾）。"""
+        S = self.S
+        try:
+            self.books.remove(b)
+        except ValueError:
+            return
+        self.reload_rows()
+        self.mark_dup()
+        d = self.dir_var.get().strip()
+        if d and os.path.isdir(d):
+            self.save_index_now(d)
+        self.log(S["log_book_removed"].format(b.get("title") or b.get("path", "")))
 
     def open_folder(self, path):
         try:
@@ -1291,6 +1470,65 @@ class App:
             messagebox.showerror(S["d_export_fail"], str(e))
 
     # ------------------------------------------------------------ 扫描
+    def pick_files(self):
+        """单独挑几个 txt 进书库，不必先选目录整目录扫（对齐网页版「选择 TXT 文件」）。"""
+        S = self.S
+        if self.busy:
+            return
+        ps = filedialog.askopenfilenames(
+            title=S["d_pick_files"],
+            filetypes=[(S["flt_txt"], "*.txt *.text"), (S["flt_all"], "*.*")])
+        if not ps:
+            return
+        self.add_files(list(ps))
+
+    def add_files(self, paths):
+        S = self.S
+        root = self.dir_var.get().strip()
+        if not root or not os.path.isdir(root):
+            root = os.path.dirname(os.path.abspath(paths[0]))
+            self.dir_var.set(root)
+            self.log(S["log_root_fallback"].format(root))
+        have = set()
+        for b in self.books:
+            try:
+                have.add(os.path.normcase(os.path.abspath(b["path"])))
+            except KeyError:
+                pass
+        added = skipped = 0
+        for p in paths:
+            ap = os.path.abspath(p)
+            if os.path.normcase(ap) in have:
+                skipped += 1
+                continue
+            try:
+                info = jzcore.scan_file(ap)
+            except Exception as e:
+                self.log(S["log_skip"].format(os.path.basename(p), e))
+                skipped += 1
+                continue
+            info["rel"] = os.path.relpath(ap, root)
+            info["sel"] = True
+            self.add_book(info)
+            have.add(os.path.normcase(ap))
+            added += 1
+        if added:
+            self.mark_dup()
+            self.save_index_now(root)
+        self.log(S["log_add_files"].format(added, skipped))
+        extra = S["log_add_skip_only"].format(skipped) if skipped and not added else ""
+        self.status_var.set(S["st_add_files"].format(added, extra))
+
+    def save_index_now(self, root):
+        """立刻落盘索引：手动添加/删除书籍后，下次打开不用重扫也能看到。"""
+        try:
+            jzcore.save_index(root, {
+                "root": root, "scanned": time.time(),
+                "books": [{k: v for k, v in b.items() if k != "path"}
+                          for b in self.books]})
+        except OSError:
+            pass
+
     def do_scan(self, fresh=False):
         S = self.S
         d = self.dir_var.get().strip()
