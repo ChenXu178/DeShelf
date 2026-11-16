@@ -223,6 +223,36 @@ try {
   ok("导出完成无失败", r.val && r.val.out && /成功 1 · 失败 0/.test(r.val.out) && r.val.rows >= 1 && !r.val.err, JSON.stringify(r.err || r.val));
   ok("结果行状态正常", r.val && /epub/i.test(r.val.st), JSON.stringify(r.val));
 
+  // 8b. 「常用写法」窗口：8 条模板，能填进全局正则 / 本书专用
+  r = await evalv(`(async () => {
+    window.goStep(2);
+    await new Promise(r2=>setTimeout(r2,250));
+    document.getElementById('chapReHelp').click();
+    await new Promise(r2=>setTimeout(r2,250));
+    const rows = document.querySelectorAll('.dlg tbody tr').length;
+    const radios = document.querySelectorAll('.dlg input[name=tplsel]').length;
+    document.querySelectorAll('.dlg input[name=tplsel]')[1].checked = true;   /* 第一折 */
+    document.querySelector('.dlg [data-fill=global]').click();
+    await new Promise(r2=>setTimeout(r2,200));
+    const g = document.getElementById('chapRegex').value;
+    const closed = !document.querySelector('.dlg');
+    document.getElementById('chapReHelp').click();
+    await new Promise(r2=>setTimeout(r2,200));
+    document.querySelectorAll('.dlg input[name=tplsel]')[0].checked = true;
+    document.querySelector('.dlg [data-fill=book]').click();
+    await new Promise(r2=>setTimeout(r2,200));
+    const bk = document.getElementById('bookRegex').value;
+    const onBook = !!(window.chapBookObj && window.chapBookObj().chapRe);
+    /* 收尾：两格清空，别留给下次打开 */
+    document.getElementById('chapRegex').value = '';
+    document.getElementById('bookRegex').value = '';
+    window.storeBookRegex();
+    return {rows, radios, g, closed, bk, onBook};
+  })()`);
+  ok("常用写法列出 8 条模板", r.val && r.val.rows === 8 && r.val.radios === 8, JSON.stringify(r.err || r.val));
+  ok("模板填入全局正则生效", r.val && /折/.test(r.val.g) && r.val.closed, JSON.stringify(r.val));
+  ok("模板填入本书专用生效", r.val && /章/.test(r.val.bk) && r.val.onBook, JSON.stringify(r.val));
+
   // 9. 全部捕获的 JS 错误汇总
   ok("全程无 JS 运行时错误", errors.length === 0, errors.join(" | "));
 

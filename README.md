@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.5.4** · 把「自定义章节正则」讲明白——不再是一句话打发：**①分章页多了「常用写法」按钮**，窗口里按「书的写法」列了 8 条现成规则（第X章/第X折/卷一第X回/纯数字/中文序号/Chapter N/【第X话】/宽版兜底），选中一条点「填入」即可；窗口顶部把「什么时候才需要填」「全局与本书专用两个框的区别」「什么样的行算标题」写清楚。**②使用说明**里补了一整节，含三个常见坑（只写 [0-9] 会把正文行切成标题、只写「第[0-9]+章」漏「第一章」、本书规则别填到全局那格）。两端模板逐条比对，跑测试时若不一致会直接报错。
+>
 > **v1.5.3** · 简繁去重的三处收尾（用户截图指出的「第二行还是繁體版」就在这）：**①** `##########  繁體版  ##########` 这类**版本标记行整行删掉**——正文去重后这份标记已经没有意义，留着就是书里的一行垃圾；**②** 站点把乱码**整段追加**在一行上时，长度会差出一大截被旧的长度比挡掉，现在只要短的那行是长那行的完整前缀/后缀就认成同一句；**③** 镜像块里两份**字面一模一样**的行（如日文小标题）以前繁简打分打平就两边都留，正文里于是多出一行，现在只留一份。
 >
 > **v1.5.2** · 两处修复：**①简繁去重不再漏删**——繁→简字表补齐了 547 个常用字（旧表漏了「妳→你」「暱→昵」「瞭→了」这类，缺一个映射整行就对不上，整块繁体因此留了下来）；再叠两层判据：一边被插了网址/乱码的，按 bigram 包含率认回同一句；整章简繁两份的，按偏移找出成对整块整块删。用户发来的第五章样本：繁体行 138 → 残留 1。**②窗口底色统一**——卡片里的控件一直是灰底（判断控件类型的代码写错了类名，长期空转），白卡上冒出一个个灰方块；现在全线铺白、描边加深、页签条与进度槽配色跟上。
@@ -167,6 +169,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.5.4** · The custom chapter regex is finally explained, not just mentioned: **①** the chapter pane has a “Templates” dialog listing eight ready-made patterns by “Book looks like” (第X章 / 第X折 / 卷一 第X回 / plain numbers / Chinese ordinals / Chapter N / 【第X话】 / a catch-all) — pick one and hit Fill; the dialog also spells out when you need this at all, how the global and per-book boxes differ, and what line qualifies as a title. **②** the user guide gained a full section with the three classic traps (bare [0-9] turning body lines into titles, 第[0-9]+章 missing 第一章, a per-book rule typed into the global box). The two template tables are compared by the test suite, so they cannot drift apart.
 >
 > **v1.5.3** · Three finishing touches on script-duplicate removal (this is the 「second line is still 繁體版」 from the screenshot): **①** version-marker lines such as `##########  繁體版  ##########` are now dropped entirely — once the duplicate body is gone the label is just a stray line inside the book; **②** when a site appends a chunk of garbage to a line, the length gap used to trip the length-ratio guard — now, if the shorter line is the exact prefix/suffix of the longer one, they count as the same sentence; **③** lines that are byte-identical in both mirrored blocks (e.g. Japanese sub-headings) used to be kept twice when the traditionality score tied — now only one copy survives.
 >

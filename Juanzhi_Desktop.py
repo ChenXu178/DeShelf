@@ -73,8 +73,21 @@ HELP_ZH = """卷帙 DeShelf 使用说明
 
 【3 智能分章】
   内置中文网文章节规则库，可识别「第1章 / 第一百二十三章 / 卷三 / 序章 / 番外」等写法。
-  若内置规则不适合，可填写自定义正则（填写后将只使用自定义规则）。
-  点「试分章节」可查看切分结果，章节数不对就调整正则再来。
+  如果书的标题写法不在里面（比如「第一折」「01」「卷一 第3回」），整本会被当成一章，
+  这时才需要自己填「章节正则」：
+
+  · 上面那格（章节正则）对所有书生效；下面那格（本书专用规则）只对「试分书籍」里
+    选中的那本生效，优先级更高。一旦填了自定义正则，内置规则库就不再参与，
+    所以规则要把这本书的每种标题写法都盖住。
+  · 判定方式：只看行首；行长不超过 50 字、且不以「。」结尾的行才算标题；
+    命中的整行原文就是章节标题（不用在正则里写「提取」）。
+  · 不会写不要紧：点输入框右边的「常用写法」，里面按「书的写法」列了 8 条现成的，
+    选中一条点「填入」，回分章页点「试分章节」看章节列表；数不对就换一条再试。
+
+  三个常见坑：
+    只写 [0-9] —— 正文里「1998 年…」开头的行会被切成标题，记得带上「章/回/折」这类字；
+    只写「第[0-9]+章」—— 书里混着「第一章」就漏，字符集里 0-9 与 零一二三… 都要有；
+    本书专用规则别填到上面那格 —— 那会影响所有书。
 
 【4 导出分发】
   清洗结果去向：
@@ -106,9 +119,23 @@ HELP_EN = """DeShelf User Guide
 
 [3] Smart Chapter Split
   Built-in Chinese web-novel patterns match lines like 第1章 / 第一百二十三章 /
-  卷三 / 序章 / 番外. For special formats, fill in a custom regex
-  (the custom rule then replaces the built-ins). Click “Try split” to
-  check the result and adjust.
+  卷三 / 序章 / 番外. If a book uses something else (e.g. 第一折 / 01 / 卷一 第3回)
+  the whole file becomes one chapter — that is when a custom chapter regex is needed:
+
+  · The upper box applies to every book; the lower box applies only to the book picked
+    in “Book to split”, and wins over the upper one. Once any custom regex is filled in,
+    the built-in library is no longer used — so the pattern must cover every heading form
+    the book uses.
+  · A line qualifies when it matches from its start, is at most 50 characters long and
+    does not end with “。”; the whole line becomes the chapter title (no capture groups
+    needed).
+  · Not sure how to write one? Press “Templates” next to the box — eight ready-made
+    patterns listed by “Book looks like”. Pick one, press Fill, then “Try Split”.
+
+  Three traps:
+    [0-9] alone — body lines starting with “1998 …” become titles; keep 章/回/折 in it;
+    第[0-9]+章 alone — misses 第一章; include both 0-9 and 零一二三…;
+    do not put a per-book rule in the upper (global) box — it would hit every book.
 
 [4] Export
   Where cleaned text goes:
@@ -150,6 +177,7 @@ arising from the use of this tool is the sole responsibility of the user.
 The software is provided “as is”. The author accepts no liability for data
 loss or damage. Please confirm you have a backup before using “Overwrite”.
 """
+
 
 ABOUT_ZH = """版权与许可 · Copyright & License
 
@@ -320,7 +348,24 @@ TEXTS = {
         "lab_chap_pick": "试分书籍：",
         "chap_pick_hint": "选单本试分；「试分全部选中」处理①书库勾选的全部书",
         "chap_hint": "内置可识别：第1章 / 第一百二十三章 / 卷三 / Chapter 5 / 序章 / 楔子 / 番外 / 后记；"
-                    "填写自定义正则后将只使用自定义规则。",
+                    "填写自定义正则后将只使用自定义规则。不会写？点右边「常用写法」挑一条。",
+        # 「常用写法」窗口
+        "re_help": "常用写法",
+        "re_help_title": "自定义章节正则 · 常用写法",
+        "re_help_intro": (
+            "什么时候要填：内置只认「第X章/节/回」「卷X」「序章/楔子/尾声/番外」。如果这本书的标题是"
+            "「第一折」「01」「卷一 第3回」这类写法，内置认不出，整本就会被当成一章。\n\n"
+            "两个框的区别：上面那格对所有书生效；下面那格只对「试分书籍」里选中的那本生效，优先用它。"
+            "只要填了自定义正则，内置规则库就不再参与——所以规则要把这本书的每种标题写法都盖住。\n\n"
+            "判定方式：只看行首；行长不超过 50 字、且不以「。」结尾的行才算标题；命中的整行原文就是章节标题。\n\n"
+            "怎么用：下面按「书的写法」挑一条 → 点「填入」→ 回分章页点「试分章节」看结果，"
+            "章节数不对就换一条，或者照着改字符集。"),
+        "re_tpl_col": "书的写法",
+        "re_tpl_re": "填这条正则",
+        "re_fill_global": "填入上面的全局正则",
+        "re_fill_book": "填入本书专用规则",
+        "re_no_book": "先在「试分书籍」里选一本书，再填本书专用规则。",
+        "re_close": "关闭",
         "col_chap_title": "章节标题",
         "col_c_book": "书名", "col_c_chaps": "章节",
         "chap_res": "点「试分章节」查看结果",
@@ -466,7 +511,27 @@ TEXTS = {
         "lab_chap_pick": "Book to split:",
         "chap_pick_hint": "Pick a book here; \"Try Split (all selected)\" acts on every book ticked in ①Library",
         "chap_hint": "Built-in patterns match 第1章 / 第一百二十三章 / 卷三 / Chapter 5 / "
-                    "序章 / 楔子 / 番外 / 后记; a custom regex replaces the built-ins.",
+                    "序章 / 楔子 / 番外 / 后记; a custom regex replaces the built-ins. "
+                    "Need help? Press “Templates”.",
+        "re_help": "Templates",
+        "re_help_title": "Custom chapter regex · templates",
+        "re_help_intro": (
+            "When you need this: the built-ins only know 第X章/节/回, 卷X and 序章/楔子/尾声/番外. "
+            "If the book uses 第一折 / 01 / 卷一 第3回 and so on, they miss it and the whole file "
+            "becomes a single chapter.\n\n"
+            "Two boxes: the upper one applies to every book; the lower one applies only to the book "
+            "picked in “Book to split” and wins over the upper one. Once any custom regex is filled in, "
+            "the built-in library is no longer used — so the pattern must cover every heading form.\n\n"
+            "A line qualifies when it matches from its start, is at most 50 characters long and does not "
+            "end with “。”; the whole line becomes the chapter title.\n\n"
+            "How to use: pick a template below → press Fill → back on the chapter pane press "
+            "“Try Split”; if the chapter count looks wrong, try another one or adjust the classes."),
+        "re_tpl_col": "Book looks like",
+        "re_tpl_re": "Use this regex",
+        "re_fill_global": "Fill global regex",
+        "re_fill_book": "Fill this book's rule",
+        "re_no_book": "Pick a book under “Book to split” first, then fill the per-book rule.",
+        "re_close": "Close",
         "col_chap_title": "Chapter Title",
         "col_c_book": "Book", "col_c_chaps": "Chapters",
         "chap_res": "Click \u201cTry Split\u201d to preview",
@@ -1170,6 +1235,8 @@ class App:
         ttk.Label(top, text=S["re_label"]).pack(side="left")
         e = ttk.Entry(top, textvariable=self.custom_re)
         e.pack(side="left", fill="x", expand=True, padx=px(4))
+        ttk.Button(top, text=S["re_help"], style="Soft.TButton",
+                   command=self.show_re_help).pack(side="left", padx=(0, px(6)))
         self.btn_chap_try = ttk.Button(top, text=S["b_try"], style="Accent.TButton",
                                        command=self.preview_chap)
         self.btn_chap_try.pack(side="left")
@@ -2073,6 +2140,68 @@ class App:
             self.re_state.set(self.S["book_re_on"] if (b and b.get("chap_re")) else "")
         except Exception:
             pass
+
+    def show_re_help(self):
+        """「常用写法」：把常见的章节标题写法连正则列出来，选中一条直接填进对应的框。"""
+        S = self.S
+        w = tk.Toplevel(self.root)
+        w.title(S["re_help_title"])
+        w.configure(bg=BG)
+        w.transient(self.root)
+        _center_win(w, 820, 640)
+
+        # 底栏先占位，再让列表 expand 吃剩余高度（否则按钮被挤没）
+        bar = tk.Frame(w, bg=BG)
+        bar.pack(side="bottom", fill="x", padx=px(10), pady=px(10))
+        ttk.Button(bar, text=S["re_close"], command=w.destroy).pack(side="right")
+        ttk.Button(bar, text=S["re_fill_book"], style="Soft.TButton",
+                   command=lambda: fill(False)).pack(side="right", padx=px(6))
+        ttk.Button(bar, text=S["re_fill_global"], style="Accent.TButton",
+                   command=lambda: fill(True)).pack(side="right")
+
+        tip = tk.Label(w, text=S["re_help_intro"], bg=CARD, fg=INK, font=FONT_S,
+                       justify="left", anchor="w", wraplength=px(770),
+                       highlightthickness=1, highlightbackground=LINE,
+                       padx=px(10), pady=px(8))
+        tip.pack(fill="x", padx=px(10), pady=(px(10), px(6)))
+
+        body = ttk.Frame(w)
+        body.pack(fill="both", expand=True, padx=px(10), pady=(0, px(4)))
+        tv = ttk.Treeview(body, columns=("use", "re"), show="headings", height=10)
+        tv.heading("use", text=S["re_tpl_col"])
+        tv.heading("re", text=S["re_tpl_re"])
+        tv.column("use", width=px(250), anchor="w", stretch=False)
+        tv.column("re", width=px(500), anchor="w")
+        sb = ttk.Scrollbar(body, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tv.pack(side="left", fill="both", expand=True)
+        lang_i = 0 if self.lang == ZH else 1
+        for t in jzcore.CHAP_TPL:
+            tv.insert("", "end", values=(t[lang_i], t[2]))
+        kids = tv.get_children()
+        if kids:
+            tv.selection_set(kids[0])
+            tv.focus(kids[0])
+        tv.bind("<Double-1>", lambda _e: fill(True))
+
+        def fill(glob):
+            sel = tv.selection()
+            if not sel:
+                return
+            pat = tv.item(sel[0], "values")[1]
+            if glob:
+                self.custom_re.set(pat)
+                w.destroy()
+                return
+            b = self.picked_book()
+            if not b:
+                messagebox.showinfo(S["re_help_title"], S["re_no_book"], parent=w)
+                return
+            self._re_book = b
+            self.book_re_var.set(pat)
+            self.store_book_re()
+            w.destroy()
 
     def picked_book(self):
         """单本试分目标 = 下拉所选；下拉无有效值时回退勾选首本。"""

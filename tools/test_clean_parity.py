@@ -132,6 +132,21 @@ SIMPLY = "\n".join([
 ])
 
 
+def js_chap_tpl():
+    """取网页版里的 CHAP_TPL（node 求值数组字面量），与 jzcore.CHAP_TPL 比对用。"""
+    js = ('const fs=require("fs");'
+          'const h=fs.readFileSync(process.argv[1],"utf8");'
+          r'const m=h.match(/const CHAP_TPL=\[([\s\S]*?)\n\];/);'
+          'if(!m){console.log("[]");process.exit(0);}'
+          'console.log(JSON.stringify(eval("["+m[1]+"]")));')
+    here = os.path.dirname(os.path.abspath(__file__))
+    page = os.path.join(os.path.dirname(here), "web", "DeShelf.html")
+    r = subprocess.run(["node", "-e", js, page], capture_output=True)
+    if r.returncode != 0:
+        raise SystemExit("取网页版模板失败：" + r.stderr.decode("utf-8", "ignore")[:300])
+    return json.loads(r.stdout.decode("utf-8") or "[]")
+
+
 def _trad_left(text):
     out = []
     for ln in text.split("\n"):
@@ -210,6 +225,25 @@ def main():
         None if jd3["text"] == jd3_web["text"] else (jd3["text"][:200], jd3_web["text"][:200]))
     plain = run_python(SIMPLY, jd_rules)
     chk("纯简体文本一字不动", plain["text"].strip("\n") == SIMPLY and plain["removed"] == 0, plain["removed"])
+
+    print("== 章节正则模板（桌面 / 网页） ==")
+    py_tpl = jzcore.CHAP_TPL
+    js_tpl = js_chap_tpl()
+    chk("模板 8 条，两端条数一致", len(py_tpl) == 8 and len(js_tpl) == 8, (len(py_tpl), len(js_tpl)))
+    chk("模板正则逐条一致", [t[2] for t in py_tpl] == [t[2] for t in js_tpl],
+        [(a[2], b[2]) for a, b in zip(py_tpl, js_tpl) if a[2] != b[2]][:2])
+    imps = 0
+    for t in py_tpl:
+        try:
+            jzcore.re.compile(t[2])
+            imps += 1
+        except Exception as e:
+            print("    正则无效:", t[2], e)
+    chk("每条模板都是合法正则", imps == len(py_tpl), imps)
+    # 模板必须真能切开东西：拿第一条去切一段小说，应得到 3 章
+    demo = "第一章 起风\n正文甲。\n第二章 落雪\n正文乙。\n第三章 归途\n正文丙。"
+    chk("模板 1 能切出 3 章", len(jzcore.split_chapters(demo, py_tpl[0][2])) == 3,
+        len(jzcore.split_chapters(demo, py_tpl[0][2])))
 
     print("\n结果: %d 通过, %d 失败" % (ok, fail))
     return 1 if fail else 0

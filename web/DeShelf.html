@@ -159,7 +159,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.5.3</span>
+  <span class="ver">v1.5.4</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -228,6 +228,7 @@ b.dark{color:var(--ink)}
 <section class="card hidden" id="pane2">
   <div class="hd"><h2 data-k="chapTitle">③ 智能分章</h2>
     <span class="spacer" style="flex:1"></span>
+    <button class="btn ghost sm" id="chapReHelp" data-k="reHelp">常用写法</button>
     <button class="btn ghost sm" id="chapReset" data-k="chapReset">内置规则</button>
   </div>
   <div class="bd">
@@ -328,6 +329,14 @@ const Z = {
   rulesBadFile:"规则包读不了",
   btnCleanPrev:"预览清洗效果", btnCleanApply:"应用到所选书籍",
   chapTitle:"③ 智能分章", chapReset:"恢复内置规则", chapPick:"选择一本书试分",
+  reHelp:"常用写法", reHelpTitle:"自定义章节正则 · 常用写法",
+  reHelpIntro:"内置只认「第X章/节/回」「卷X」「序章/楔子/尾声/番外」。这本书的标题要是「第一折」「01」「卷一 第3回」这类写法，内置认不出，整本会被当成一章 —— 这时才需要自己填。<br><br>"
+   +"上面那格对所有书生效；下面那格只对「选择一本书试分」里选中的那本生效，优先用它。只要填了自定义正则，内置规则库就不再参与，所以规则要把这本书的每种标题写法都盖住。<br><br>"
+   +"判定方式：只看行首；行长不超过 50 字、且不以「。」结尾的行才算标题；命中的整行原文就是章节标题。<br><br>"
+   +"怎么用：下面挑一条 → 点「填入」→ 回分章面板点「试分章节」看结果，章数不对就换一条。",
+  reTplCol:"书的写法", reTplRe:"填这条正则",
+  reFillGlobal:"填入上面的全局正则", reFillBook:"填入本书专用规则",
+  reNoBook:"先在「选择一本书试分」里选一本书，再填本书专用规则。", reClose:"关闭",
   btnChapTry:"试分章节", btnChapApply:"应用分章到该书", chapCustom:"自定义章节正则（留空 = 用内置规则库）",
   bookRe:"本书专用规则（留空 = 用上面的全局正则）",
   bookRePh:"只对这一本书生效，比如它的章节是「卷一 第X回」这种写法",
@@ -433,6 +442,14 @@ const E = {
   rulesBadFile:"Cannot read this rule pack",
   btnCleanPrev:"Preview cleaning", btnCleanApply:"Apply to selected books",
   chapTitle:"③ Smart Chapters", chapReset:"Built-in rules", chapPick:"Pick a book to try",
+  reHelp:"Templates", reHelpTitle:"Custom chapter regex · templates",
+  reHelpIntro:"The built-ins only know 第X章/节/回, 卷X and 序章/楔子/尾声/番外. If the book uses 第一折 / 01 / 卷一 第3回 and so on, they miss it and the whole file becomes a single chapter — that is when you fill this in.<br><br>"
+   +"The upper box applies to every book; the lower one applies only to the book picked above and wins over the upper one. Once any custom regex is filled in, the built-in library is no longer used — so the pattern must cover every heading form.<br><br>"
+   +"A line qualifies when it matches from its start, is at most 50 characters long and does not end with “。”; the whole line becomes the chapter title.<br><br>"
+   +"How to use: pick a template below → press Fill → back on the chapter pane press “Try splitting”; if the count looks wrong, try another one.",
+  reTplCol:"Book looks like", reTplRe:"Use this regex",
+  reFillGlobal:"Fill global regex", reFillBook:"Fill this book's rule",
+  reNoBook:"Pick a book above first, then fill the per-book rule.", reClose:"Close",
   btnChapTry:"Try splitting", btnChapApply:"Apply chapters to this book",
   chapCustom:"Custom chapter regex (empty = built-in rules)",
   bookRe:"Regex for this book only (empty = use the global one above)",
@@ -520,7 +537,7 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.3</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.4</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
  +'<p>清洗规则 10 条：网址、站点宣传、翻页残留、乱码、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
  +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
@@ -533,7 +550,7 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.3</b></p>'
  +'<p>本页以 <b>MIT License</b> 发布：可自由使用、复制、修改、再分发，也包括商业用途——不用付费、不用事先告知。唯一的硬性条件是<b>保留作者署名</b>：任何副本或实质性部分都必须保留「© 2026 永远的兰兰 (Lanlan Eternal)」与完整的 MIT 许可文本（仓库根目录的 LICENSE）。可以改代码、改软件名、闭源分发，但不能删掉署名，也不能改成自己的名字后声称原创。</p>'
  +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0，仅用于比对，不改写正文）；封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.3</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.4</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
  +'<p>Ten cleaning rules: URLs, site promos, pagination leftovers, corrupted lines, blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
  +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
@@ -549,8 +566,14 @@ E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.3</b></p>'
 Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<li><b>书库</b>：Chrome/Edge 点「选择文件夹」授权目录（可整目录扫描、写缓存、批量保存）；其它浏览器或临时用，直接拖入文件即可。</li>'
  +'<li><b>清洗</b>：勾选规则（网址行 / 站点宣传 / 翻页残留 / 乱码行 / 空行压缩等），先「预览」看前后对比，再「应用到所选书籍」。</li>'
- +'<li><b>分章</b>：选中一本书点「试分章节」看章节目录；可填自定义正则；「应用分章」后章节目录会随书保存。</li>'
+ +'<li><b>分章</b>：选中一本书点「试分章节」看章节目录；标题写法特殊就用面板右上角「常用写法」；「应用分章」后章节目录会随书保存。</li>'
  +'<li><b>导出</b>：勾选格式（EPUB 带目录 / 合并 TXT / 分章 TXT）。单本直接下载；多本自动逐一下载，或先「保存到所选文件夹」把全部结果一次写入你授权的目录。</li></ol>'
+ +'<p><b>自定义章节正则</b>（内置认不出的写法才需要）</p><ul>'
+ +'<li>内置只认「第X章/节/回」「卷X」「序章/楔子/尾声/番外」。书里写成「第一折」「01」「卷一 第3回」，整本会被当成一章。</li>'
+ +'<li>上面那格对所有书生效；下面「本书专用规则」只对选中的那本生效，并优先于上面那格。填了自定义正则后内置规则不再参与，所以规则要盖住这本书的每种标题写法。</li>'
+ +'<li>判定：只看行首；行长不超过 50 字、且不以「。」结尾的行才算标题；命中的整行原文就是章节标题。</li>'
+ +'<li>不会写就用本页右上角「常用写法」：八条现成的，按「书的写法」挑一条点「填入」，再点「试分章节」看结果。</li>'
+ +'<li>坑：只写 [0-9] 会把「1998 年…」这类正文行切成标题；只写「第[0-9]+章」会漏「第一章」；本书规则别填到全局那格。</li></ul>'
  +'<p><b>提示</b></p><ul>'
  +'<li>重复文件按内容指纹标黄「重复」，可在书库「只选重复」看清后手动剔除。</li>'
  +'<li>「重新扫描」会重新读取文件并刷新缓存索引。</li>'
@@ -562,6 +585,12 @@ E.helpBody = '<p><b>The four steps</b></p><ol>'
  +'<li><b>Clean</b>: tick rules (URL lines / site promos / page-nav leftovers / mojibake / blank compression…), hit “Preview”, then “Apply to selected books”.</li>'
  +'<li><b>Chapters</b>: pick a book and press “Try splitting” to see the TOC; a custom regex is supported; “Apply” keeps the split with the book.</li>'
  +'<li><b>Export</b>: tick formats (EPUB with TOC / merged TXT / per-chapter TXT). A single book downloads directly; multiple books download one by one, or pick “Save to chosen folder” once and write everything there.</li></ol>'
+ +'<p><b>Custom chapter regex</b> (only when the built-ins miss)</p><ul>'
+ +'<li>Built-ins know 第X章/节/回, 卷X and 序章/楔子/尾声/番外 only. A book using 第一折 / 01 / 卷一 第3回 becomes one single chapter.</li>'
+ +'<li>The upper box applies to every book; the per-book rule below applies only to the selected book and wins over it. Any custom regex replaces the built-in library, so it must cover every heading form.</li>'
+ +'<li>A line qualifies when it matches from its start, is at most 50 characters and does not end with “。”; the whole line becomes the title.</li>'
+ +'<li>Press “Templates” on the chapter pane: eight ready-made patterns, pick one and Fill, then “Try splitting”.</li>'
+ +'<li>Traps: [0-9] alone turns “1998 …” body lines into titles; 第[0-9]+章 alone misses 第一章; never put a per-book rule in the global box.</li></ul>'
  +'<p><b>Tips</b></p><ul>'
  +'<li>Duplicate files (by content fingerprint) are marked amber “dup”; “Duplicates only” highlights them so you can drop extras.</li>'
  +'<li>“Rescan” re-reads files and refreshes the cache index.</li>'
@@ -1997,6 +2026,60 @@ async function applyClean(){
   setMsgHint($("cleanInfo"),fill(T("applyDone"),{n:done,m:totalRm}));
 }
 
+/* ===== 自定义章节正则的「常用写法」（与桌面版 CHAP_TPL 逐条对应） ===== */
+const CHAP_TPL=[
+  ["第1章 / 第十二节 / 第三回（最常用）","Chapter 1 / 第十二节 / 第三回 (most common)",
+   "第[0-9０-９零〇一二三四五六七八九十百千两]+[章节回卷篇集部]"],
+  ["第一折 / 第五折（自定义量词）","第一折 / 第五折 (custom counter)",
+   "第[0-9０-９零〇一二三四五六七八九十百千两]+折"],
+  ["卷一 第3回（卷和回混排）","卷一 第3回 (volumes and chapters mixed)",
+   "(卷[0-9０-９一二三四五六七八九十]+|第[0-9０-９一二三四五六七八九十]+回)"],
+  ["01 / 02 纯数字起行","01 / 02 plain numbers at line start",
+   "[0-9]{1,4}[、.．:： ]"],
+  ["一、二、三、中文序号","一、 二、 Chinese ordinals",
+   "[一二三四五六七八九十百千]+[、.．]"],
+  ["Chapter 1 / CHAPTER 12（英文）","Chapter 1 / CHAPTER 12 (English)",
+   "(Chapter|CHAPTER|chapter)\\s*[0-9]+"],
+  ["【第3章】/ 【第3話】（带方括号）","【第3章】/ 【第3話】 (bracketed)",
+   "【?第[0-9０-９一二三四五六七八九十百千]+[话話章节節回]】?"],
+  ["宽版兜底：第X章 ＋ 序章/楔子/尾声/番外","Catch-all: 第X章 plus 序章/楔子/尾声/番外",
+   "(第[0-9０-９零〇一二三四五六七八九十百千两]{1,15}[章节節回卷篇集部]"
+   +"|序章|序言|楔子|引子|尾声|尾聲|后记|後記|终章|終章|番外)"]
+];
+function openReHelp(){
+  const zh=CUR==="zh";
+  const rows=CHAP_TPL.map((t,i)=>'<tr>'
+    +'<td style="padding:5px 6px;vertical-align:top;white-space:nowrap">'
+    +'<label><input type="radio" name="tplsel" value="'+i+'"'+(i===0?" checked":"")+'>&nbsp;'
+    +esc(zh?t[0]:t[1])+'</label></td>'
+    +'<td style="padding:5px 6px"><code style="font-size:12px;word-break:break-all">'+esc(t[2])+'</code></td></tr>').join("");
+  const body='<div style="font-size:12.5px;line-height:1.7;color:var(--muted)">'+T("reHelpIntro")+'</div>'
+    +'<table style="width:100%;border-collapse:collapse;margin-top:10px">'
+    +'<thead><tr><th style="text-align:left;font-size:12px;padding:0 6px">'+esc(T("reTplCol"))+'</th>'
+    +'<th style="text-align:left;font-size:12px;padding:0 6px">'+esc(T("reTplRe"))+'</th></tr></thead>'
+    +'<tbody>'+rows+'</tbody></table>';
+  const id=openModal(T("reHelpTitle"),body,
+    '<button class="btn ghost" data-c="1">'+esc(T("reClose"))+'</button>'
+    +'<button class="btn b1" data-fill="book">'+esc(T("reFillBook"))+'</button>'
+    +'<button class="btn b2" data-fill="global">'+esc(T("reFillGlobal"))+'</button>');
+  const d=document.getElementById(id);
+  d.addEventListener("click",e=>{
+    if(e.target.dataset.c||e.target.dataset.x){closeModal(id);return;}
+    const f=e.target.dataset.fill;if(!f)return;
+    const sel=d.querySelector('input[name="tplsel"]:checked');
+    if(!sel)return;
+    const pat=CHAP_TPL[+sel.value][2];
+    if(f==="global"){
+      $("chapRegex").value=pat;
+    }else{
+      if(!chapBookObj()){setMsgHint($("chapInfo"),T("reNoBook"));closeModal(id);return;}
+      $("bookRegex").value=pat;
+      storeBookRegex();
+    }
+    closeModal(id);
+  });
+}
+
 /* ================= 分章面板 ================= */
 function fillChapBook(){
   const sel=$("chapBook");
@@ -2436,6 +2519,7 @@ function bindSteps(){
   if(cbChap) cbChap.onchange=()=>{syncBookRegex();refreshChapMsg();};
   if(inBook) inBook.oninput=()=>{storeBookRegex();
     $("bookRegex").title=inBook.value.trim()?T("bookReOn"):"";};
+  $("chapReHelp").onclick=openReHelp;
   $("chapReset").onclick=()=>{$("chapRegex").value="";window._lastTry=null;
     renderChapList([]);$("chapInfo").textContent="";};
   $("btnRun").onclick=runExport;

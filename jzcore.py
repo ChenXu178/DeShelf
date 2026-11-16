@@ -14,7 +14,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.5.3"
+APP_VER = "v1.5.4"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -954,6 +954,38 @@ CHAPTER_PATTERNS = [
     r"(?:序章|序言|楔子|引子|尾声|後记|后记|番外|终章|結局|结局|完本)[^\n]{0,40}",
 ]
 MAX_TITLE_LEN = 50
+
+# 自定义章节正则的「常用写法」：界面里的模板表。桌面版直接读这里，
+# 网页版在 DeShelf.html 里另存一份 JS 数组，两边内容由 test_clean_parity 比对。
+# 元组 = (中文说明, English label, 正则)；正则只需能命中标题那一行（匹配从行首开始）。
+CHAP_TPL = [
+    ("第1章 / 第十二节 / 第三回（最常用）",
+     "Chapter 1 / 第十二节 / 第三回 (most common)",
+     r"第[0-9０-９零〇一二三四五六七八九十百千两]+[章节回卷篇集部]"),
+    ("第一折 / 第五折（自定义量词）",
+     "第一折 / 第五折 (custom counter)",
+     r"第[0-9０-９零〇一二三四五六七八九十百千两]+折"),
+    ("卷一 第3回（卷和回混排）",
+     "卷一 第3回 (volumes and chapters mixed)",
+     r"(卷[0-9０-９一二三四五六七八九十]+|第[0-9０-９一二三四五六七八九十]+回)"),
+    ("01 / 02 纯数字起行",
+     "01 / 02 plain numbers at line start",
+     r"[0-9]{1,4}[、.．:： ]"),
+    ("一、二、三、中文序号",
+     "一、 二、 Chinese ordinals",
+     r"[一二三四五六七八九十百千]+[、.．]"),
+    ("Chapter 1 / CHAPTER 12（英文）",
+     "Chapter 1 / CHAPTER 12 (English)",
+     r"(Chapter|CHAPTER|chapter)\s*[0-9]+"),
+    ("【第3章】/ 【第3話】（带方括号）",
+     "【第3章】/ 【第3話】 (bracketed)",
+     r"【?第[0-9０-９一二三四五六七八九十百千]+[话話章节節回]】?"),
+    ("宽版兜底：第X章 ＋ 序章/楔子/尾声/番外",
+     "Catch-all: 第X章 plus 序章/楔子/尾声/番外",
+     r"(第[0-9０-９零〇一二三四五六七八九十百千两]{1,15}[章节節回卷篇集部]"
+     r"|序章|序言|楔子|引子|尾声|尾聲|后记|後記|终章|終章|番外)"),
+]
+
 # 开头这几行算元信息：只由它们组成的「开篇」不单独成章
 _META_LINE = re.compile(r"^(?:书名|标题|题\s*目|小说名|作\s*者|著\s*者|简介|内容简介|内容介绍)\s*[:：]")
 
