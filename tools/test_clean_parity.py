@@ -97,6 +97,31 @@ DUAL = "\n".join([
     "那声音持续了很久，久到她开始怀疑自己听错了。",
 ])
 
+# 繁体行里被整段追加了乱码：长度差出一大截，但短那行是长那行的完整前缀
+DUAL3 = "\n".join([
+    "第二章　樓梯",
+    "##########  繁體版  ##########",
+    "她把濕透的外套掛在椅背上，屋裡只剩冰箱低低的嗡鳴。",
+    "樓梯踩上去的每一步都很輕，卻像在這間屋子裡敲了一記悶雷。",
+    "【影の通信  ようこそ、復讐を望む者よ】",
+    "她把手機放到桌上，螢幕朝下，像在躲什麼。",
+    "窗外的雨還在下，打在冷氣機殼上發出細碎的聲響。",
+    "那聲音持續了很久，久到她開始懷疑自己聽錯了。",
+    "她沒有開燈，摸黑走上二樓，扶手冰得像鐵。",
+    "房門關上的那一刻，整棟房子忽然安靜得可怕。",
+    "標題我都幫妳想好了：弎氿z灵┈壹⒊叁⑦Т衣泗",
+    "##########  简体版  ##########",
+    "她把湿透的外套挂在椅背上，屋里只剩冰箱低低的嗡鸣。",
+    "楼梯踩上去的每一步都很轻，却像在这间屋子里敲了一记闷雷。",
+    "【影の通信  ようこそ、復讐を望む者よ】",
+    "她把手机放到桌上，屏幕朝下，像在躲什么。",
+    "窗外的雨还在下，打在冷气机壳上发出细碎的声响。",
+    "那声音持续了很久，久到她开始怀疑自己听错了。",
+    "她没有开灯，摸黑走上二楼，扶手冰得像铁。",
+    "房门关上的那一刻，整栋房子忽然安静得可怕。",
+    "标题我都帮妳想好了",
+])
+
 # 纯简体文本：一行都不许动
 SIMPLY = "\n".join([
     "第一章　雨夜",
@@ -171,9 +196,18 @@ def main():
     chk("繁体那几行全部删掉", not left, left[:3])
     chk("简体正文一句不少", "雨停之后" in jd["text"] and "怀疑自己听错了" in jd["text"]
         and "冰箱低低的嗡鸣声" in jd["text"])
+    chk("版本标记行整行删掉", "繁體版" not in jd["text"] and "简体版" not in jd["text"])
     chk("Python / Web 逐字相同", jd["text"] == jd_web["text"],
         None if jd["text"] == jd_web["text"] else (jd["text"][:200], jd_web["text"][:200]))
     chk("删除计数相同", jd["removed"] == jd_web["removed"], (jd["removed"], jd_web["removed"]))
+    jd3 = run_python(DUAL3, jd_rules)
+    jd3_web = run_web(DUAL3, jd_rules)
+    chk("整段追加乱码的繁体行也删掉", "標題" not in jd3["text"] and "弎氿" not in jd3["text"])
+    chk("对应的简体短行留下", "标题我都帮妳想好了" in jd3["text"])
+    chk("块内两份一样的行只留一份", jd3["text"].count("影の通信") == 1, jd3["text"].count("影の通信"))
+    chk("正文没被误删", "楼梯踩上去的每一步都很轻" in jd3["text"] and "怀疑自己听错了" in jd3["text"])
+    chk("DUAL3 Python / Web 逐字相同", jd3["text"] == jd3_web["text"],
+        None if jd3["text"] == jd3_web["text"] else (jd3["text"][:200], jd3_web["text"][:200]))
     plain = run_python(SIMPLY, jd_rules)
     chk("纯简体文本一字不动", plain["text"].strip("\n") == SIMPLY and plain["removed"] == 0, plain["removed"])
 

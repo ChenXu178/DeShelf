@@ -159,7 +159,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.5.2</span>
+  <span class="ver">v1.5.3</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -520,7 +520,7 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.2</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.3</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
  +'<p>清洗规则 10 条：网址、站点宣传、翻页残留、乱码、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
  +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
@@ -533,7 +533,7 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.2</b></p>'
  +'<p>本页以 <b>MIT License</b> 发布：可自由使用、复制、修改、再分发，也包括商业用途——不用付费、不用事先告知。唯一的硬性条件是<b>保留作者署名</b>：任何副本或实质性部分都必须保留「© 2026 永远的兰兰 (Lanlan Eternal)」与完整的 MIT 许可文本（仓库根目录的 LICENSE）。可以改代码、改软件名、闭源分发，但不能删掉署名，也不能改成自己的名字后声称原创。</p>'
  +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0，仅用于比对，不改写正文）；封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.2</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.3</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
  +'<p>Ten cleaning rules: URLs, site promos, pagination leftovers, corrupted lines, blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
  +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
@@ -900,6 +900,12 @@ const Core = (() => {
   const DD_ANCHOR=8, DD_MINLEN=8, DD_FUZZY=0.9, DD_RATIO=1.6;
   const DD_BLK_LEN=6, DD_BLK_SIM=0.6, DD_BLK_RUN=8, DD_BLK_VOTE=4, DD_BLK_TOP=8, DD_BLK_EXT=30;
   /* 归一化字符串的二元组集合 */
+  /* 版本标记行：`##########  繁體版  ##########`，整行只有装饰符号 + 版本字样 */
+  const VER_MARK=new Set(["繁体版","繁體版","简体版","簡體版","繁体","繁體",
+                          "简体","簡體","正体版","正體版","正体","正體"]);
+  const VER_DECO=/[#=*\-_—─━~～·※◇◆■□¤°+|｜|\s]/g;
+  function _isVerMark(s){return s.length<=60&&VER_MARK.has(s.replace(VER_DECO,""));}
+
   function _bi(k){
     const s=new Set();
     if(k.length<2){if(k)s.add(k);return s;}
@@ -921,14 +927,15 @@ const Core = (() => {
         于是按偏移找出成对整块，整块删繁体那份。 */
   function dedupeScriptDup(lines){
     const n=lines.length,keys=new Array(n).fill(""),sc=new Array(n).fill(0);
+    const gone=new Set();
+    for(let i=0;i<n;i++)if(lines[i]&&_isVerMark(lines[i]))gone.add(i);  /* 版本标记行：先去 */
     for(let i=0;i<n;i++){
       const s=lines[i];
-      if(!s)continue;
+      if(!s||gone.has(i))continue;
       const k=_normKey(s);
       keys[i]=k;
       if(k)sc[i]=_tradScore(s);
     }
-    const gone=new Set();
     /* ① 比最简那份更繁的行 */
     const low=new Map();
     for(let i=0;i<n;i++){
@@ -961,7 +968,11 @@ const Core = (() => {
       for(const j of cand){
         if(j===i||gone.has(j)||sc[j]>=sc[i])continue;
         const a=k.length,b=keys[j].length;
-        if(Math.max(a,b)>Math.min(a,b)*DD_RATIO+2)continue;
+        if(Math.max(a,b)>Math.min(a,b)*DD_RATIO+2){
+          /* 乱码整段追加/前置：短的那行仍是长那行的完整前缀或后缀 */
+          const sh=a<=b?k:keys[j],lg=a<=b?keys[j]:k;
+          if(!(lg.startsWith(sh)||lg.endsWith(sh)))continue;
+        }
         const c=_over(gs[i],gs[j]);
         if(c>best||(c===best&&(bj<0||j<bj))){best=c;bj=j;}
       }
@@ -1011,9 +1022,16 @@ const Core = (() => {
             while(lo>0&&c<DD_BLK_EXT&&near(lo-1,d)){lo--;c++;}
             c=0;
             while(hi+1<limit&&c<DD_BLK_EXT&&near(hi+1,d)){hi++;c++;}
+            let ca=0,cb=0;
+            for(let k=lo;k<=hi;k++){
+              if(sc[k]>sc[k+d])ca++;
+              else if(sc[k+d]>sc[k])cb++;
+            }
+            const drop=ca>=cb?0:d;    /* 副本在哪一侧（繁简打分拉平时用） */
             for(let k=lo;k<=hi;k++){
               if(sc[k]>sc[k+d])gone.add(k);
               else if(sc[k+d]>sc[k])gone.add(k+d);
+              else if(lines[k]===lines[k+d]&&lines[k])gone.add(k+drop);  /* 字面一样：只留一份 */
             }
             t=hi+1;
             continue;

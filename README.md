@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.5.3** · 简繁去重的三处收尾（用户截图指出的「第二行还是繁體版」就在这）：**①** `##########  繁體版  ##########` 这类**版本标记行整行删掉**——正文去重后这份标记已经没有意义，留着就是书里的一行垃圾；**②** 站点把乱码**整段追加**在一行上时，长度会差出一大截被旧的长度比挡掉，现在只要短的那行是长那行的完整前缀/后缀就认成同一句；**③** 镜像块里两份**字面一模一样**的行（如日文小标题）以前繁简打分打平就两边都留，正文里于是多出一行，现在只留一份。
+>
 > **v1.5.2** · 两处修复：**①简繁去重不再漏删**——繁→简字表补齐了 547 个常用字（旧表漏了「妳→你」「暱→昵」「瞭→了」这类，缺一个映射整行就对不上，整块繁体因此留了下来）；再叠两层判据：一边被插了网址/乱码的，按 bigram 包含率认回同一句；整章简繁两份的，按偏移找出成对整块整块删。用户发来的第五章样本：繁体行 138 → 残留 1。**②窗口底色统一**——卡片里的控件一直是灰底（判断控件类型的代码写错了类名，长期空转），白卡上冒出一个个灰方块；现在全线铺白、描边加深、页签条与进度槽配色跟上。
 >
 > **v1.5.1** · 两处收尾：**①「关于」升级为「版权与许可」窗口**——MIT 全文、署名要求的逐条说明、第三方组件清单、免责条款都在里面，可一键「复制说明全文」或「复制 MIT 全文」。**②主要按键上色**——次级但常用的按键（全选/反选/试分全部/导入导出规则/浏览）改成浅蓝底，主操作仍是实心蓝、执行写盘仍是实心绿，一眼能分出主次。**③顶栏右侧加了语言开关**——中文界面显示 `EN`、英文界面显示 `中文`，不用再去菜单里找「语言」两个字（菜单项也改成了双语「语言 Language」）。
@@ -165,6 +167,8 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.5.3** · Three finishing touches on script-duplicate removal (this is the 「second line is still 繁體版」 from the screenshot): **①** version-marker lines such as `##########  繁體版  ##########` are now dropped entirely — once the duplicate body is gone the label is just a stray line inside the book; **②** when a site appends a chunk of garbage to a line, the length gap used to trip the length-ratio guard — now, if the shorter line is the exact prefix/suffix of the longer one, they count as the same sentence; **③** lines that are byte-identical in both mirrored blocks (e.g. Japanese sub-headings) used to be kept twice when the traditionality score tied — now only one copy survives.
 >
 > **v1.5.2** · Two fixes: **① script-duplicate removal no longer leaves traditional lines behind** — the T→S character table was missing 547 common characters (no mapping for 妳→你, 暱→昵, 瞭→了 …), and one missing mapping makes a whole line fail to match, so entire traditional blocks survived; it now also matches lines by bigram containment (covers inserted URLs/garbage) and removes whole mirrored blocks by offset. On the user-submitted five-chapter sample: 138 traditional lines → 1 left. **② The window background is finally consistent** — widgets inside cards had kept their grey fill (the widget-type check compared the wrong class names and had silently done nothing for ages), so grey rectangles showed up on white cards; everything is white now, with a deeper hairline and matching tab strip / progress trough.
 >

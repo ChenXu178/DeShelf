@@ -14,7 +14,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.5.2"
+APP_VER = "v1.5.3"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -418,6 +418,19 @@ def _trad_score(s):
     return sum(1 for c in s if c in t and c not in _AMBI)
 
 
+# 版本标记行：`##########  繁體版  ##########` 这种，整行只有装饰符号 + 一个版本字样。
+# 简繁重复去完之后正文只剩一份，这行标记留着就是书里的一行垃圾，整行删掉。
+# 只认「装饰符号 + 版本字样」的整行，正文一句话都不会被它碰到。
+_VER_MARK = ("繁体版", "繁體版", "简体版", "簡體版", "繁体", "繁體",
+             "简体", "簡體", "正体版", "正體版", "正体", "正體")
+_VER_DECO = re.compile(r"[#=*\-_—─━~～·※◇◆■□¤°+｜|\s]")
+
+
+def _is_ver_mark(s):
+    """整行去掉装饰符号只剩一个版本字样 —— 站点给正文分版本用的分隔行。"""
+    return len(s) <= 60 and _VER_DECO.sub("", s) in _VER_MARK
+
+
 # 简繁去重的阈值：两端（Python / Web）必须完全一致，改数字要一起改。
 _DD_ANCHOR   = 8     # 首/尾锚点取几个字（候选检索用）
 _DD_MINLEN   = 8     # 单行模糊比对的最短归一化长度
@@ -454,20 +467,24 @@ def dedupe_script_dup(lines):
       2) 盗版站常在其中一份里乱插字（网址、乱码、伪字），归一后对不上，
          按 bigram 包含率认成同一句 → 删繁体那份；
       3) 整章「简体一份 + 繁体一份」时，连「螢幕/屏幕」这类两岸用词差异
-         也会让单行比对失手，于是按偏移找出成对的整块，整块删繁体那份。
+         也会让单行比对失手，于是按偏移找出成对的整块，整块删繁体那份；
+      另外 `##########  繁體版  ##########` 这类版本标记行整行删掉，
+      块内两份字面一模一样的行只留一份。
     """
     n = len(lines)
     keys = [""] * n
     sc = [0] * n
+    gone = set()
+    for i in range(n):
+        if lines[i] and _is_ver_mark(lines[i]):
+            gone.add(i)             # 版本标记行：先去，别让它参与投票
     for i, s in enumerate(lines):
-        if not s:
+        if not s or i in gone:
             continue
         k = _norm_key(s)
         keys[i] = k
         if k:
             sc[i] = _trad_score(s)
-
-    gone = set()
 
     # ---- 1) 同一个归一化文本里，比最简那份更繁的行 ----
     lowest = {}
@@ -506,7 +523,11 @@ def dedupe_script_dup(lines):
                 continue
             a, b = len(k), len(keys[j])
             if max(a, b) > min(a, b) * _DD_RATIO + 2:
-                continue
+                # 站点把乱码整段追加（或前置）在一行上时，长度会差出一大截，
+                # 但短的那行仍是长那行的完整前缀/后缀 —— 认成同一句。
+                sh, lg = (k, keys[j]) if a <= b else (keys[j], k)
+                if not (lg.startswith(sh) or lg.endswith(sh)):
+                    continue
             c = _over(gs[i], gs[j])
             if c > best or (c == best and (bj < 0 or j < bj)):
                 best, bj = c, j
@@ -573,11 +594,20 @@ def dedupe_script_dup(lines):
                     while hi + 1 < limit and c < _DD_BLK_EXT and near(hi + 1, d):
                         hi += 1
                         c += 1
+                    ca = cb = 0
+                    for k in range(lo, hi + 1):
+                        if sc[k] > sc[k + d]:
+                            ca += 1
+                        elif sc[k + d] > sc[k]:
+                            cb += 1
+                    drop = 0 if ca >= cb else d      # 副本在哪一侧（两侧繁简打分拉平时用）
                     for k in range(lo, hi + 1):
                         if sc[k] > sc[k + d]:
                             gone.add(k)
                         elif sc[k + d] > sc[k]:
                             gone.add(k + d)
+                        elif lines[k] == lines[k + d] and lines[k]:
+                            gone.add(k + drop)       # 两边字面完全一样：只留一份
                     t = hi + 1
                     continue
             t = e0 + 1
