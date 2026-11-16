@@ -86,6 +86,10 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 
 同页也可下载 **Web 版** `DeShelf.html`（或取源码 `web/DeShelf.html`）：双击本地用，或在线直接打开 👉 **https://podcatcher962.github.io/DeShelf/**
 
+**用 macOS / Linux 或手机？** 桌面版 EXE 目前只出 Windows 版，别的系统直接用上面的网页版就是完整工具。
+Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回原目录；Safari 和 Firefox 不支持文件夹授权，
+会自动降到「文件模式」（逐本处理后下载）。手机也能打开，只是不适合几百本的大书库。
+
 ### 使用流程
 
 1. 点「浏览…」选中你的小说目录 → 点「扫描」
@@ -275,6 +279,8 @@ EPUB is DeShelf's primary output format and the recommended way to read on e-rea
 Grab `DeShelf.exe` from the [Releases](https://github.com/podcatcher962/DeShelf/releases) page (the app is named 卷帙 in Chinese; release assets use the English name for cross-platform download) and double-click it. No Python required.
 
 The **Web version** `DeShelf.html` is also on the same Release page (source: `web/DeShelf.html`). Double-click it for local use, or open the online copy at 👉 **https://podcatcher962.github.io/DeShelf/**
+
+**On macOS / Linux or a phone?** The desktop EXE is Windows-only for now; everywhere else the Web version above *is* the full tool. On a Mac, open it in Chrome or Edge to authorize a whole folder and write results back in place. Safari and Firefox have no folder-permission API, so they fall back to file mode (one file in, one result downloaded). Phones work as well, though they are not suited to a library of several hundred books.
 
 ### Workflow
 
