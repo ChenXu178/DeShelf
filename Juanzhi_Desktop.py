@@ -162,6 +162,7 @@ TEXTS = {
         "col_enc": "编码", "col_chap": "章节", "col_size": "大小", "col_rel": "相对路径",
         # 页2 清洗
         "grp_rules": "清洗规则（共 {0} 条 · 可滚动）", "b_all_rules": "全选规则", "b_def_rules": "恢复默认",
+        "rule_more": "▼ 下面还有 {0} 条没显示，用滚轮往下翻",
         "b_imp_rules": "导入规则…", "b_exp_rules": "导出规则…", "b_edit_rules": "自定义…",
         "d_ok": "确定", "d_cancel": "取消",
         "custom_hint": "每行一条：动作||正则||说明（说明可空）。drop = 删掉整行，cut = 只删掉命中的片段；想忽略大小写写成 drop i；行首加 # 表示这条暂时不用。",
@@ -295,7 +296,8 @@ TEXTS = {
         "lib_info_dup": " · {0} duplicated",
         "col_title": "Title", "col_author": "Author", "col_chars": "Chars",
         "col_enc": "Encoding", "col_chap": "Chap", "col_size": "Size", "col_rel": "Path",
-        "grp_rules": "Cleaning Rules", "b_all_rules": "Check all", "b_def_rules": "Reset",
+        "grp_rules": "Cleaning rules ({0} · scrollable)", "b_all_rules": "Check all", "b_def_rules": "Reset",
+        "rule_more": "▼ {0} more rule(s) below — scroll down",
         "b_imp_rules": "Import…", "b_exp_rules": "Export…", "b_edit_rules": "Custom…",
         "d_ok": "OK", "d_cancel": "Cancel",
         "custom_hint": "One rule per line: action||regex||note. drop = remove the whole line, cut = remove only the match; add i after the action to ignore case; start with # to disable.",
@@ -740,7 +742,6 @@ class App:
         vsb.pack(side="right", fill="y")
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0, bd=0,
                        yscrollincrement=px(16))
-        cv.configure(yscrollcommand=vsb.set)
         vsb.configure(command=cv.yview)
         cv.pack(side="left", fill="both", expand=True)
         inner = ttk.Frame(cv)
@@ -748,6 +749,7 @@ class App:
         self._rules_canvas = cv
 
         en = self.lang == EN
+        self._rule_cbs = []
         for r in jzcore.RULES:
             name = r["name_en"] if en else r["name"]
             tip = r["tip_en"] if en else r["tip"]
@@ -755,12 +757,45 @@ class App:
             cb.pack(anchor="w", padx=px(8), pady=(px(3), 0))
             ttk.Label(inner, text="    " + tip, foreground="#777777",
                       font=FONT_S, wraplength=px(236)).pack(anchor="w", padx=px(8))
+            self._rule_cbs.append(cb)
+
+        # 「下面还有 N 条」提示：光有滚动条不够，一屏只显示 6~8 条时
+        # 用户会以为规则就这么多（v1.3.4 的简繁选项就是这样被忽视的）。
+        self.rule_hint = ttk.Label(left, text="", foreground="#C05621",
+                                   font=FONT_S, wraplength=px(272))
+        self.rule_hint.pack(side="bottom", fill="x", padx=px(8), pady=(0, px(2)))
+
+        def _hidden_count():
+            try:
+                _f, last = cv.yview()
+                h = inner.winfo_height()
+            except Exception:
+                return 0
+            if h <= 1:
+                return 0
+            bottom = last * h
+            return sum(1 for c in self._rule_cbs
+                       if c.winfo_y() + px(4) > bottom)
+
+        def _sync(first, last):
+            vsb.set(first, last)
+            n = _hidden_count()
+            self.rule_hint.configure(
+                text=S["rule_more"].format(n) if n else "")
+
+        cv.configure(yscrollcommand=_sync)
 
         # 内层宽度跟随画布（否则文字按请求宽度排版、右边被切）
-        cv.bind("<Configure>",
-                lambda e: cv.itemconfigure(cv_win, width=e.width))
-        inner.bind("<Configure>",
-                   lambda _e: cv.configure(scrollregion=cv.bbox("all")))
+        def _on_cv_conf(e):
+            cv.itemconfigure(cv_win, width=e.width)
+            self.after(30, lambda: _sync(*cv.yview()))
+
+        def _on_inner_conf(_e):
+            cv.configure(scrollregion=cv.bbox("all"))
+            self.after(30, lambda: _sync(*cv.yview()))
+
+        cv.bind("<Configure>", _on_cv_conf)
+        inner.bind("<Configure>", _on_inner_conf)
 
         def _wheel(e):
             try:
