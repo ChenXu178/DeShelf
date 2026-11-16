@@ -101,6 +101,32 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 - 扫描结果缓存在目录下的 `.deshelf_index.json`，校验 mtime 与体积判断缓存是否过期
 - 批量处理在后台线程执行，界面不卡，可随时停止
 
+### 本版实测
+
+每次发版前跑完整回归，下面是 v1.5.4 的实际结果（数字来自仓库里的测试脚本，不是估算）：
+
+| 测试 | 覆盖什么 | 结果 |
+|---|---|---|
+| 清洗一致性 | `tools/test_clean_parity.py`：逐条规则比对两端输出 | 36 项通过 |
+| 网页核心 | `tools/test_web_core.mjs`：分章 / 清洗 / 简繁 / 导出逻辑 | 56 项通过 |
+| 端到端 | 6 本真实样本走完「扫描 → 清洗 → 分章 → 导出」 | 62 项通过 |
+| 网页 EPUB | `test_web_epub.js`：用 epub.js 反向解析产物 | 36 项通过 |
+| 浏览器冒烟 | `smoke_web_browser.mjs`：headless 真浏览器点界面 | 23 项通过 |
+
+两条硬性约束，每次都过：
+
+1. **两端逐字一致**——同一份文本（简繁混排、夹站点噪声、全角数字）在 Python 端与网页端的输出必须完全相同，
+   差一个字符即判失败。做法是直接调网页里的清洗函数，与 Python 结果做 diff。
+2. **不改坏原有行为**——每加一条规则，都拿上一版结果做对照，确认纯简体文本「一字不动」。
+
+简繁去重这一版拿用户反馈的真实样本（5 章 334 行，每章繁简各一份）实测：
+
+- 繁体行 138 → 清洗后残留 1 行（一句被站点插了乱码的标题，两份里都没有干净版本）；
+- 简体行 0 误删；
+- 22 000 行耗时 1.21 秒（单线程）。
+
+产物：`DeShelf-v1.5.4.exe` 14.85 MB（PyInstaller onefile），网页版单文件 0.15 MB，均不联网。
+
 ### 免责声明
 
 卷帙是一款纯本地文本整理工具：不联网、不下载、不上传、不提供也不存储任何书籍内容，
@@ -264,6 +290,38 @@ The **Web version** `DeShelf.html` is also on the same Release page (source: `we
 - Encoding detection without chardet: BOM check → strict UTF-8 decode → NUL byte test for UTF-16 → fall back to GBK
 - Scan results cached in `.deshelf_index.json`, invalidated by mtime and size
 - Batch jobs run on a worker thread; the UI stays responsive and can be stopped at any time
+
+### What was actually tested
+
+The full suite runs before every release; these are the real numbers for v1.5.4, taken from the
+scripts in this repo rather than estimated:
+
+| Suite | What it covers | Result |
+|---|---|---|
+| Clean parity | `tools/test_clean_parity.py` — every rule diffed across both ends | 36 checks pass |
+| Web core | `tools/test_web_core.mjs` — split / clean / script-dedupe / export logic | 56 checks pass |
+| End-to-end | six real books through scan → clean → split → export | 62 checks pass |
+| Web EPUB | `test_web_epub.js` — output re-parsed with epub.js | 36 checks pass |
+| Browser smoke | `smoke_web_browser.mjs` — a headless browser clicking the real UI | 23 checks pass |
+
+Two hard rules that must hold every time:
+
+1. **Python and the web page agree byte for byte.** The same input (mixed scripts, site-injected
+   garbage, full-width digits) must produce identical output; one character off counts as a failure.
+   The parity test does this by calling the page's own cleaning function and diffing the result.
+2. **Nothing that used to work may break.** Every new rule is checked against the previous build to
+   confirm plain simplified text comes out untouched.
+
+The script-duplicate fix was measured on a real user sample (five chapters, 334 lines, one simplified
+and one traditional copy of each):
+
+- 138 traditional lines → 1 left after cleaning (a heading with site garbage appended, no clean version
+  in either copy);
+- 0 simplified lines lost;
+- 22,000 lines processed in 1.21 s on a single thread.
+
+Artifacts: `DeShelf-v1.5.4.exe` 14.85 MB (PyInstaller onefile), web version 0.15 MB as a single file,
+both fully offline.
 
 ### Disclaimer
 
