@@ -2,6 +2,8 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.5.5** · 修一个**会整章消失**的分章 bug。有些 TXT 把标题和正文挤在同一行（`第2章 《华侨文阵》：她身处的是1965年的唐人街。`），旧版有一条「标题行不该以句号结尾」的判据（本意是防正文里的「序章内容。」被当成标题），这类行于是被判成正文、**整章并进前一章**，书里就这么少了一章。同一本书里别的章断在逗号处所以没事，所以看着像「只有某本书、某一章」的怪毛病。现在认这种写法：冒号后有一截以句末标点收尾的正文，就前半当标题、后半留在正文里，一个字不丢。桌面版与网页版同源改动，10 项边界用例逐条验过（副标题、引号结尾、正文提及章号等都不会被误拆）。
+>
 > **v1.5.4** · 把「自定义章节正则」讲明白——不再是一句话打发：**①分章页多了「常用写法」按钮**，窗口里按「书的写法」列了 8 条现成规则（第X章/第X折/卷一第X回/纯数字/中文序号/Chapter N/【第X话】/宽版兜底），选中一条点「填入」即可；窗口顶部把「什么时候才需要填」「全局与本书专用两个框的区别」「什么样的行算标题」写清楚。**②使用说明**里补了一整节，含三个常见坑（只写 [0-9] 会把正文行切成标题、只写「第[0-9]+章」漏「第一章」、本书规则别填到全局那格）。两端模板逐条比对，跑测试时若不一致会直接报错。
 >
 > **v1.5.3** · 简繁去重的三处收尾（用户截图指出的「第二行还是繁體版」就在这）：**①** `##########  繁體版  ##########` 这类**版本标记行整行删掉**——正文去重后这份标记已经没有意义，留着就是书里的一行垃圾；**②** 站点把乱码**整段追加**在一行上时，长度会差出一大截被旧的长度比挡掉，现在只要短的那行是长那行的完整前缀/后缀就认成同一句；**③** 镜像块里两份**字面一模一样**的行（如日文小标题）以前繁简打分打平就两边都留，正文里于是多出一行，现在只留一份。
@@ -107,7 +109,7 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 
 ### 本版实测
 
-每次发版前跑完整回归，下面是 v1.5.4 的实际结果（数字来自仓库里的测试脚本，不是估算）：
+每次发版前跑完整回归，下面是 v1.5.5 的实际结果（数字来自仓库里的测试脚本，不是估算）：
 
 | 测试 | 覆盖什么 | 结果 |
 |---|---|---|
@@ -116,6 +118,7 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 | 端到端 | 6 本真实样本走完「扫描 → 清洗 → 分章 → 导出」 | 62 项通过 |
 | 网页 EPUB | `test_web_epub.js`：用 epub.js 反向解析产物 | 36 项通过 |
 | 浏览器冒烟 | `smoke_web_browser.mjs`：headless 真浏览器点界面 | 23 项通过 |
+| 分章边界 | 标题与正文挤一行、副标题、引号结尾、正文提及章号等 10 种写法 | 10 项通过 |
 
 两条硬性约束，每次都过：
 
@@ -129,7 +132,7 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 - 简体行 0 误删；
 - 22 000 行耗时 1.21 秒（单线程）。
 
-产物：`DeShelf-v1.5.4.exe` 14.85 MB（PyInstaller onefile），网页版单文件 0.15 MB，均不联网。
+产物：`DeShelf-v1.5.5.exe` 14.85 MB（PyInstaller onefile），网页版单文件 0.16 MB，均不联网。
 
 ### 免责声明
 
@@ -199,6 +202,8 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.5.5** · Fixes a split bug that could **silently swallow a whole chapter**. Some TXT files run the chapter heading and the first sentence together on one line (`第2章 《华侨文阵》：她身处的是1965年的唐人街。`). An old guard — "a heading line does not end with a full stop", meant to stop body lines like 「序章内容。」 from being read as headings — treated such a line as body text, so that chapter was merged into the previous one and the book came up one chapter short. Neighbouring chapters happened to break at a comma, which is why it looked like one odd book with one odd missing chapter. Now such lines are recognised: when the part after the colon is a sentence that ends in terminal punctuation, the front half becomes the heading and the rest stays in the body — not a character lost. Fixed identically in the desktop and web builds, checked against 10 edge cases (subtitle colons, quote-ending headings, body text that mentions a chapter number) so nothing gets split by mistake.
 >
 > **v1.5.4** · The custom chapter regex is finally explained, not just mentioned: **①** the chapter pane has a “Templates” dialog listing eight ready-made patterns by “Book looks like” (第X章 / 第X折 / 卷一 第X回 / plain numbers / Chinese ordinals / Chapter N / 【第X话】 / a catch-all) — pick one and hit Fill; the dialog also spells out when you need this at all, how the global and per-book boxes differ, and what line qualifies as a title. **②** the user guide gained a full section with the three classic traps (bare [0-9] turning body lines into titles, 第[0-9]+章 missing 第一章, a per-book rule typed into the global box). The two template tables are compared by the test suite, so they cannot drift apart.
 >
@@ -299,7 +304,7 @@ The **Web version** `DeShelf.html` is also on the same Release page (source: `we
 
 ### What was actually tested
 
-The full suite runs before every release; these are the real numbers for v1.5.4, taken from the
+The full suite runs before every release; these are the real numbers for v1.5.5, taken from the
 scripts in this repo rather than estimated:
 
 | Suite | What it covers | Result |
@@ -309,6 +314,7 @@ scripts in this repo rather than estimated:
 | End-to-end | six real books through scan → clean → split → export | 62 checks pass |
 | Web EPUB | `test_web_epub.js` — output re-parsed with epub.js | 36 checks pass |
 | Browser smoke | `smoke_web_browser.mjs` — a headless browser clicking the real UI | 23 checks pass |
+| Split edges | heading-and-body-on-one-line, subtitle colons, quote-ending headings, body text naming a chapter, 10 shapes | 10 checks pass |
 
 Two hard rules that must hold every time:
 
@@ -326,7 +332,7 @@ and one traditional copy of each):
 - 0 simplified lines lost;
 - 22,000 lines processed in 1.21 s on a single thread.
 
-Artifacts: `DeShelf-v1.5.4.exe` 14.85 MB (PyInstaller onefile), web version 0.15 MB as a single file,
+Artifacts: `DeShelf-v1.5.5.exe` 14.85 MB (PyInstaller onefile), web version 0.16 MB as a single file,
 both fully offline.
 
 ### Disclaimer

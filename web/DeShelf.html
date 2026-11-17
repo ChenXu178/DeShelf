@@ -159,7 +159,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.5.4</span>
+  <span class="ver">v1.5.5</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -537,7 +537,7 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.4</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.5</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
  +'<p>清洗规则 10 条：网址、站点宣传、翻页残留、乱码、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
  +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
@@ -550,7 +550,7 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.4</b></p>'
  +'<p>本页以 <b>MIT License</b> 发布：可自由使用、复制、修改、再分发，也包括商业用途——不用付费、不用事先告知。唯一的硬性条件是<b>保留作者署名</b>：任何副本或实质性部分都必须保留「© 2026 永远的兰兰 (Lanlan Eternal)」与完整的 MIT 许可文本（仓库根目录的 LICENSE）。可以改代码、改软件名、闭源分发，但不能删掉署名，也不能改成自己的名字后声称原创。</p>'
  +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0，仅用于比对，不改写正文）；封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.4</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.5</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
  +'<p>Ten cleaning rules: URLs, site promos, pagination leftovers, corrupted lines, blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
  +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
@@ -1152,6 +1152,10 @@ const Core = (() => {
     /(?:序章|序言|楔子|引子|尾声|後记|后记|番外|终章|結局|结局|完本)[^\n]{0,40}/,
   ];
   const MAX_TITLE_LEN=50;
+  /* 标题与正文挤在同一行时整行更长，单独放宽到 90 */
+  const MAX_INLINE_LEN=90;
+  /* 冒号后至少这么长、且以句末标点收尾，才认作同行正文 */
+  const INLINE_MIN_TAIL=8;
   /* 开头这几行算元信息：只由它们组成的「开篇」不单独成章 */
   const META_LINE=/^(?:书名|标题|题\s*目|小说名|作\s*者|著\s*者|简介|内容简介|内容介绍)\s*[:：]/;
   function splitChapters(text,custom){
@@ -1163,15 +1167,32 @@ const Core = (() => {
     const chapters=[];let cur="开篇";const buf=[];
     for(const raw of text.split(/\r\n|\r|\n/)){
       const s=raw.trim();
-      let hit=null;
+      let hit=null,rest="";
       if(s&&s.length<=MAX_TITLE_LEN&&!s.endsWith("。")){
         for(const p of pats){const m=s.match(p);if(m&&m.index===0){hit=s;break;}}
+      }
+      /* 标题与正文挤在同一行：`第2章 《华侨文阵》：她身处的是1965年的唐人街。`
+         这类行以句号结尾，按上面那条会被当成正文，整章并进前一章。
+         2026-11-17 小红书反馈「同一本书只缺第 2 章」就是这一行恰好跨过
+         一个完整句子，而第 3、4 章断在逗号处所以没事。
+         判据：冒号后有一截（≥8 字）以句末标点收尾 → 前半当标题、后半留给正文。 */
+      if(hit===null&&s.length<=MAX_INLINE_LEN&&s.endsWith("。")){
+        const mm=s.match(/^(.{1,40}?)[：:]\s*(.+)$/);
+        if(mm&&mm[2].length>=INLINE_MIN_TAIL&&/[。！？…”」]$/.test(mm[2])){
+          const head=mm[1].trim();
+          for(const p of pats){
+            const m=head.match(p);
+            if(m&&m.index===0){hit=head;rest=mm[2].trim();break;}
+          }
+        }
       }
       if(hit!==null){
         const body=buf.join("\n").trim();
         if(body){chapters.push({t:cur,b:body});cur=hit;}
         else cur=(cur==="开篇")?hit:cur+" "+hit;
         buf.length=0;
+        /* 同行正文归到这一章，缩进照原文留 */
+        if(rest){const lead=(raw.match(/^\s*/)||[""])[0];buf.push(lead+rest);}
       }else buf.push(raw);
     }
     const body=buf.join("\n").trim();
