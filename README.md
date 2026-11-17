@@ -8,6 +8,8 @@
 >
 > 同一类写法还有两个出口，一并修了：**①整行超过 50 字标题上限**的（`第31章 …:…` 有 52~55 字）；**②行里混着盗版站的字面 `\r\n`**，把长度撑爆的（第 18、57 章，剥掉后 44~45 字）。三处都改在分章判据里，正文一个字不动。
 >
+> 这个问题是小红书读者 **海盐柠檬** 反馈的 —— 附了书和截图，才定位到这三种写法。谢谢。
+>
 > **v1.5.4** · 把「自定义章节正则」讲明白——不再是一句话打发：**①分章页多了「常用写法」按钮**，窗口里按「书的写法」列了 8 条现成规则（第X章/第X折/卷一第X回/纯数字/中文序号/Chapter N/【第X话】/宽版兜底），选中一条点「填入」即可；窗口顶部把「什么时候才需要填」「全局与本书专用两个框的区别」「什么样的行算标题」写清楚。**②使用说明**里补了一整节，含三个常见坑（只写 [0-9] 会把正文行切成标题、只写「第[0-9]+章」漏「第一章」、本书规则别填到全局那格）。两端模板逐条比对，跑测试时若不一致会直接报错。
 >
 > **v1.5.3** · 简繁去重的三处收尾（用户截图指出的「第二行还是繁體版」就在这）：**①** `##########  繁體版  ##########` 这类**版本标记行整行删掉**——正文去重后这份标记已经没有意义，留着就是书里的一行垃圾；**②** 站点把乱码**整段追加**在一行上时，长度会差出一大截被旧的长度比挡掉，现在只要短的那行是长那行的完整前缀/后缀就认成同一句；**③** 镜像块里两份**字面一模一样**的行（如日文小标题）以前繁简打分打平就两边都留，正文里于是多出一行，现在只留一份。
@@ -213,6 +215,8 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 > Measured on the book a reader reported (810k characters): the old build split it into **81 chapters** with the numbering jumping `1→3→6→7→9→10→15→19…`; the new one gives **106** (a front-matter section plus chapters 1–105) with **zero missing numbers, zero duplicates and no phantom chapters**, covering 99.5% of the body text (the remainder is the text of the 105 heading lines themselves).
 >
 > Two more exits of the same shape were fixed too: **①** lines longer than the 50-character heading cap (`第31章 …:…` runs 52–55 characters); **②** lines carrying the pirate site’s literal `\r\n` escapes, which inflate the length (chapters 18 and 57, 44–45 characters once stripped). All three live in the split logic; not a character of body text is touched.
+>
+> Reported by **海盐柠檬** on Xiaohongshu, who sent the book and the screenshots that made all three shapes visible. Thank you.
 >
 > **v1.5.4** · The custom chapter regex is finally explained, not just mentioned: **①** the chapter pane has a “Templates” dialog listing eight ready-made patterns by “Book looks like” (第X章 / 第X折 / 卷一 第X回 / plain numbers / Chinese ordinals / Chapter N / 【第X话】 / a catch-all) — pick one and hit Fill; the dialog also spells out when you need this at all, how the global and per-book boxes differ, and what line qualifies as a title. **②** the user guide gained a full section with the three classic traps (bare [0-9] turning body lines into titles, 第[0-9]+章 missing 第一章, a per-book rule typed into the global box). The two template tables are compared by the test suite, so they cannot drift apart.
 >
