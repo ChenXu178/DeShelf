@@ -2,6 +2,16 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.5.6** · 修 iOS 上**「上传不了文件」**——不是上传失败，是**两个入口在 iPhone / iPad 上根本没有反应**。
+>
+> ①**「选择文件夹」点了没动静**：它用的是 File System Access API，而 **Safari 和 iOS 上所有浏览器都没有这个接口**，点击时抛 `TypeError` 被 `catch` 吞掉，看上去就是个死按钮。现在凡是没这个能力的浏览器（iOS 全系、Firefox、移动端），**收起「选择文件夹」、把「选择 TXT 文件」升成主按钮**，不再留一个点不动的按钮。
+>
+> ②**「选择 TXT 文件」弹不出选择器**：原先是 JS 现建一个 `<input type="file">` 就 `.click()`，**没有插进文档**；iOS Safari 对游离节点不打开选择器，而且给 `.onchange` 赋值在 iOS 上不触发，必须用 `addEventListener`。两条都改掉了。
+>
+> 触屏设备上虚线框的文案也从「拖到这里」改成「**点这里选 TXT 文件**」——手机上既没有拖放，也没有目录授权，原来那句话本身就指错了路。
+>
+> 修完用无头浏览器**在页面脚本执行前删掉 `showDirectoryPicker`** 来模拟 iOS（事后删是无效的，`canDir` 在加载时就算完了），逐项断言 14 项全过——包括「点下去之后 input 确实在文档里、parentNode 是 `BODY`」。旧回归照旧：清洗一致性 36 项、网页核心 56 项、分章边界 10 项，全绿。
+>
 > **v1.5.5** · 修一个**会整章消失**的分章 bug，**桌面版和网页版都中**（同一份逻辑）。有些 TXT 把标题和正文挤在同一行（`第2章 《华侨文阵》:她身处的是1965年的唐人街。`），旧版有一条「标题行不以句号结尾」的判据（本意是防正文里的「序章内容。」被当成标题），这类行被判成正文、**整章并进前一章**。同一本书里别的章断在逗号处所以没事，看着就像「只有某一章出事」——其实漏哪一章取决于排版在哪儿换行。
 >
 > 拿读者反馈的那本书（81 万字）实测：旧版分出 **81 章**，章号 `1→3→6→7→9→10→15→19…` 一路跳；新版 **106 章**（开篇 + 第 1~105 章），**缺号 0、重复 0、没有误判出来的假章**，正文覆盖 99.5%（差额是 105 个标题行本身的文字）。
@@ -209,6 +219,16 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.5.6** · Fixes **"can't upload a file" on iOS** — the upload never started; both entry points did nothing at all on iPhone and iPad.
+>
+> (1) **"Choose Folder" was a dead button.** It relies on the File System Access API, which **Safari — and therefore every browser on iOS — does not implement**. The click threw a `TypeError` that a `catch` swallowed, so nothing visible happened. Browsers without that capability (all of iOS, Firefox, mobile) now **hide "Choose Folder" and promote "Choose TXT files" to the primary button** instead of leaving a control that cannot work.
+>
+> (2) **"Choose TXT files" opened no picker.** The code built an `<input type="file">` in JavaScript and called `.click()` on it **without inserting it into the document**; iOS Safari refuses to open the picker for a detached node, and assigning `.onchange` does not fire there either — it has to be `addEventListener`. Both are fixed.
+>
+> On touch devices the drop zone now reads "**Tap here to choose TXT files**" rather than "drop files here" — a phone has neither drag-and-drop nor folder authorization, so the old wording pointed the wrong way.
+>
+> Verified by deleting `showDirectoryPicker` **before the page scripts run** in a headless browser to simulate iOS (deleting it afterwards is useless — `canDir` is computed at load). 14 assertions pass, including "after the click the input really is in the document and its `parentNode` is `BODY`". Earlier suites still green: 36 cleaning-parity, 56 web-core, 10 splitting-edge.
 >
 > **v1.5.5** · Fixes a split bug that could **silently swallow a whole chapter** — it hits **both the desktop and the web build** (one shared implementation). Some TXT files run the chapter heading and the first sentence together on one line (`第2章 《华侨文阵》:她身处的是1965年的唐人街。`). An old guard — "a heading line does not end with a full stop", meant to stop body lines like 「序章内容。」 from being read as headings — treated such a line as body text, so the chapter was merged into the previous one. Neighbouring chapters happened to break at a comma, which is why it looked like a single missing chapter; in fact which chapter you lose depends on where the typesetter wrapped.
 >

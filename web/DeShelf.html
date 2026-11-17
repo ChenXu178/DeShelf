@@ -159,7 +159,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.5.5</span>
+  <span class="ver">v1.5.6</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -537,7 +537,7 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.5</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.6</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
  +'<p>清洗规则 10 条：网址、站点宣传、翻页残留、乱码、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
  +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
@@ -550,7 +550,7 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.5</b></p>'
  +'<p>本页以 <b>MIT License</b> 发布：可自由使用、复制、修改、再分发，也包括商业用途——不用付费、不用事先告知。唯一的硬性条件是<b>保留作者署名</b>：任何副本或实质性部分都必须保留「© 2026 永远的兰兰 (Lanlan Eternal)」与完整的 MIT 许可文本（仓库根目录的 LICENSE）。可以改代码、改软件名、闭源分发，但不能删掉署名，也不能改成自己的名字后声称原创。</p>'
  +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0，仅用于比对，不改写正文）；封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.5</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.6</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
  +'<p>Ten cleaning rules: URLs, site promos, pagination leftovers, corrupted lines, blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
  +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
@@ -1839,12 +1839,29 @@ function fileNameBase(book){
   return stem+suf;
 }
 /* ================= 面板切换 / 静态文本 ================= */
+/* 不支持目录 API 的浏览器（iOS Safari 全系、Firefox、移动端 Chrome）：把「选择文件夹」收起来，
+   把「选择 TXT 文件」升成主按钮；触屏设备上再把虚线框文案改成「点这里」——
+   手机上既没有拖放，也没有目录授权，留着「选择文件夹」就是个点不动的死按钮。 */
+function applyCapability(){
+  if(canDir) return;
+  const bd=document.getElementById("btnPickDir");
+  const bf=document.getElementById("btnPickFiles");
+  if(bd) bd.style.display="none";
+  if(bf){ bf.classList.remove("ghost"); bf.classList.add("b1"); }
+  const touch = !!(window.matchMedia && window.matchMedia("(hover:none)").matches);
+  if(!touch) return;
+  const big=document.querySelector('#dz [data-k="dzTitle"]');
+  const sub=document.querySelector('#dz [data-k="dzSub"]');
+  if(big) big.textContent = CUR==="zh" ? "点这里选 TXT 文件" : "Tap here to choose TXT files";
+  if(sub) sub.textContent = CUR==="zh" ? "可多选 · 批量导入" : "Multi-select · batch import";
+}
 function applyStatic(){
   document.querySelectorAll("[data-k]").forEach(el=>{const k=el.dataset.k;if(k&&(k in TX()))el.textContent=T(k);});
   const langBtn=$("btnLang");
   langBtn.textContent = CUR==="zh" ? "EN" : "中文";
   langBtn.title = CUR==="zh" ? "Switch to English" : "切换到中文";
   document.documentElement.lang = CUR==="zh"?"zh-CN":"en";
+  applyCapability();
 }
 function goStep(i){
   St.curStep=i;
@@ -1862,6 +1879,9 @@ function logLn(m){log(m);}
 
 /* ================= 书库：选目录 / 拖拽 ================= */
 async function requestDir(){
+  /* iOS Safari 全系、Firefox、移动端浏览器都没有 showDirectoryPicker，
+     不加这行会在调用处抛 TypeError，被 catch 吞掉后表现得像「点了没反应」 */
+  if(!canDir) return null;
   let dh=null;
   try{ dh=await window.showDirectoryPicker({mode:"readwrite",id:"deshelf-root"}); }
   catch(e){ try{ dh=await window.showDirectoryPicker({mode:"read",id:"deshelf-root"}); }
@@ -1870,6 +1890,7 @@ async function requestDir(){
 }
 async function pickDirFlow(fresh){
   if(St.busy) return;
+  if(!canDir){ openFileDialog(); return; }
   let dh;
   if(St.rootHandle){
     // 已授权：直接请求权限
@@ -1947,8 +1968,18 @@ function openFileDialog(){
   if(St.busy)return;
   const inp=document.createElement("input");
   inp.type="file";inp.multiple=true;
-  inp.accept=".txt,.text";
-  inp.onchange=()=>{if(inp.files&&inp.files.length)dropFilesToLib(inp.files,false);};
+  inp.accept=".txt,text/plain,.text";
+  inp.style.cssText="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0";
+  /* iOS Safari 两个硬要求，缺一条选择器就打不开：
+     ① input 必须真的插进文档 —— 游离节点的 .click() 在 iOS 上无效；
+     ② 必须 addEventListener —— 给 .onchange 赋值在 iOS 上不触发。
+     这两条是 iOS 用户「点了没反应」的直接原因，别改回去。 */
+  document.body.appendChild(inp);
+  inp.addEventListener("change",()=>{
+    const fs=Array.from(inp.files||[]);
+    setTimeout(()=>{try{inp.remove();}catch(e){}},0);
+    if(fs.length)dropFilesToLib(fs,false);
+  });
   inp.click();
 }
 function bindDrop(){
