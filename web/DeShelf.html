@@ -1154,8 +1154,18 @@ const Core = (() => {
   const MAX_TITLE_LEN=50;
   /* 标题与正文挤在同一行时整行更长，单独放宽到 90 */
   const MAX_INLINE_LEN=90;
-  /* 冒号后至少这么长、且以句末标点收尾，才认作同行正文 */
-  const INLINE_MIN_TAIL=8;
+  /* 被拆出来当标题的那截最多这么长（再长就不像标题了） */
+  const INLINE_MAX_HEAD=30;
+  /* 冒号后至少这么长，才认作同行正文 */
+  const INLINE_MIN_TAIL=12;
+  /* 盗版站把换行转成了字面 \r\n 塞在行里，判据与标题都要先剥掉 */
+  const LITERAL_ESC=/\\[rn]/g;
+  /* 冒号后那一截是不是正文：够长就算；短的话以句末标点收尾就算 ——
+     副标题（「一个意外的电话」）通常是个光秃秃的词组、不带句号。 */
+  const isInlineBody=function(t){
+    if(t.length>=INLINE_MIN_TAIL) return true;
+    return t.length>=6 && /[。！？…”」]$/.test(t);
+  };
   /* 开头这几行算元信息：只由它们组成的「开篇」不单独成章 */
   const META_LINE=/^(?:书名|标题|题\s*目|小说名|作\s*者|著\s*者|简介|内容简介|内容介绍)\s*[:：]/;
   function splitChapters(text,custom){
@@ -1166,7 +1176,7 @@ const Core = (() => {
     }else pats=CHAPTER_RE;
     const chapters=[];let cur="开篇";const buf=[];
     for(const raw of text.split(/\r\n|\r|\n/)){
-      const s=raw.trim();
+      const s=raw.trim().replace(LITERAL_ESC,"");
       let hit=null,rest="";
       if(s&&s.length<=MAX_TITLE_LEN&&!s.endsWith("。")){
         for(const p of pats){const m=s.match(p);if(m&&m.index===0){hit=s;break;}}
@@ -1176,9 +1186,9 @@ const Core = (() => {
          2026-11-17 小红书反馈「同一本书只缺第 2 章」就是这一行恰好跨过
          一个完整句子，而第 3、4 章断在逗号处所以没事。
          判据：冒号后有一截（≥8 字）以句末标点收尾 → 前半当标题、后半留给正文。 */
-      if(hit===null&&s.length<=MAX_INLINE_LEN&&s.endsWith("。")){
+      if(hit===null&&s.length<=MAX_INLINE_LEN){
         const mm=s.match(/^(.{1,40}?)[：:]\s*(.+)$/);
-        if(mm&&mm[2].length>=INLINE_MIN_TAIL&&/[。！？…”」]$/.test(mm[2])){
+        if(mm&&mm[1].trim().length<=INLINE_MAX_HEAD&&isInlineBody(mm[2])){
           const head=mm[1].trim();
           for(const p of pats){
             const m=head.match(p);

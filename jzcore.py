@@ -956,10 +956,21 @@ CHAPTER_PATTERNS = [
 MAX_TITLE_LEN = 50
 # 标题与正文挤在同一行时整行更长，单独放宽
 MAX_INLINE_LEN = 90
-# 冒号后至少这么长、且以句末标点收尾，才认作同行正文
-INLINE_MIN_TAIL = 8
+# 被拆出来当标题的那截最多这么长（再长就不像标题了）
+INLINE_MAX_HEAD = 30
+# 冒号后至少这么长，才认作同行正文
+INLINE_MIN_TAIL = 12
 _INLINE_SPLIT = re.compile(r"^(.{1,40}?)[：:]\s*(.+)$")
+# 盗版站把换行转成了字面 \r\n 塞在行里，判据与标题都要先剥掉
+_LITERAL_ESC = re.compile(r"\\[rn]")
+# 短正文（「不改稿，就退稿。」）：以句末标点收尾就算，副标题通常不带句号
 _INLINE_TAIL = re.compile(r"[。！？…”」]$")
+
+
+def _is_inline_body(t):
+    if len(t) >= INLINE_MIN_TAIL:
+        return True
+    return len(t) >= 6 and bool(_INLINE_TAIL.search(t))
 
 # 自定义章节正则的「常用写法」：界面里的模板表。桌面版直接读这里，
 # 网页版在 DeShelf.html 里另存一份 JS 数组，两边内容由 test_clean_parity 比对。
@@ -1013,7 +1024,7 @@ def split_chapters(text, custom=None):
     cur_title = "开篇"
     buf = []
     for raw in text.splitlines():
-        s = raw.strip()
+        s = _LITERAL_ESC.sub("", raw.strip())
         hit = None
         tail = ""
         # 以句号结尾的通常是正文而非标题，避免“序章内容。”这类误判
@@ -1025,15 +1036,17 @@ def split_chapters(text, custom=None):
         # 标题与正文挤在同一行（「第2章 《华侨文阵》：她身处的是1965年的唐人街。」）：
         # 这类行以句号结尾，走上面那条会被当成正文、整章并进前一章。
         # 判据：冒号后有一截（>=8 字）以句末标点收尾 -> 前半当标题、后半留给正文。
-        if hit is None and len(s) <= MAX_INLINE_LEN and s.endswith("。"):
+        if hit is None and len(s) <= MAX_INLINE_LEN:
             mm = _INLINE_SPLIT.match(s)
-            if mm and len(mm.group(2)) >= INLINE_MIN_TAIL and _INLINE_TAIL.search(mm.group(2)):
-                head = mm.group(1).strip()
-                for p in pats:
-                    if re.match(p, head):
-                        hit = head
-                        tail = mm.group(2).strip()
-                        break
+            if mm and len(mm.group(1).strip()) <= INLINE_MAX_HEAD:
+                _t2 = mm.group(2)
+                if _is_inline_body(_t2):
+                    head = mm.group(1).strip()
+                    for p in pats:
+                        if re.match(p, head):
+                            hit = head
+                            tail = _t2.strip()
+                            break
         if hit is not None:
             body = "\n".join(buf).strip()
             if body:

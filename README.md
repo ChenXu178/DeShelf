@@ -2,7 +2,11 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
-> **v1.5.5** · 修一个**会整章消失**的分章 bug。有些 TXT 把标题和正文挤在同一行（`第2章 《华侨文阵》：她身处的是1965年的唐人街。`），旧版有一条「标题行不该以句号结尾」的判据（本意是防正文里的「序章内容。」被当成标题），这类行于是被判成正文、**整章并进前一章**，书里就这么少了一章。同一本书里别的章断在逗号处所以没事，所以看着像「只有某本书、某一章」的怪毛病。现在认这种写法：冒号后有一截以句末标点收尾的正文，就前半当标题、后半留在正文里，一个字不丢。桌面版与网页版同源改动，10 项边界用例逐条验过（副标题、引号结尾、正文提及章号等都不会被误拆）。
+> **v1.5.5** · 修一个**会整章消失**的分章 bug，**桌面版和网页版都中**（同一份逻辑）。有些 TXT 把标题和正文挤在同一行（`第2章 《华侨文阵》:她身处的是1965年的唐人街。`），旧版有一条「标题行不以句号结尾」的判据（本意是防正文里的「序章内容。」被当成标题），这类行被判成正文、**整章并进前一章**。同一本书里别的章断在逗号处所以没事，看着就像「只有某一章出事」——其实漏哪一章取决于排版在哪儿换行。
+>
+> 拿读者反馈的那本书（81 万字）实测：旧版分出 **81 章**，章号 `1→3→6→7→9→10→15→19…` 一路跳；新版 **106 章**（开篇 + 第 1~105 章），**缺号 0、重复 0、没有误判出来的假章**，正文覆盖 99.5%（差额是 105 个标题行本身的文字）。
+>
+> 同一类写法还有两个出口，一并修了：**①整行超过 50 字标题上限**的（`第31章 …:…` 有 52~55 字）；**②行里混着盗版站的字面 `\r\n`**，把长度撑爆的（第 18、57 章，剥掉后 44~45 字）。三处都改在分章判据里，正文一个字不动。
 >
 > **v1.5.4** · 把「自定义章节正则」讲明白——不再是一句话打发：**①分章页多了「常用写法」按钮**，窗口里按「书的写法」列了 8 条现成规则（第X章/第X折/卷一第X回/纯数字/中文序号/Chapter N/【第X话】/宽版兜底），选中一条点「填入」即可；窗口顶部把「什么时候才需要填」「全局与本书专用两个框的区别」「什么样的行算标题」写清楚。**②使用说明**里补了一整节，含三个常见坑（只写 [0-9] 会把正文行切成标题、只写「第[0-9]+章」漏「第一章」、本书规则别填到全局那格）。两端模板逐条比对，跑测试时若不一致会直接报错。
 >
@@ -119,6 +123,7 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 | 网页 EPUB | `test_web_epub.js`：用 epub.js 反向解析产物 | 36 项通过 |
 | 浏览器冒烟 | `smoke_web_browser.mjs`：headless 真浏览器点界面 | 23 项通过 |
 | 分章边界 | 标题与正文挤一行、副标题、引号结尾、正文提及章号等 10 种写法 | 10 项通过 |
+| 真实书 | 反馈的那本 81 万字：桌面版与网页版各跑一遍，核章号是否连续、有无假章 | 旧 81 章 → 新 106 章，缺号 0 |
 
 两条硬性约束，每次都过：
 
@@ -203,7 +208,11 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
 >
-> **v1.5.5** · Fixes a split bug that could **silently swallow a whole chapter**. Some TXT files run the chapter heading and the first sentence together on one line (`第2章 《华侨文阵》：她身处的是1965年的唐人街。`). An old guard — "a heading line does not end with a full stop", meant to stop body lines like 「序章内容。」 from being read as headings — treated such a line as body text, so that chapter was merged into the previous one and the book came up one chapter short. Neighbouring chapters happened to break at a comma, which is why it looked like one odd book with one odd missing chapter. Now such lines are recognised: when the part after the colon is a sentence that ends in terminal punctuation, the front half becomes the heading and the rest stays in the body — not a character lost. Fixed identically in the desktop and web builds, checked against 10 edge cases (subtitle colons, quote-ending headings, body text that mentions a chapter number) so nothing gets split by mistake.
+> **v1.5.5** · Fixes a split bug that could **silently swallow a whole chapter** — it hits **both the desktop and the web build** (one shared implementation). Some TXT files run the chapter heading and the first sentence together on one line (`第2章 《华侨文阵》:她身处的是1965年的唐人街。`). An old guard — "a heading line does not end with a full stop", meant to stop body lines like 「序章内容。」 from being read as headings — treated such a line as body text, so the chapter was merged into the previous one. Neighbouring chapters happened to break at a comma, which is why it looked like a single missing chapter; in fact which chapter you lose depends on where the typesetter wrapped.
+>
+> Measured on the book a reader reported (810k characters): the old build split it into **81 chapters** with the numbering jumping `1→3→6→7→9→10→15→19…`; the new one gives **106** (a front-matter section plus chapters 1–105) with **zero missing numbers, zero duplicates and no phantom chapters**, covering 99.5% of the body text (the remainder is the text of the 105 heading lines themselves).
+>
+> Two more exits of the same shape were fixed too: **①** lines longer than the 50-character heading cap (`第31章 …:…` runs 52–55 characters); **②** lines carrying the pirate site’s literal `\r\n` escapes, which inflate the length (chapters 18 and 57, 44–45 characters once stripped). All three live in the split logic; not a character of body text is touched.
 >
 > **v1.5.4** · The custom chapter regex is finally explained, not just mentioned: **①** the chapter pane has a “Templates” dialog listing eight ready-made patterns by “Book looks like” (第X章 / 第X折 / 卷一 第X回 / plain numbers / Chinese ordinals / Chapter N / 【第X话】 / a catch-all) — pick one and hit Fill; the dialog also spells out when you need this at all, how the global and per-book boxes differ, and what line qualifies as a title. **②** the user guide gained a full section with the three classic traps (bare [0-9] turning body lines into titles, 第[0-9]+章 missing 第一章, a per-book rule typed into the global box). The two template tables are compared by the test suite, so they cannot drift apart.
 >
@@ -315,6 +324,7 @@ scripts in this repo rather than estimated:
 | Web EPUB | `test_web_epub.js` — output re-parsed with epub.js | 36 checks pass |
 | Browser smoke | `smoke_web_browser.mjs` — a headless browser clicking the real UI | 23 checks pass |
 | Split edges | heading-and-body-on-one-line, subtitle colons, quote-ending headings, body text naming a chapter, 10 shapes | 10 checks pass |
+| Real book | the reported 810k-character book, run through both the desktop and the web core — chapter numbering and phantom-chapter check | 81 chapters → 106, no gaps |
 
 Two hard rules that must hold every time:
 
