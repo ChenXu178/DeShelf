@@ -159,7 +159,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.5.6</span>
+  <span class="ver">v1.5.7</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -370,6 +370,8 @@ const Z = {
   stEmpty:"无已选书籍", stWait:"处理中…",
   ruleOn:"已启用 {n} 条规则", rPrev:"原文", rClean:"清洗后",
   rmStat:"删除 {n} 行", cutStat:"另 {m} 行只裁了行尾网址", jsdupStat:"其中简繁重复 {n} 行",
+  mergeStat:"合并断行 {n} 处", glueStat:"标点接回上一行 {n} 处", wrapSkipStat:"{n} 段过长未合并",
+  loneHint:"另有 {n} 处标点独占一行，勾选「标点单独占一行」可修", wrapHint:"另有 {n} 段疑似句中硬断，勾选「合并句中断行」可合并",
   prevHint:"仅预览前 500 行：整行划线＝删除；只有网址被划线＝正文保留",
   applyDone:"已清洗 {n} 本，共删除 {m} 行垃圾内容",
   cleanAllDone:"全部所选书籍已清洗",
@@ -484,6 +486,8 @@ const E = {
   stEmpty:"No books selected", stWait:"Working…",
   ruleOn:"{n} rules enabled", rPrev:"Original", rClean:"Cleaned",
   rmStat:"{n} lines removed", cutStat:"{m} more lines: only the URL tail trimmed", jsdupStat:"{n} of them were script duplicates",
+  mergeStat:"{n} line breaks joined", glueStat:"{n} punctuation marks pulled back up", wrapSkipStat:"{n} paragraphs left alone (too long)",
+  loneHint:"{n} more lines hold punctuation only — tick \u201cPunctuation alone on a line\u201d to fix", wrapHint:"{n} more paragraphs look hard-wrapped — tick \u201cJoin mid-sentence line breaks\u201d to merge",
   prevHint:"First 500 lines only: fully struck = removed; only the URL struck = text kept",
   applyDone:"Cleaned {n} book(s), removed {m} junk lines",
   cleanAllDone:"All selected books cleaned",
@@ -537,9 +541,9 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.6</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
- +'<p>清洗规则 10 条：网址、站点宣传、翻页残留、乱码、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
+ +'<p>清洗规则 12 条：网址、站点宣传、翻页残留、乱码、<b>标点单独占一行</b>（整行只有一个收尾引号、句号或逗号的，接回上一行；省略号/破折号独占一行不动，默认关闭）、<b>合并句中断行</b>（按手机屏宽硬断的文件，以空行为段落界接回去，默认关闭）、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
  +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
  +'<p>技术：单文件 HTML · File System Access（目录模式）/ 拖拽（全浏览器）· TextDecoder 编码识别 · 手写 EPUB 2.0 + ZIP（CompressionStream deflate）。</p>'
  +'<p>同一份 HTML 本地双击即用；放到 GitHub Pages 等 https 静态托管即是"在线版"，功能不变——数据始终不出本机。</p>'
@@ -550,9 +554,9 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.6</b></p>'
  +'<p>本页以 <b>MIT License</b> 发布：可自由使用、复制、修改、再分发，也包括商业用途——不用付费、不用事先告知。唯一的硬性条件是<b>保留作者署名</b>：任何副本或实质性部分都必须保留「© 2026 永远的兰兰 (Lanlan Eternal)」与完整的 MIT 许可文本（仓库根目录的 LICENSE）。可以改代码、改软件名、闭源分发，但不能删掉署名，也不能改成自己的名字后声称原创。</p>'
  +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0，仅用于比对，不改写正文）；封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.6</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
- +'<p>Ten cleaning rules: URLs, site promos, pagination leftovers, corrupted lines, blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
+ +'<p>Twelve cleaning rules: URLs, site promos, pagination leftovers, corrupted lines, <b>punctuation alone on a line</b> (a line holding only a closing quote, full stop or comma is pulled back; ellipsis/dash-only lines are never touched; off by default), <b>join mid-sentence line breaks</b> (for files hard-wrapped at phone width — blank lines are treated as paragraph breaks; off by default), blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
  +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
  +'<p>Tech: single-file HTML · File System Access (directory mode) / drag &amp; drop (every browser) · TextDecoder encoding detection · hand-rolled EPUB 2.0 + ZIP (CompressionStream deflate).</p>'
  +'<p>Double-click the same HTML file for local use, or host it on any https static site (e.g. GitHub Pages) for an “online” version — behavior is identical, and data never leaves your machine.</p>'
@@ -813,7 +817,7 @@ const Core = (() => {
     return {title:title.trim(),author:author.trim()};
   }
 
-  /* ---------- 清洗规则（10 条：原 9 条 + 简繁重复行） ---------- */
+  /* ---------- 清洗规则（12 条：原 10 条 + 标点独占一行 + 合并句中断行） ---------- */
   const RULES=[
     {id:"url",name:"含网址的行",name_en:"Lines with URLs",
      tip:"删除只有网址的行；网址若粘在段尾，只裁掉网址本身，正文保留",
@@ -825,6 +829,12 @@ const Core = (() => {
      tip:"删除“上一页”“本章未完”等导航整行",tip_en:"Remove nav-only lines such as “prev page” / “to be continued”"},
     {id:"moji",name:"乱码行",name_en:"Corrupted lines",
      tip:"删除含替换符或不可见控制符的整行",tip_en:"Remove lines with replacement or invisible control characters"},
+    {id:"punct",name:"标点单独占一行（默认关）",name_en:"Punctuation alone on a line",
+     tip:"整行只有一个收尾引号、句号或逗号的，接回上一行末尾。省略号/破折号独占一行（“……”“——”）是作家故意排的，不动。默认关闭，勾选才改",
+     tip_en:"A line holding only a closing quote or a comma / full stop is pulled back onto the previous line. Ellipsis-only lines such as \u201c\u2026\u201d are left alone \u2014 authors use them on purpose. Off by default"},
+    {id:"unwrap",name:"合并句中断行（默认关）",name_en:"Join mid-sentence line breaks",
+     tip:"按手机屏宽硬断的文件，一段话被切成好几行；勾选后以空行为段落界接回去。单段超过 3000 字的跳过不动，默认关闭",
+     tip_en:"For files hard-wrapped at phone width: joins the broken lines back together, using blank lines as paragraph breaks. Paragraphs over 3000 chars are left alone. Off by default"},
     {id:"blank",name:"删除所有空行",name_en:"Delete all blank lines",
      tip:"不留任何空行（与下一项二选一）",tip_en:"Remove every blank line (pick either this or the next)"},
     {id:"blank2",name:"压缩连续空行",name_en:"Collapse blank runs",
@@ -870,10 +880,123 @@ const Core = (() => {
     if(AD_HEAD_RE.test(head)&&total<AD_SHORT)return["drop",0];
     if(body<AD_MIN_BODY){
       if(body===0&&(total<AD_TINY||AD_HEAD_RE.test(head+s.slice(end))))return["drop",0];
+      /* 网址前面只有几个字（“欢迎访问”），后面又接着推广语 → 整行仍是广告 */
+      const tail=s.slice(end);
+      if(AD_HEAD_RE.test(tail)&&slim(tail)<=AD_TAIL_MAX)return["drop",0];
       return["keep",0];
     }
     if(slim(s.slice(end))<=AD_AFTER&&s.length-start<=AD_TAIL_MAX)return["cut",start];
     return["keep",0];
+  }
+
+  /* ---------- 段落修复：标点独占一行 / 句中断行 ----------
+     盗版站按手机屏宽硬断，一段话被切成十几行，收尾引号还会被挤成单独一行。
+     以空行作段落界（不能靠“行尾有没有标点”判断 —— 硬断点经常正好落在句号后）。 */
+  const HEAD_BAN=new Set("，。、；：？！”’》」』）】,.;:?!");
+  const QUOTE_END=new Set("”’\"'");
+  const BRACKET_END=new Set("」』）】》〉");
+  const OPEN_ANY=new Set("「『（(【《〈“‘");
+  const SENT_END=new Set("。！？…”』」）】.!?~—…：:");
+  const ONLY_MAX=3;
+  const ONLY_PUNCT=/^[\s\u3000，。、；：？！…”’"'「」『』（）()【】《》〈〉·—～]+$/;
+  /* 省略号/破折号独占一行是作家故意的排版，不能当坏行；纯逗号句号才是坏行 */
+  const SOFT_ONLY=new Set("…·—～－–-—.");
+  const HARD_ONLY=new Set("，。、；：？！,.;:?!");
+  const SEP_LINE=/^\s*[=\-*_~·—─━※◇◆■□+]{3,}\s*$/;
+  const HEAD_LINE=/^\s*(第\s*[0-9０-９零〇一二三四五六七八九十百千万两]{1,15}\s*[章节節回卷篇集部]|序章|序言|楔子|引子|尾声|尾聲|后记|後記|番外|终章|終章|正文|目录|目錄)/;
+  const UNWRAP_MAX=3000;
+  function isBlockLine(s){
+    if(!s) return true;
+    if(SEP_LINE.test(s)) return true;
+    const t=s.replace(/^[　\s]+|[　\s]+$/g,"");
+    return t.length<=50&&HEAD_LINE.test(t);
+  }
+  function joinPair(prev,nxt){
+    return prev.replace(/[　\s]+$/,"")+nxt.replace(/^[　\s]+|[　\s]+$/g,"");
+  }
+  function onlyKind(s){
+    for(const ch of s) if(OPEN_ANY.has(ch)) return null;   // 「……」这种是段落写法
+    for(const ch of s) if(QUOTE_END.has(ch)||BRACKET_END.has(ch)) return "close";
+    const core=Array.from(s).filter(c=>!/\s/.test(c));
+    if(core.length&&core.every(c=>HARD_ONLY.has(c))) return "hard";
+    if(core.length&&core.every(c=>SOFT_ONLY.has(c))) return "soft";
+    return null;
+  }
+  function fixLineHeads(lines){
+    const out=[];let n=0;
+    for(const raw of lines){
+      const s=raw.trim();
+      if(!s||isBlockLine(s)){out.push(raw);continue;}
+      const prev=out.length?out[out.length-1]:"";
+      if(prev&&!isBlockLine(prev.trim())){
+        if(s.length<=ONLY_MAX&&ONLY_PUNCT.test(s)){
+          const kind=onlyKind(s);
+          if(kind!=="close"&&kind!=="hard"){out.push(raw);continue;}
+          const last=s[s.length-1];
+          if(!(QUOTE_END.has(last)&&prev.replace(/[　\s]+$/,"").endsWith(last))){
+            out[out.length-1]=prev.replace(/[　\s]+$/,"")+s;n++;continue;
+          }
+        }else if(HEAD_BAN.has(s[0])){
+          out[out.length-1]=prev.replace(/[　\s]+$/,"")+s;n++;continue;
+        }
+      }
+      out.push(raw);
+    }
+    return [out,n];
+  }
+  function scanParaIssues(lines){
+    /* 规则关着的时候也要让用户知道“文件里有这类毛病”，只数不改 */
+    let lone=0,prev="";
+    for(const raw of lines){
+      const s=raw.trim();
+      if(!s){prev="";continue;}
+      const kind=(s.length<=ONLY_MAX&&ONLY_PUNCT.test(s))?onlyKind(s):null;
+      if((kind==="close"||kind==="hard")&&prev&&!isBlockLine(prev)) lone++;
+      prev=s;
+    }
+    let blocks=0,bucket=[];
+    const flush=()=>{
+      if(bucket.length>=4){
+        let total=0,noEnd=0;
+        for(const x of bucket){
+          total+=x.length;
+          if(!SENT_END.has(x[x.length-1])) noEnd++;
+        }
+        if(total>=120&&noEnd*10>=bucket.length*6) blocks++;
+      }
+      bucket=[];
+    };
+    for(const raw of lines.concat([""])){
+      const s=raw.trim();
+      if(!s||isBlockLine(s)){flush();continue;}
+      bucket.push(s);
+    }
+    flush();
+    return {lone,blocks};
+  }
+  function unwrapParagraphs(lines,maxLen){
+    maxLen=maxLen||UNWRAP_MAX;
+    const out=[];let merged=0,skipped=0,block=[];
+    const flush=()=>{
+      if(!block.length) return;
+      if(block.length>1){
+        let total=0;
+        for(const x of block) total+=x.replace(/^[　\s]+|[　\s]+$/g,"").length;
+        if(total>maxLen){skipped++;out.push(...block);block=[];return;}
+        let acc=block[0];
+        for(let i=1;i<block.length;i++){acc=joinPair(acc,block[i]);merged++;}
+        out.push(acc);
+      }else out.push(...block);
+      block=[];
+    };
+    for(const raw of lines){
+      const s=raw.trim();
+      if(!s){flush();out.push(raw);}
+      else if(isBlockLine(s)){flush();out.push(raw);}
+      else block.push(raw);
+    }
+    flush();
+    return [out,merged,skipped];
   }
 
   /* 只转全角数字(FF10-FF19)与全角字母(FF21-FF3A / FF41-FF5A)，中文标点一律不动 */
@@ -1088,6 +1211,14 @@ const Core = (() => {
       try{cust.push([new RegExp(pat,fl),r.action==="cut"?"cut":"drop"]);}catch(e){}
     }
     const on=new Set(enabled||[]);let removed=0,trimmed=0;let out=[];const del=new Set();const cut=new Map();
+    let glued=0,merged=0,wrapSkip=0;
+    /* 段落修复放在逐行规则之前：合并后网址/导航行才判得准 */
+    if(on.has("punct")||on.has("unwrap")){
+      let ls=text.split(/\r\n|\r|\n/);
+      if(on.has("punct")){const a=fixLineHeads(ls);ls=a[0];glued=a[1];}
+      if(on.has("unwrap")){const a=unwrapParagraphs(ls);ls=a[0];merged=a[1];wrapSkip=a[2];}
+      text=ls.join("\n");
+    }
     let prevBlank=false;
     const useUrl=on.has("url"),useSite=on.has("site");
     for(const raw of text.split(/\r\n|\r|\n/)){
@@ -1142,7 +1273,7 @@ const Core = (() => {
     while(a<b&&!out[a]) a++;
     while(b>a&&!out[b-1]) b--;
     out=out.slice(a,b);
-    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut,jsdup};
+    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut,jsdup,merged,glued,wrapSkip};
   }
 
   /* ---------- 分章（对齐 split_chapters） ---------- */
@@ -1557,7 +1688,7 @@ const Core = (() => {
   }
 
   return {detectEnc,decodeBytes,countChars,humanSize,guessMeta,cleanName,
-    RULES,DEFAULT_ON,cleanText,toHalfwidth,splitChapters,
+    RULES,DEFAULT_ON,cleanText,toHalfwidth,splitChapters,scanParaIssues,
     buildZip,deflateRawBytes,buildEpub,buildMergedTxt,buildSplitZip,safeFileName,
     THEMES,themeCss,themeById,makeCover,prepareCoverFile,
     exportRulesPack,parseRulesPack,customToText,textToCustom,
@@ -2044,6 +2175,13 @@ async function previewClean(){
   try{
     const raw=await bookText(b);
     const r=Core.cleanText(raw,rules,true,St.customRules);
+    /* 两条段落修复默认关，关着的时候也要提示“文件里有几处”，否则用户以为没事 */
+    let tip='';
+    if(!rules.includes("punct")||!rules.includes("unwrap")){
+      const scan=Core.scanParaIssues(raw.split(/\r\n|\r|\n/));
+      if(!rules.includes("punct")&&scan.lone) tip+=' · '+fill(T("loneHint"),{n:scan.lone});
+      if(!rules.includes("unwrap")&&scan.blocks) tip+=' · '+fill(T("wrapHint"),{n:scan.blocks});
+    }
     const headRaw=raw.split(/\r\n|\r|\n/).slice(0,500);
     const headNew=r.text.split("\n").slice(0,500);
     let a='',c=0;
@@ -2063,7 +2201,10 @@ async function previewClean(){
       +'<div class="pane"><div class="pt"><span>'+esc(T("rClean"))+'</span>'
       +'<span>'+esc(T("ruleOn")).replace(/\{n\}/,rules.length)+' · '+(T("rmStat")||"删除 {n} 行").replace(/\{n\}/,r.removed)
       +(r.trimmed?(' · '+(T("cutStat")||"另 {m} 行只裁了行尾").replace(/\{m\}/,r.trimmed)):'')
-      +(r.jsdup?(' · '+(T("jsdupStat")||"其中简繁重复 {n} 行").replace(/\{n\}/,r.jsdup)):'')+'</span></div>'
+      +(r.jsdup?(' · '+(T("jsdupStat")||"其中简繁重复 {n} 行").replace(/\{n\}/,r.jsdup)):'')
+      +(r.merged?(' · '+(T("mergeStat")||"合并断行 {n} 处").replace(/\{n\}/,r.merged)):'')
+      +(r.glued?(' · '+(T("glueStat")||"标点接回上一行 {n} 处").replace(/\{n\}/,r.glued)):'')
+      +(r.wrapSkip?(' · '+(T("wrapSkipStat")||"{n} 段过长未合并").replace(/\{n\}/,r.wrapSkip)):'')+tip+'</span></div>'
       +'<pre>'+(headNew.map(esc).join("\n")||esc(T("cleanEmpty")))+'</pre></div>';
     $("cleanInfo").textContent=fill(T("prevHint"),{});
   }catch(e){setMsgHint($("cleanInfo"),T("noEpubErr").replace("{e}",e.message));}

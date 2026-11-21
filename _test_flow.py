@@ -126,7 +126,9 @@ with zipfile.ZipFile(ep) as z:
     ncx = z.read("OEBPS/toc.ncx").decode("utf-8")
     c0002 = z.read("OEBPS/c0002.xhtml").decode("utf-8")
     all_text = "".join(z.read(n).decode("utf-8") for n in htmls)
-check("EPUB 章节数 = 5（含序章）", len(htmls), 5)
+# 封面页（cover.xhtml）是 1.4 之后加的，不算章节；按章节页单独计数
+chaps = [n for n in htmls if not n.endswith("cover.xhtml")]
+check("EPUB 章节数 = 5（含序章）", len(chaps), 5)
 check("EPUB 目录项数一致", ncx.count("<navPoint"), 5)
 check("EPUB 元数据含作者", "天蚕土豆" in opf, True)
 check("EPUB 内含正文", "萧炎" in all_text, True)

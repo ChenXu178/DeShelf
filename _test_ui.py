@@ -73,11 +73,12 @@ app.nb.select(app.tab_chap)
 root.update()
 check("章节 Treeview", app.tv_chap, 500, 100)
 check("试分书下拉", app.cb_chap, 100, 18)
-if n and len(list(app.cb_chap["values"])) != n:
+# 比“本机书库条目数”而不是“本次载入的样本数”：书库会从上次扫描的索引里恢复旧书
+if n and len(list(app.cb_chap["values"])) != len(app.books):
     fails.append("试分书下拉未同步书库")
-    print("  [FAIL] 试分书下拉未同步书库（样本 %d，下拉 %d）" % (n, len(list(app.cb_chap["values"]))))
+    print("  [FAIL] 试分书下拉未同步书库（书库 %d，下拉 %d）" % (len(app.books), len(list(app.cb_chap["values"]))))
 else:
-    print("  [OK]   试分书下拉已同步书库（%d 项）" % n)
+    print("  [OK]   试分书下拉已同步书库（%d 项）" % len(list(app.cb_chap["values"])))
 app.preview_chap()
 root.update()
 cnt = len(app.tv_chap.get_children())

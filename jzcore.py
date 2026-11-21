@@ -14,7 +14,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.5.6"
+APP_VER = "v1.5.7"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 
@@ -278,6 +278,179 @@ _SLIM_RE = re.compile(
     r"[\s\u3000，,。.！!？?、；;：:…\-—－_“”‘’\"'（）()《》〈〉【】\[\]·~@#%&*+=|/\\<>^_]"
 )
 
+# ---------------------------------------------------------------- 段落修复
+# 盗版站抓下来的 txt 常按手机屏宽硬断：一段话被切成十几行，收尾引号还会被
+# 挤成单独一行。用户看到的就是“一句没说完就换行”“引号自己占一行”。
+_HEAD_BAN = set("，。、；：？！”’》」』）】,.;:?!")   # 几乎不会出现在正常行首
+_QUOTE_END = set("”’\"'")
+_BRACKET_END = set("」』）】》〉")
+_OPEN_ANY = set("「『（(【《〈“‘")
+_SENT_END = set("。！？…”』」）】.!?~—…：:")        # 一句/一段能正常收尾的字符
+_ONLY_MAX = 3        # 整行只有标点，且不超过这么多字，才算“孤标点行”
+_ONLY_PUNCT = re.compile(r"^[\s\u3000，。、；：？！…”’\"'「」『』（）()【】《》〈〉·—～]+$")
+# 省略号、破折号：作家会故意让它们独占一行表示沉默/停顿，不能当坏行处理
+_SOFT_ONLY = set("…·—～－–-—.")
+# 逗号句号问号：绝不可能自己构成一个段落
+_HARD_ONLY = set("，。、；：？！,.;:?!")
+_SEP_LINE = re.compile(r"^\s*[=\-*_~·—─━※◇◆■□+]{3,}\s*$")
+_HEAD_LINE = re.compile(
+    r"^\s*(第\s*[0-9０-９零〇一二三四五六七八九十百千万两]{1,15}\s*[章节節回卷篇集部]"
+    r"|序章|序言|楔子|引子|尾声|尾聲|后记|後記|番外|终章|終章|正文|目录|目錄)")
+# 合并后一段超过这么多字，就认定那段不是“被切碎的段落”（多半是文件压根没有
+# 分段信号），宁可不动 —— 281 个真实样本里 63% 的书没有空行分段。
+UNWRAP_MAX = 3000
+
+
+def _is_block_line(s):
+    """章节标题、分隔线：不能参与合并，也不该被贴标点。"""
+    if not s:
+        return True
+    if _SEP_LINE.match(s):
+        return True
+    t = s.strip("　 \t")
+    return len(t) <= 50 and bool(_HEAD_LINE.match(t))
+
+
+def _join_pair(prev, nxt):
+    """把 nxt 接到 prev 后面：保留 prev 的缩进，丢掉 nxt 的行首空白。"""
+    return prev.rstrip() + nxt.strip("　 \t")
+
+
+def _only_kind(s):
+    """整行只有标点时，判它属于哪一类。
+
+    close = 只有收尾引号/括号（一定不可能另起一段，贴回永远是对的）
+    hard  = 只有逗号句号问号（同上）
+    soft  = 只有省略号/破折号（作家常用它单独一行表示沉默、停顿，**不动**）
+    None  = 带「」这样成对写法，或参了别的字符（按段落处理，不动）
+    """
+    if any(ch in _OPEN_ANY for ch in s):
+        return None
+    if any(ch in _QUOTE_END or ch in _BRACKET_END for ch in s):
+        return "close"
+    core = [c for c in s if not c.isspace()]
+    if core and all(c in _HARD_ONLY for c in core):
+        return "hard"
+    if core and all(c in _SOFT_ONLY for c in core):
+        return "soft"
+    return None
+
+
+def fix_line_heads(lines):
+    """标点单独占一行 / 跑到行首 → 接回上一行。返回 (新行, 修好的行数)。
+
+    只动两种坏行：整行只有收尾引号或逗号句号的、行首就是标点的。
+    **省略号/破折号独占一行一律不碰** —— 290 个真实样本里这类共 153 行，
+    绝大多数是作者故意的（“……”单独一行表示沉默），贴上去等于改人家的排版。
+    """
+    out, n = [], 0
+    for raw in lines:
+        s = raw.strip()
+        if not s or _is_block_line(s):
+            out.append(raw)
+            continue
+        prev = out[-1] if out else ""
+        if prev and not _is_block_line(prev.strip()):
+            if len(s) <= _ONLY_MAX and _ONLY_PUNCT.match(s):
+                if _only_kind(s) in ("close", "hard"):
+                    # 收尾引号上一行已经有了，就别再叠一个
+                    if not (s[-1] in _QUOTE_END and prev.rstrip().endswith(s[-1])):
+                        out[-1] = prev.rstrip() + s
+                        n += 1
+                        continue
+            elif s[0] in _HEAD_BAN:
+                out[-1] = prev.rstrip() + s
+                n += 1
+                continue
+        out.append(raw)
+    return out, n
+
+
+def scan_para_issues(lines):
+    """不改文本，只估这两类毛病各有多少：标点独占一行、句中被硬断的段。
+
+    规则默认是关的，关掉时上面那句“改了几处”就是 0，用户会以为文件没问题。
+    所以额外跑一遍扫描，结果只用来提示“发现了 N 处，勾选第几条可以修”。
+    """
+    lone = 0
+    prev = ""
+    for raw in lines:
+        s = raw.strip()
+        if not s:
+            prev = ""
+            continue
+        if (len(s) <= _ONLY_MAX and _ONLY_PUNCT.match(s)
+                and _only_kind(s) in ("close", "hard")
+                and prev and not _is_block_line(prev)):
+            lone += 1
+        prev = s
+
+    blocks, bucket = 0, []
+
+    def flush():
+        nonlocal blocks, bucket
+        if len(bucket) >= 4:
+            total = sum(len(x) for x in bucket)
+            no_end = sum(1 for x in bucket if x[-1] not in _SENT_END)
+            if total >= 120 and no_end * 10 >= len(bucket) * 6:
+                blocks += 1
+        bucket = []
+
+    for raw in list(lines) + [""]:
+        s = raw.strip()
+        if not s:
+            flush()
+            continue
+        if _is_block_line(s):
+            flush()
+            continue
+        bucket.append(s)
+    flush()
+    return {"lone": lone, "blocks": blocks}
+
+
+def unwrap_paragraphs(lines, max_len=UNWRAP_MAX):
+    """把空行之间被硬断的行接回去。返回 (新行, 合并处数, 跳过段数)。
+
+    空行＝段落界，段内无条件全并 —— 不能靠“行尾有没有标点”判断，因为硬断点
+    经常正好落在句号/问号后面（实测图2 那样会把整段并错）。
+    """
+    out, merged, skipped, block = [], 0, 0, []
+
+    def flush():
+        nonlocal block, merged, skipped
+        if not block:
+            return
+        if len(block) > 1:
+            total = sum(len(x.strip("　 \t")) for x in block)
+            if total > max_len:
+                skipped += 1
+                out.extend(block)
+                block = []
+                return
+            acc = block[0]
+            for x in block[1:]:
+                acc = _join_pair(acc, x)
+                merged += 1
+            out.append(acc)
+        else:
+            out.extend(block)
+        block = []
+
+    for raw in lines:
+        s = raw.strip()
+        if not s:
+            flush()
+            out.append(raw)
+        elif _is_block_line(s):
+            flush()                 # 标题单独成段，硬断点止于此
+            out.append(raw)
+        else:
+            block.append(raw)
+    flush()
+    return out, merged, skipped
+
+
 RULES = [
     {"id": "url", "name": "含网址的行", "name_en": "Lines with URLs",
      "tip": "删除只有网址的行；网址若粘在段尾，只裁掉网址本身，正文保留",
@@ -289,6 +462,12 @@ RULES = [
      "tip": "删除“上一页”“本章未完”等导航整行", "tip_en": "Remove nav-only lines such as \u201cprev page\u201d / \u201cto be continued\u201d"},
     {"id": "moji", "name": "乱码行", "name_en": "Corrupted lines",
      "tip": "删除含替换符或不可见控制符的整行", "tip_en": "Remove lines with replacement or invisible control characters"},
+    {"id": "punct", "name": "标点单独占一行（默认关）", "name_en": "Punctuation alone on a line",
+     "tip": "整行只有一个收尾引号、句号或逗号的，接回上一行末尾。省略号/破折号独占一行（“……”“——”）是作家故意排的，不动。默认关闭，勾选才改",
+     "tip_en": "A line holding only a closing quote or a comma / full stop is pulled back onto the previous line. Ellipsis-only lines such as \u201c\u2026\u201d are left alone \u2014 authors use them on purpose. Off by default"},
+    {"id": "unwrap", "name": "合并句中断行（默认关）", "name_en": "Join mid-sentence line breaks",
+     "tip": "按手机屏宽硬断的文件，一段话被切成好几行；勾选后以空行为段落界接回去。单段超过 3000 字的跳过不动，默认关闭",
+     "tip_en": "For files hard-wrapped at phone width: joins the broken lines back together, using blank lines as paragraph breaks. Paragraphs over 3000 chars are left alone. Off by default"},
     {"id": "blank", "name": "删除所有空行", "name_en": "Delete all blank lines",
      "tip": "不留任何空行（与下一项二选一）", "tip_en": "Remove every blank line (pick either this or the next)"},
     {"id": "blank2", "name": "压缩连续空行", "name_en": "Collapse blank runs",
@@ -676,6 +855,11 @@ def _ad_split(s, use_url, use_site):
     if body < AD_MIN_BODY:
         if body == 0 and (total < AD_TINY or AD_HEAD_RE.search(head + s[end:])):
             return "drop", 0        # 网址打头、整行就是广告（前后都是推广语）
+        # 网址前面只有几个字（“欢迎访问”），后面又接着推广语、且不长
+        # → 整行仍是广告。只靠“前面有没有正文”判会漏掉这一类。
+        tail = s[end:]
+        if AD_HEAD_RE.search(tail) and _slim(tail) <= AD_TAIL_MAX:
+            return "drop", 0
         return "keep", 0            # 其余是正文里夹着网址，宁可不动
     # 正文 + 贴行尾的广告尾巴（后面没有接着正文）→ 只裁尾巴
     if _slim(s[end:]) <= AD_AFTER and len(s) - start <= AD_TAIL_MAX:
@@ -694,6 +878,18 @@ def clean_text(text, enabled, stats=None, custom=None):
     cust = compile_custom(custom)
     removed = 0
     trimmed = 0
+    glued = 0
+    merged = 0
+    wrap_skip = 0
+    # 段落修复放在所有逐行规则之前：后面那些规则（网址、导航、空行）看到合并
+    # 后的行才判得准，否则“本节未完”这类被切碎的广告行会漏。
+    if "punct" in on or "unwrap" in on:
+        lines = text.splitlines()
+        if "punct" in on:
+            lines, glued = fix_line_heads(lines)
+        if "unwrap" in on:
+            lines, merged, wrap_skip = unwrap_paragraphs(lines)
+        text = "\n".join(lines)
     out = []
     prev_blank = False
     use_url = "url" in on
@@ -775,6 +971,9 @@ def clean_text(text, enabled, stats=None, custom=None):
         stats["removed"] = removed
         stats["trimmed"] = trimmed
         stats["jsdup"] = jsdup_n
+        stats["merged"] = merged
+        stats["glued"] = glued
+        stats["wrap_skip"] = wrap_skip
     return "\n".join(out) + ("\n" if out else ""), removed
 
 

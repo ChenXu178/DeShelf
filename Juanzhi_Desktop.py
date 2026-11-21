@@ -341,6 +341,11 @@ TEXTS = {
         "cmp_var": "删除 {0} 行，{1} → {2} 字",
         "cmp_var_cut": "删除 {0} 行、另 {3} 行只裁了行尾网址，{1} → {2} 字",
         "cmp_jsdup": "（其中简繁重复 {0} 行）",
+        "cmp_merge": "，合并断行 {0} 处",
+        "cmp_glue": "，标点接回上一行 {0} 处",
+        "cmp_wrap_skip": "（{0} 段过长未合并）",
+        "cmp_hint_lone": "；另有 {0} 处标点独占一行，勾选「标点单独占一行」可修",
+        "cmp_hint_wrap": "；另有 {0} 段疑似句中硬断，勾选「合并句中断行」可合并",
         # 页3 分章
         "re_label": "章节正则（留空使用内置中文规则库）：",
         "b_try": "试分章节",
@@ -505,6 +510,11 @@ TEXTS = {
         "cmp_var": "{0} lines removed, {1} → {2} chars",
         "cmp_var_cut": "{0} lines removed, {3} more only had a trailing URL trimmed, {1} → {2} chars",
         "cmp_jsdup": " ({0} of them were script duplicates)",
+        "cmp_merge": ", {0} line breaks joined",
+        "cmp_glue": ", {0} punctuation marks pulled back up",
+        "cmp_wrap_skip": " ({0} paragraphs left alone: too long)",
+        "cmp_hint_lone": "; {0} more lines hold punctuation only \u2014 tick \u201cPunctuation alone on a line\u201d to fix",
+        "cmp_hint_wrap": "; {0} more paragraphs look hard-wrapped \u2014 tick \u201cJoin mid-sentence line breaks\u201d to merge",
         "re_label": "Chapter regex (blank = built-in Chinese rules):",
         "b_try": "Try Split",
         "b_try_all": "Try Split (all selected)",
@@ -2037,12 +2047,28 @@ class App:
         cut = stats.get("trimmed", 0)
         key = "cmp_var_cut" if cut else "cmp_var"
         dup = stats.get("jsdup", 0)
+        merged = stats.get("merged", 0)
+        glued = stats.get("glued", 0)
+        wrap_skip = stats.get("wrap_skip", 0)
         msg = S[key].format(removed, len(text), len(cleaned), cut)
         if dup:
             msg += S["cmp_jsdup"].format(dup)
+        if merged:
+            msg += S["cmp_merge"].format(merged)
+        if glued:
+            msg += S["cmp_glue"].format(glued)
+        if wrap_skip:
+            msg += S["cmp_wrap_skip"].format(wrap_skip)
+        # 两条段落修复默认关：关着也要告诉用户文件里有几处，否则他会以为没问题
+        if "punct" not in rules or "unwrap" not in rules:
+            scan = jzcore.scan_para_issues(text.splitlines())
+            if "punct" not in rules and scan["lone"]:
+                msg += S["cmp_hint_lone"].format(scan["lone"])
+            if "unwrap" not in rules and scan["blocks"]:
+                msg += S["cmp_hint_wrap"].format(scan["blocks"])
         self.cmp_var.set(msg)
-        self.log("《%s》规则 %d 条，删除 %d 行，只裁行尾 %d 行，简繁重复 %d 行"
-                 % (b["title"], len(rules), removed, cut, dup))
+        self.log("《%s》规则 %d 条，删除 %d 行，只裁行尾 %d 行，简繁重复 %d 行，合并断行 %d 处"
+                 % (b["title"], len(rules), removed, cut, dup, merged))
 
     def start_clean(self):
         """批量清洗：对勾选书籍按当前规则清洗，结果缓存到内存供后续分章/导出复用。"""

@@ -2,6 +2,16 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.5.7** · 新增两条**段落修复**规则，专治「一句话没写完就换行」「收尾引号自己占一行」。这类毛病不是阅读器的锅——是盗版站抓取时**按手机屏宽硬断**留下的：一段话被切成十几行，`衣服湿答` / `答的。”`、`”，大宝还觉` / `得午后潮热` 这种断在词中间、字中间的都见过。
+>
+> ① **标点单独占一行（默认关）**：整行只有一个收尾引号、句号或逗号的，接回上一行末尾。**省略号、破折号独占一行一律不动**——290 本真实样本里这类共 153 行，多数是作者故意用它表示沉默、停顿（有一本 25 行全是「……」）；挡掉这些之后，规则只会落在真正的坏行上。默认关闭，是因为它属于"替你改正文"，请先预览再勾。
+>
+> ② **合并句中断行（默认关）**：对按屏宽硬断的文件，勾上后**以空行为段落界**把段内的行接回去。为什么不用「行尾没标点就并下一行」——那个更直觉的判据实测会崩：硬断点经常正好落在句号/问号后面，一张反馈截图里 5 处只并对 1 处。改成空行作界后，两张反馈截图 12 行 → 5 段、11 行 → 4 段，**逐字 9/9 全对**（含断在词中间、引号被挤成单独一行）。
+>
+> 保险：合并后单段超过 3000 字的**跳过不动**——281 个真实盗版 txt 里 63% 压根没有空行分段，硬并会连成一整段（最长一段 7 万字）。跑完报「合并 N 处 / 标点接回上一行 N 处 / N 段过长未合并」，误伤了当场能看出来。两条规则都关着时，也会扫一遍告诉你「另有 N 处标点独占一行、N 段疑似硬断」，不至于什么都没发现。
+>
+> 顺手修掉一处老漏网：「欢迎访问www.xxx.com，请记住本站地址，更多免费小说等你来看！」这种**网址前后都是推广语**的行，以前判成“正文里夹着网址”留了下来。现在只要网址前面不到 6 个字、后面还带着推广词，整行删除。
+>
 > **v1.5.6** · 修 iOS 上**「上传不了文件」**——不是上传失败，是**两个入口在 iPhone / iPad 上根本没有反应**。
 >
 > ①**「选择文件夹」点了没动静**：它用的是 File System Access API，而 **Safari 和 iOS 上所有浏览器都没有这个接口**，点击时抛 `TypeError` 被 `catch` 吞掉，看上去就是个死按钮。现在凡是没这个能力的浏览器（iOS 全系、Firefox、移动端），**收起「选择文件夹」、把「选择 TXT 文件」升成主按钮**，不再留一个点不动的按钮。
@@ -65,7 +75,7 @@
 | 步骤 | 做什么 |
 |---|---|
 | **1 扫描入库** | 递归扫描目录，自动识别编码（GBK / UTF-8 / UTF-8 BOM / UTF-16），统计字数，按内容 MD5 标出重复文件 |
-| **2 批量清洗** | 勾选规则后一键清洗：网址行、站点宣传行、翻页导航残留、乱码行、空行压缩、全角转半角、段落缩进。可先预览前后对比 |
+| **2 批量清洗** | 勾选规则后一键清洗：网址行、站点宣传行、翻页导航残留、乱码行、**标点单独占一行**（默认关，省略号/破折号独占一行不动）、**合并句中断行**（默认关）、空行压缩、全角转半角、段落缩进。可先预览前后对比 |
 | **3 智能分章** | 内置中文网文章节规则库，也支持自定义正则。分完直接在列表里看章节目录 |
 | **4 导出分发** | 导出 EPUB（带完整目录）、合并 TXT、分章 TXT。清洗结果可选择输出到新目录、原地覆盖（先备份 .bak）或不落盘 |
 
@@ -210,7 +220,7 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 需要批量"原地覆盖写回"原始文件时用桌面版 EXE。
 
 **自检通过**：
-- 核心纯逻辑 46/46 单测（编码识别 / 清洗 10 条规则（可加自定义） / 分章 / EPUB / ZIP）
+- 核心纯逻辑 46/46 单测（编码识别 / 清洗 12 条规则（可加自定义） / 分章 / EPUB / ZIP）
 - 真实浏览器冒烟 18/18（Edge headless · 页面初始化 / 双语切换 / 文件入库 / 清洗 / 分章 / 导出）
 - 双语词典 125 键 + 125 键完全对齐
 
@@ -219,6 +229,16 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.5.7** · Two new **paragraph-repair** rules for text where a sentence breaks mid-way and a closing quote sits alone on its own line. This is not the reader's fault — it is what happens when a scraper **hard-wraps at phone width**: one paragraph gets cut into a dozen lines, and the breaks land inside words (`衣服湿答` / `答的。”`) and inside clauses (`”，大宝还觉` / `得午后潮热`).
+>
+> (1) **Punctuation alone on a line (off by default).** A line holding only a closing quote, a full stop or a comma is pulled back onto the previous line. **Ellipsis and dash lines are never touched** — across 290 real books there are 153 such lines and most are deliberate (one book uses 25 lines of `……` alone to mark silence); excluding them leaves the rule working only on genuinely broken lines. It is off by default because it rewrites prose — preview first.
+>
+> (2) **Join mid-sentence line breaks (off by default).** For files hard-wrapped at screen width: when enabled, lines inside a paragraph are joined back, using **blank lines as paragraph boundaries**. The intuitive test — "join whenever the line does not end with punctuation" — fails in practice: hard breaks land right after a full stop or question mark often enough that one feedback screenshot scored 1 out of 5. Using blank lines instead, the two feedback screenshots went 12 lines → 5 paragraphs and 11 lines → 4 paragraphs, **9/9 character-for-character correct** (including a break inside a word and a quote pushed onto its own line).
+>
+> Guard: a merged paragraph longer than 3000 characters is **left untouched** — 63% of 281 real pirated TXT files have no blank-line paragraph separation at all, and joining them blindly produces one giant line (the longest observed: 70,000 characters). The run reports "N line breaks joined / N stray marks pulled back / N paragraphs left alone", so any damage is visible immediately. With both rules off, a scan still tells you "N lines hold punctuation only, N paragraphs look hard-wrapped".
+>
+> Also fixed an old leak: lines like `欢迎访问www.xxx.com，请记住本站地址，更多免费小说等你来看！` — a URL **surrounded by promo text** — used to be kept as "a URL inside a sentence". Now, if there are fewer than 6 characters before the URL and promo words follow it, the whole line is dropped.
 >
 > **v1.5.6** · Fixes **"can't upload a file" on iOS** — the upload never started; both entry points did nothing at all on iPhone and iPad.
 >
@@ -278,7 +298,7 @@ network** — no downloading, no uploading. It only touches files already on you
 | Step | What happens |
 |---|---|
 | **1 Scan** | Recursively scans a folder, auto-detects encoding (GBK / UTF-8 / UTF-8 BOM / UTF-16), counts characters, flags duplicates by content MD5 |
-| **2 Clean** | Rule-based batch cleaning: URL lines, site promo lines, page-nav leftovers, mojibake lines, blank-line compression, full-width to half-width, paragraph indent. Preview before applying |
+| **2 Clean** | Rule-based batch cleaning: URL lines, site promo lines, page-nav leftovers, mojibake lines, **punctuation alone on a line** (off by default; ellipsis/dash-only lines are never touched), **join mid-sentence line breaks** (off by default), blank-line compression, full-width to half-width, paragraph indent. Preview before applying |
 | **3 Chapters** | Built-in regex library for Chinese web-novel chapter headings, custom regex supported, live chapter preview |
 | **4 Export** | EPUB with a real table of contents, merged TXT, or one file per chapter. Cleaned text can go to a new folder, overwrite in place (with `.bak` backup), or not be saved at all |
 
@@ -430,7 +450,7 @@ For most "I have a few TXT files and want a readable EPUB for my e-reader" jobs,
 no Python, no install. Reach for the desktop EXE only when you need to batch-overwrite original files in place.
 
 **Self-tests passing**:
-- 46/46 core unit tests (encoding / 10 cleaning rules (plus your own) / chapters / EPUB / ZIP)
+- 46/46 core unit tests (encoding / 12 cleaning rules (plus your own) / chapters / EPUB / ZIP)
 - 18/18 real-browser smoke (Edge headless: init / language / file import / clean / chapters / export)
 - 125 keys × 2 in the bilingual dictionary, fully aligned
 
