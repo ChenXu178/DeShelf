@@ -820,8 +820,8 @@ const Core = (() => {
   /* ---------- 清洗规则（12 条：原 10 条 + 标点独占一行 + 合并句中断行） ---------- */
   const RULES=[
     {id:"url",name:"含网址的行",name_en:"Lines with URLs",
-     tip:"删除只有网址的行；网址若粘在段尾，只裁掉网址本身，正文保留",
-     tip_en:"Removes URL-only lines; if a URL is glued to a paragraph end, only the URL is trimmed"},
+     tip:"删除只有网址的行；含网址的 HTML 标签整块清除；网址若粘在段尾，只裁掉网址本身，正文保留",
+     tip_en:"Removes URL-only lines (however long the image link), strips HTML tags that contain a URL, and trims only the URL when it is glued to a paragraph end"},
     {id:"site",name:"站点宣传行",name_en:"Site promo lines",
      tip:"删除“请收藏本站”这类推广行；推广语贴在段尾时只裁掉那一截",
      tip_en:"Removes promo lines; if the promo is glued to a paragraph end, only that part is trimmed"},
@@ -852,6 +852,22 @@ const Core = (() => {
   const DEFAULT_ON=["url","site","nav","moji","blank2","trim","half"];
 
   const URL_RE=/(https?:\/\/|www\.|ftp:\/\/|[a-z0-9\-]+\.(com|net|org|cn|cc|me|la|tv|info|xyz)\b)/i;
+  /* 从命中位置起“吃下整条网址”（含路径、查询串）：判断网址是否孤零零占一行、
+     网址后面还剩多少正文。只认协议头的话，长图链会被当成一大段正文放过。 */
+  const URL_BODY_SRC="(?:(?:https?|ftp):\\/\\/|www\\.)[A-Za-z0-9\\-._~:\\/?#\\[\\]@!$&'()*+,;=%]+"
+    +"|[A-Za-z0-9\\-]+\\.(?:com|net|org|cn|cc|me|la|tv|info|xyz)\\b[A-Za-z0-9\\-._~:\\/?#\\[\\]@!$&'()*+,;=%]*";
+  const URL_BODY_RE=new RegExp(URL_BODY_SRC,"i");    /* 检索 */
+  const URL_BODY_G=new RegExp(URL_BODY_SRC,"gi");    /* 全局替换 */
+  const URL_BODY_Y=new RegExp(URL_BODY_SRC,"iy");    /* 定点匹配（lastIndex 处） */
+  /* 正文里夹带的 HTML 标签（<img src="http://…">、<a href="…">、</a>、<br> 等） */
+  const HTML_TAG_RE=/<[A-Za-z\/!][^<>]{0,2000}>/gi;
+  function stripUrlTags(s){
+    const tags=s.match(HTML_TAG_RE);
+    if(!tags||!tags.some(t=>URL_RE.test(t)))return[s,false];
+    return[s.replace(HTML_TAG_RE,""),true];
+  }
+  /* 去掉网址与 HTML 标签后还剩多少真内容：为 0 说明这行只有网址/标签 */
+  function residual(s){return slim(s.replace(URL_BODY_G,"").replace(HTML_TAG_RE,""));}
   /* 强特征宣传词：正文里几乎不会出现，命中即可疑 */
   const SITE_RE=/(记住本站|收藏本站|本站地址|书籍地址|笔趣|顶点小说|手机阅读|wap\.|txt下载|TXT下载|小说下载网|免费小说网|最新网址|首发网址|天才一秒|无弹窗|更新最快|手打版|本章免费)/i;
   /* 备注：请记住/请收藏/请到/转载请/手机版/百度搜索 这些在正常对话里也会出现
@@ -869,23 +885,33 @@ const Core = (() => {
     const mu=useUrl?URL_RE.exec(s):null, ms=useSite?SITE_RE.exec(s):null;
     if(!mu&&!ms)return["keep",0];
     const siteFirst=!!ms&&(!mu||ms.index<=mu.index);
-    const start=siteFirst?ms.index:mu.index, end=siteFirst?(ms.index+ms[0].length):(mu.index+mu[0].length);
+    const start=siteFirst?ms.index:mu.index;
+    let end;
+    if(siteFirst) end=ms.index+ms[0].length;
+    else{
+      URL_BODY_Y.lastIndex=start;                        /* 吃下整条网址，别只算协议头 */
+      const mf=URL_BODY_Y.exec(s);
+      end=mf?mf.index+mf[0].length:mu.index+mu[0].length;
+    }
     const head=s.slice(0,start);
     const body=slim(head), total=slim(s);
+    const tail=s.slice(end), tailSlim=slim(tail);
     if(siteFirst){
       if(total<AD_SHORT)return["drop",0];
       if(body>=AD_MIN_BODY&&s.length-start<=AD_TAIL_MAX)return["cut",start];
       return["keep",0];
     }
+    if(residual(s)===0)return["drop",0];                 /* 整行只有网址，再长也是广告 */
     if(AD_HEAD_RE.test(head)&&total<AD_SHORT)return["drop",0];
+    if(tailSlim===0&&residual(s)<AD_MIN_BODY&&!HEAD_LINE.test(s))return["drop",0];
+    if(body>=AD_MIN_BODY&&tailSlim===0)return["cut",start];  /* 网址贴行尾（多长都算） */
     if(body<AD_MIN_BODY){
-      if(body===0&&(total<AD_TINY||AD_HEAD_RE.test(head+s.slice(end))))return["drop",0];
+      if(body===0&&(total<AD_TINY||AD_HEAD_RE.test(head+tail)))return["drop",0];
       /* 网址前面只有几个字（“欢迎访问”），后面又接着推广语 → 整行仍是广告 */
-      const tail=s.slice(end);
-      if(AD_HEAD_RE.test(tail)&&slim(tail)<=AD_TAIL_MAX)return["drop",0];
+      if(AD_HEAD_RE.test(tail)&&tailSlim<=AD_TAIL_MAX)return["drop",0];
       return["keep",0];
     }
-    if(slim(s.slice(end))<=AD_AFTER&&s.length-start<=AD_TAIL_MAX)return["cut",start];
+    if(tailSlim<=AD_AFTER&&s.length-start<=AD_TAIL_MAX)return["cut",start];
     return["keep",0];
   }
 
@@ -1225,6 +1251,15 @@ const Core = (() => {
       let s=raw,lead=0;
       if(on.has("trim")){lead=raw.length-raw.replace(/^\s+/,"").length;s=s.trim();}
       if(on.has("half")) s=toHalfwidth(s);
+      if(useUrl){
+        /* 含网址的 HTML 标签整块清掉，标签外的文字保留 */
+        const st=stripUrlTags(s);
+        if(st[1]){
+          s=st[0];
+          if(!s.replace(/[ \u3000]+/g,"")){removed++;if(wantDel)del.add(raw);continue;}
+          if(on.has("trim")) s=s.trim();
+        }
+      }
       let d=0,drop=false;
       if(useUrl||useSite){
         const r=adSplit(s,useUrl,useSite);

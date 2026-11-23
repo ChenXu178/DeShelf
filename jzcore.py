@@ -249,6 +249,16 @@ def file_md5(path):
 # ---------------------------------------------------------------- 清洗规则
 
 URL_RE = re.compile(r"(https?://|www\.|ftp://|[a-z0-9\-]+\.(com|net|org|cn|cc|me|la|tv|info|xyz)\b)", re.I)
+# 从命中位置起“吃下整条网址”（含路径、查询串）：用来判断网址是不是孤零零占一行，
+# 以及网址后面到底还剩多少正文。只认协议头的话，长网址会被当成一大段正文放过。
+URL_BODY_RE = re.compile(
+    r"(?:(?:https?|ftp)://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+"
+    r"|[A-Za-z0-9\-]+\.(?:com|net|org|cn|cc|me|la|tv|info|xyz)\b"
+    r"[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*",
+    re.I,
+)
+# 正文里夹带的 HTML 标签（<img src="http://…">、<a href="…">、</a>、<br> 等）
+HTML_TAG_RE = re.compile(r"<[A-Za-z/!][^<>]{0,2000}>")
 # 强特征宣传词：正文里几乎不会出现，命中即可疑
 SITE_RE = re.compile(
     r"(记住本站|收藏本站|本站地址|书籍地址|笔趣|顶点小说|手机阅读|"
@@ -453,8 +463,8 @@ def unwrap_paragraphs(lines, max_len=UNWRAP_MAX):
 
 RULES = [
     {"id": "url", "name": "含网址的行", "name_en": "Lines with URLs",
-     "tip": "删除只有网址的行；网址若粘在段尾，只裁掉网址本身，正文保留",
-     "tip_en": "Removes URL-only lines; if a URL is glued to the end of a paragraph, only the URL is trimmed"},
+     "tip": "删除只有网址的行；含网址的 HTML 标签整块清除；网址若粘在段尾，只裁掉网址本身，正文保留",
+     "tip_en": "Removes URL-only lines (however long the image link), strips HTML tags that contain a URL, and trims only the URL when it is glued to a paragraph end"},
     {"id": "site", "name": "站点宣传行", "name_en": "Site promo lines",
      "tip": "删除“请收藏本站”“笔趣阁”这类推广行；推广语贴在段尾时只裁掉那一截",
      "tip_en": "Removes promo lines; if the promo is glued to a paragraph end, only that part is trimmed"},
@@ -819,6 +829,23 @@ def _slim(s):
     return len(_SLIM_RE.sub("", s))
 
 
+def strip_url_tags(s):
+    """清掉含网址的 HTML 标签，返回 (新文本, 是否命中)。
+
+    盗版站常把配图直接塞进正文（<img src="https://…jpg" alt='…'>），整串标签都是垃圾。
+    命中时把这一行的标签全部去掉（否则会留下半截 </a>），标签外面的正文文字照样保留。
+    """
+    tags = HTML_TAG_RE.findall(s)
+    if not tags or not any(URL_RE.search(t) for t in tags):
+        return s, False
+    return HTML_TAG_RE.sub("", s), True
+
+
+def _residual(s):
+    """去掉网址与 HTML 标签后还剩多少真内容：为 0 说明这行只有网址/标签。"""
+    return _slim(HTML_TAG_RE.sub("", URL_BODY_RE.sub("", s)))
+
+
 def _ad_split(s, use_url, use_site):
     """判定一行里的广告，返回 (动作, 位置)。
 
@@ -838,10 +865,14 @@ def _ad_split(s, use_url, use_site):
     if site_first:
         start, end = ms.start(), ms.end()
     else:
-        start, end = mu.start(), mu.end()
+        start = mu.start()
+        mf = URL_BODY_RE.match(s, start)   # 吃下整条网址，别只算协议头
+        end = mf.end() if mf else mu.end()
     head = s[:start]
     body = _slim(head)          # 这段广告前面还剩多少真内容
     total = _slim(s)            # 整行有多少真内容
+    tail = s[end:]              # 整条网址后面剩下的部分
+    tail_slim = _slim(tail)
     if site_first:
         # 命中的是推广语：短行整行删；长行只在推广语贴着行尾时裁掉
         if total < AD_SHORT:
@@ -850,19 +881,24 @@ def _ad_split(s, use_url, use_site):
             return "cut", start
         return "keep", 0
     # 命中的是网址
+    if _residual(s) == 0:
+        return "drop", 0            # 整行只有网址（长图链常见）
     if AD_HEAD_RE.search(head) and total < AD_SHORT:
         return "drop", 0            # 网址前面是推广语、整行很短 → 广告行
+    if tail_slim == 0 and _residual(s) < AD_MIN_BODY and not _HEAD_LINE.search(s):
+        return "drop", 0            # “图片：https://…”：除网址外只剩几个字的标签，整行是广告
+    if body >= AD_MIN_BODY and tail_slim == 0:
+        return "cut", start         # 网址贴着行尾（多长都算），前面的正文保留
     if body < AD_MIN_BODY:
-        if body == 0 and (total < AD_TINY or AD_HEAD_RE.search(head + s[end:])):
+        if body == 0 and (total < AD_TINY or AD_HEAD_RE.search(head + tail)):
             return "drop", 0        # 网址打头、整行就是广告（前后都是推广语）
         # 网址前面只有几个字（“欢迎访问”），后面又接着推广语、且不长
         # → 整行仍是广告。只靠“前面有没有正文”判会漏掉这一类。
-        tail = s[end:]
-        if AD_HEAD_RE.search(tail) and _slim(tail) <= AD_TAIL_MAX:
+        if AD_HEAD_RE.search(tail) and tail_slim <= AD_TAIL_MAX:
             return "drop", 0
         return "keep", 0            # 其余是正文里夹着网址，宁可不动
     # 正文 + 贴行尾的广告尾巴（后面没有接着正文）→ 只裁尾巴
-    if _slim(s[end:]) <= AD_AFTER and len(s) - start <= AD_TAIL_MAX:
+    if tail_slim <= AD_AFTER and len(s) - start <= AD_TAIL_MAX:
         return "cut", start
     # 网址夹在长句中间 → 不动
     return "keep", 0
@@ -900,6 +936,15 @@ def clean_text(text, enabled, stats=None, custom=None):
             s = s.strip()
         if "half" in on:
             s = to_halfwidth(s)
+        if use_url:
+            # 含网址的 HTML 标签整块清掉，标签外的文字保留
+            s, tag_hit = strip_url_tags(s)
+            if tag_hit:
+                if not s.strip(" \u3000"):
+                    removed += 1
+                    continue
+                if "trim" in on:
+                    s = s.strip()
         cut = 0
         drop = False
         if use_url or use_site:

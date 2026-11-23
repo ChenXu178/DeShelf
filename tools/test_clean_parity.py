@@ -23,6 +23,8 @@ RULES = ["url", "site", "nav", "trim", "blank2"]
 PARA = ("她听我分析的头头是道，目光里写满了敬佩，等我说完后，歪着头看着桌上那把枪喃喃自语说："
         "“这把枪怎么很面熟？”她忽然意识到了什么，双手拍拍腰上，“嗷”地叫了一声，"
         "冲过来一把夺走了手枪，瞪着我问：“你什么时候偷走的？”")
+LONG_URL = ("https://e1.kuangxiangit.com/uploads/chapterimgsnew/382/249214/250218/"
+            "1739808797-100401717-112858295.jpg")
 CORPUS = "\n".join([
     "阴阳鬼探",
     "",
@@ -42,6 +44,11 @@ CORPUS = "\n".join([
     "www.zhudao.com",
     "http://www.xxx.net 小说下载网，TXT下载请到本站。",
     "www.zhudao.com 我常去逛的站子，里面什么都有，还能看连载。",
+    # 长图链：只认协议头的旧逻辑会把它当成大段正文放过
+    LONG_URL,
+    '<img src="%s" alt=\'大概是这个姿势\'>' % LONG_URL,
+    "图片：%s" % LONG_URL,
+    "他笑了笑，把手机收进口袋" + LONG_URL,
     "上一页　下一页",
     "第１２章　夜路",
     "",
@@ -191,10 +198,14 @@ def main():
     chk("网址在前、后面接着正文的长句保留", "我常去逛的站子" in text)
     chk("翻页导航已删", "下一页" not in text)
     chk("章节标题保留", "第１２章　夜路" in text)
+    chk("长图链独占一行也删掉", LONG_URL not in text)
+    chk("含网址的 HTML 标签整块清掉", "<img" not in text and "大概是这个姿势" not in text)
+    chk("“图片：”加长图链整行删掉", "图片：" not in text)
+    chk("正文粘长图链只裁网址", "他笑了笑，把手机收进口袋" in text)
 
     print("== 计数 ==")
-    chk("trimmed 计数正确", py["trimmed"] == 2, py["trimmed"])   # 两段是行尾粘网址
-    chk("removed 计数正确", py["removed"] == 5, py["removed"])   # 4 条广告行 + 1 条导航
+    chk("trimmed 计数正确", py["trimmed"] == 3, py["trimmed"])   # 三段是行尾粘网址
+    chk("removed 计数正确", py["removed"] == 8, py["removed"])   # 7 条广告行 + 1 条导航
 
     print("== Python / Web 一致性 ==")
     chk("清洗后文本逐字相同", py["text"] == web["text"],
