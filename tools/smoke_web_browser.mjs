@@ -5,11 +5,17 @@
  */
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const FILE_URL = "file:///" + path.resolve("web/DeShelf.html").replace(/\\/g, "/");
-const PORT = 9333;
+/* 端口现取现用：固定 9333 时连跑两次会撞上前一个还没退干净的实例，报 0 通过 */
+const PORT = await new Promise(res => {
+  const s = net.createServer();
+  s.on("error", () => res(9333));
+  s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => res(p)); });
+});
 const PROFILE = path.join(process.env.TEMP || "/tmp", "deshelf_smoke_" + Date.now());
 
 const results = [];
@@ -70,19 +76,25 @@ try {
   await send("Runtime.enable");
   await send("Log.enable");
   await send("Page.enable");
-  await sleep(2500); // 等 boot
+  // 等 boot：轮询规则网格是否渲染出来（机器忙时固定 2.5 秒可能不够）
+  for (let i = 0; i < 40; i++) {
+    const w = await evalv("document.querySelectorAll('.rule').length");
+    if (w.val) break;
+    await sleep(250);
+  }
+  await sleep(300);
 
   // 1. 初始渲染
-  let r = await evalv("({rules:document.querySelectorAll('.rule').length, h2:document.querySelector('#pane0 h2').textContent, nav:document.querySelector('#stepNav .st b').textContent})");
-  ok("规则网格 10 条", r.val && r.val.rules === 10, JSON.stringify(r.err || r.val));
-  ok("中文标题渲染", r.val && /书库/.test(r.val.h2), r.err || (r.val && r.val.h2));
+  let r = await evalv("({rules:document.querySelectorAll('.rule').length, n:Core.RULES.length, h2:document.querySelector('#pane0 h2').textContent, nav:document.querySelector('#stepNav .st b').textContent})");
+  ok("规则网格条数与 RULES 一致", r.val && r.val.rules === r.val.n, JSON.stringify(r.err || r.val));
+  ok("中文标题渲染", r.val && /书库/.test(r.val.h2 || ""), r.err || (r.val && r.val.h2));
   ok("无初始化报错", errors.length === 0, errors.join(" | "));
 
   // 2. 语言切换
   await evalv("document.getElementById('btnLang').click()");
   await sleep(400);
   r = await evalv("({h2:document.querySelector('#pane0 h2').textContent, btn:document.getElementById('btnLang').textContent, rules:document.querySelector('.rule .t').textContent})");
-  ok("切到英文界面", /Library/.test(r.val.h2), JSON.stringify(r.val));
+  ok("切到英文界面", r.val && /Library/.test(r.val.h2 || ""), JSON.stringify(r.err || r.val));
   await evalv("document.getElementById('btnLang').click()");
   await sleep(300);
 
@@ -101,7 +113,8 @@ try {
 
   // 4. 注入文件入库（等效拖拽）
   const bookText = "书名：《冒烟测试书》\n作者：测试君\n\n序章 引子\n这是序章正文内容。\n\n"
-    + "第1章 开端\n请收藏本站 www.example.com\n正文甲第一段。\n\n第2章 发展\n上一页\n正文乙第二段。\n\n第3章 终章\n（乱码\uFFFD测试行）\n正文丙第三段，收尾。\n";
+    + "第1章 开端\n请收藏本站 www.example.com\n正文甲第一段。\n"
+    + '<a href="https://example.com">网站</a>\n\n第2章 发展\n上一页\n正文乙第二段。\n\n第3章 终章\n（乱码\uFFFD测试行）\n正文丙第三段，收尾。\n';
   r = await evalv(`(async () => {
     const f = new File([${JSON.stringify(bookText)}], "冒烟测试书.txt", {type:"text/plain"});
     await window.dropFilesToLib([f], false);
@@ -112,14 +125,41 @@ try {
   ok("注入文件入库成功", r.val && r.val.rows === 1, JSON.stringify(r.err || r.val));
   ok("书名识别", r.val && /冒烟测试书/.test(r.val.name), JSON.stringify(r.val));
 
+  // 4b. 插图规则联动：含网址的行 → 显隐；保留插图链接 → 校验可勾
+  r = await evalv(`(() => {
+    const q = rid => document.querySelector('.rule[data-rid="'+rid+'"]');
+    const vis = rid => { const e=q(rid); return !!e && e.style.display!=='none'; };
+    const dis = rid => { const e=q(rid); return !!e && e.querySelector('input').disabled; };
+    const flip = (rid,v) => { const i=q(rid).querySelector('input'); i.checked=v; i.dispatchEvent(new Event('change')); };
+    const out = {visKeep:vis('imgkeep'), visChk:vis('imgcheck'), disChk:dis('imgcheck')};
+    flip('url',false);
+    out.hidden = !vis('imgkeep') && !vis('imgcheck');
+    flip('url',true);
+    flip('imgkeep',true);
+    out.enabled = !dis('imgcheck');
+    flip('imgkeep',false);   /* 复位，别影响后面的清洗用例 */
+    out.disBack = dis('imgcheck');
+    return out;
+  })()`);
+  ok("插图两条可见、校验默认禁用", r.val && r.val.visKeep && r.val.visChk && r.val.disChk, JSON.stringify(r.err || r.val));
+  ok("取消「含网址的行」后两条隐藏", r.val && r.val.hidden, JSON.stringify(r.err || r.val));
+  ok("勾「保留插图链接」后校验可勾、取消后复位禁用", r.val && r.val.enabled && r.val.disBack, JSON.stringify(r.err || r.val));
+
   // 5. 清洗预览（需先载入所选书文本）
   r = await evalv(`(async () => {
     await window.previewClean();
     await new Promise(r2=>setTimeout(r2,600));
     const panes = document.querySelectorAll('#cleanPane .pane');
-    return {panes: panes.length, hasDel: !!document.querySelector('#cleanPane .del'), info: document.querySelector('#cleanInfo').textContent};
+    const pre = document.querySelector('#cleanPane .pane pre');
+    return {panes: panes.length, hasDel: !!document.querySelector('#cleanPane .del'),
+            leftHtml: pre ? pre.innerHTML : '', info: document.querySelector('#cleanInfo').textContent};
   })()`);
   ok("清洗预览双栏渲染", r.val && r.val.panes === 2, JSON.stringify(r.err || r.val));
+  /* 行内被清掉的 HTML 标签要标红：<a href="…">网站</a> → 两段标签划线、"网站"不划线 */
+  ok("行内被清掉的 HTML 标签在预览里标红",
+     r.val && /<span class="del">&lt;a href=/.test(r.val.leftHtml)
+       && /<\/span>网站<span class="del">&lt;\/a&gt;<\/span>/.test(r.val.leftHtml),
+     (r.val && r.val.leftHtml || "").slice(0, 300));
 
   // 6. 应用清洗（带异常栈诊断）
   r = await evalv(`(async () => {

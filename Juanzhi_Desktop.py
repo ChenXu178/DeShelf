@@ -70,6 +70,10 @@ HELP_ZH = """卷帙 DeShelf 使用说明
   勾选需要的规则，点「预览效果」可以对比清洗前后的文本。
   常用组合：含网址的行 + 站点宣传行 + 翻页导航残留 + 乱码行 + 压缩连续空行。
   「删除所有空行」与「压缩连续空行」建议二选一，前者把全文压成不分段的一片。
+  勾选「含网址的行」后，下面会多出「保留插图链接」「插图链接校验」两条：
+  前者按后缀（jpg/jpeg/png/webp/gif）留下正文里的配图链接，后者还会逐条请求一次，
+  只保留响应头 Content-Type 确实是图片的链接（返回网页的、失效的照样删掉）；
+  图链如果落在站点宣传行里，随那一行一起删。
 
 【3 智能分章】
   内置中文网文章节规则库，可识别「第1章 / 第一百二十三章 / 卷三 / 序章 / 番外」等写法。
@@ -116,6 +120,11 @@ HELP_EN = """DeShelf User Guide
   corrupted lines + collapse blank runs.
   “Delete all blank lines” and “Collapse blank runs” are alternatives —
   pick one; the former squeezes the whole book into an unbroken block.
+  Ticking “Lines with URLs” reveals two more: “Keep illustration links” keeps
+  picture links by suffix (jpg/jpeg/png/webp/gif), and “Verify illustration links”
+  additionally requests each link and keeps only those whose Content-Type really
+  is an image (HTML pages and dead links are still deleted). A link sitting on a
+  site-promo line is removed with that line.
 
 [3] Smart Chapter Split
   Built-in Chinese web-novel patterns match lines like 第1章 / 第一百二十三章 /
@@ -341,6 +350,7 @@ TEXTS = {
         "cmp_var": "删除 {0} 行，{1} → {2} 字",
         "cmp_var_cut": "删除 {0} 行、另 {3} 行只裁了行尾网址，{1} → {2} 字",
         "cmp_jsdup": "（其中简繁重复 {0} 行）",
+        "cmp_img": "，保留插图链接 {0} 行",
         "cmp_merge": "，合并断行 {0} 处",
         "cmp_glue": "，标点接回上一行 {0} 处",
         "cmp_wrap_skip": "（{0} 段过长未合并）",
@@ -510,6 +520,7 @@ TEXTS = {
         "cmp_var": "{0} lines removed, {1} → {2} chars",
         "cmp_var_cut": "{0} lines removed, {3} more only had a trailing URL trimmed, {1} → {2} chars",
         "cmp_jsdup": " ({0} of them were script duplicates)",
+        "cmp_img": ", {0} illustration links kept",
         "cmp_merge": ", {0} line breaks joined",
         "cmp_glue": ", {0} punctuation marks pulled back up",
         "cmp_wrap_skip": " ({0} paragraphs left alone: too long)",
@@ -1132,17 +1143,35 @@ class App:
         inner = ttk.Frame(cv)
         cv_win = cv.create_window((0, 0), window=inner, anchor="nw")
         self._rules_canvas = cv
+        self._rule_inner = inner
 
         en = self.lang == EN
         self._rule_cbs = []
+        self._rule_rows = []
+        self._rule_frames = {}
+        self._rule_cb_by_id = {}
+        self._rule_tip_by_id = {}
         for r in jzcore.RULES:
             name = r["name_en"] if en else r["name"]
             tip = r["tip_en"] if en else r["tip"]
-            cb = ttk.Checkbutton(inner, text=name, variable=self.rule_vars[r["id"]])
+            row = ttk.Frame(inner)
+            cb = ttk.Checkbutton(row, text=name, variable=self.rule_vars[r["id"]])
             cb.pack(anchor="w", padx=px(8), pady=(px(3), 0))
-            ttk.Label(inner, text="    " + tip, foreground="#777777",
-                      font=FONT_S, wraplength=px(236)).pack(anchor="w", padx=px(8))
+            lab = ttk.Label(row, text="    " + tip, foreground="#777777",
+                            font=FONT_S, wraplength=px(236))
+            lab.pack(anchor="w", padx=px(8))
+            row.pack(anchor="w", fill="x")
+            self._rule_frames[r["id"]] = row
+            self._rule_rows.append(row)
             self._rule_cbs.append(cb)
+            self._rule_cb_by_id[r["id"]] = cb
+            self._rule_tip_by_id[r["id"]] = lab
+        # 插图两条规则跟着「含网址的行」显隐；「插图链接校验」还要等
+        # 「保留插图链接」打开才允许勾选
+        for _rid in ("url", "imgkeep"):
+            self.rule_vars[_rid].trace_add(
+                "write", lambda *a: self.refresh_rule_state())
+        self.refresh_rule_state()
 
         # 「下面还有 N 条」提示：光有滚动条不够，一屏只显示 6~8 条时
         # 用户会以为规则就这么多（v1.3.4 的简繁选项就是这样被忽视的）。
@@ -1159,8 +1188,8 @@ class App:
             if h <= 1:
                 return 0
             bottom = last * h
-            return sum(1 for c in self._rule_cbs
-                       if c.winfo_y() + px(4) > bottom)
+            return sum(1 for w in self._rule_rows
+                       if w.winfo_manager() and w.winfo_y() + px(4) > bottom)
 
         def _sync(first, last):
             vsb.set(first, last)
@@ -1944,6 +1973,51 @@ class App:
     def active_rules(self):
         return [i for i, v in self.rule_vars.items() if v.get()]
 
+    # ------------------------------------------------------------ 规则联动
+    # 插图两条规则是「含网址的行」的子项：没勾网址规则时它们没意义，不显示；
+    # 「插图链接校验」是「保留插图链接」的加强版，前一条没开就不允许勾。
+    _IMG_SUB_RULES = ("imgkeep", "imgcheck")
+
+    def _rule_visible(self, rid):
+        if rid in self._IMG_SUB_RULES:
+            return bool(self.rule_vars["url"].get())
+        return True
+
+    def refresh_rule_state(self):
+        """按「含网址的行」「保留插图链接」的勾选状态，显隐、启停插图两条规则。"""
+        frames = getattr(self, "_rule_frames", None)
+        if not frames:
+            return
+        prev = None
+        for r in jzcore.RULES:
+            row = frames.get(r["id"])
+            if row is None:
+                continue
+            if not self._rule_visible(r["id"]):
+                row.pack_forget()
+                continue
+            if not row.winfo_manager():
+                if prev is None:
+                    row.pack(anchor="w", fill="x")
+                else:
+                    row.pack(anchor="w", fill="x", after=prev)
+            prev = row
+        cb = self._rule_cb_by_id.get("imgcheck")
+        if cb is not None:
+            on = bool(self.rule_vars["imgkeep"].get())
+            cb.state(["!disabled"] if on else ["disabled"])
+            lab = self._rule_tip_by_id.get("imgcheck")
+            if lab is not None:
+                lab.configure(foreground="#777777" if on else "#B4B4B4")
+        cv = getattr(self, "_rules_canvas", None)
+        inner = getattr(self, "_rule_inner", None)
+        if cv is not None and inner is not None:
+            try:
+                cv.update_idletasks()
+                cv.configure(scrollregion=cv.bbox("all"))
+            except Exception:
+                pass
+
     def set_rules(self, val):
         for r in jzcore.RULES:
             v = self.rule_vars[r["id"]]
@@ -2053,6 +2127,9 @@ class App:
         msg = S[key].format(removed, len(text), len(cleaned), cut)
         if dup:
             msg += S["cmp_jsdup"].format(dup)
+        img_kept = stats.get("img", 0)
+        if img_kept:
+            msg += S["cmp_img"].format(img_kept)
         if merged:
             msg += S["cmp_merge"].format(merged)
         if glued:

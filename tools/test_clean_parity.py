@@ -49,6 +49,8 @@ CORPUS = "\n".join([
     '<img src="%s" alt=\'大概是这个姿势\'>' % LONG_URL,
     "图片：%s" % LONG_URL,
     "他笑了笑，把手机收进口袋" + LONG_URL,
+    # 推广套话 + 长图链：网址一长，旧逻辑只裁网址、把一句推广语留成正文
+    "欢迎关注笔趣阁，畅享百万书库" + LONG_URL,
     "上一页　下一页",
     "第１２章　夜路",
     "",
@@ -202,10 +204,15 @@ def main():
     chk("含网址的 HTML 标签整块清掉", "<img" not in text and "大概是这个姿势" not in text)
     chk("“图片：”加长图链整行删掉", "图片：" not in text)
     chk("正文粘长图链只裁网址", "他笑了笑，把手机收进口袋" in text)
+    chk("推广语 + 长图链整行删掉", "欢迎关注笔趣阁" not in text)
+    # 用户反馈：只勾「含网址的行」时，推广语+长图链不能被裁成一句推广语留下
+    promo_only = run_python("正文甲。\n欢迎关注笔趣阁，畅享百万书库" + LONG_URL + "\n", ["url"])
+    chk("只开「含网址的行」也整行删掉推广+长图链",
+        "欢迎关注笔趣阁" not in promo_only["text"], promo_only["text"])
 
     print("== 计数 ==")
     chk("trimmed 计数正确", py["trimmed"] == 3, py["trimmed"])   # 三段是行尾粘网址
-    chk("removed 计数正确", py["removed"] == 8, py["removed"])   # 7 条广告行 + 1 条导航
+    chk("removed 计数正确", py["removed"] == 9, py["removed"])   # 7 条广告行 + 1 条导航 + 1 条推广语+长图链
 
     print("== Python / Web 一致性 ==")
     chk("清洗后文本逐字相同", py["text"] == web["text"],

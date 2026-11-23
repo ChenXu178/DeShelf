@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """卷帙 DeShelf — 本地文本整理核心逻辑层。
 
-仅依赖 Python 标准库，不发起任何网络请求，只处理用户本机已有的文件。
+仅依赖 Python 标准库。默认全程离线；只有用户勾选「插图链接校验」时，才会对
+正文里出现的链接各发一次请求，只读响应头判断它是不是插图、有没有失效，
+正文与文件内容一律不上传。
 """
 
 import hashlib
@@ -9,6 +11,8 @@ import io
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 import uuid
 import zipfile
 
@@ -284,6 +288,16 @@ AD_HEAD_RE = re.compile(
     r"(记住|收藏|网址|本站|书站|手机阅读|手机版|最新章|一秒|更新最快|"
     r"推荐票|月票|笔趣阁|顶点|全文阅读|小说网|手打)"
 )
+# 推广套话的常用词。整行只剩这些词 + 网址时，它就是广告，不管网址有多长。
+# 起因：`欢迎关注笔趣阁，畅享百万书库https://…（两百字符的图链）` 这类行，
+# 按字数算的尺子把网址算进正文，于是只裁网址、把一句推广语留成正常段落。
+_PROMO_WORDS = re.compile(
+    r"欢迎(?:关注|访问|来到|光临|阅读|收藏)"
+    r"|(?:感谢|请|求)?(?:关注|收藏|订阅|推荐|打赏|月票)"
+    r"|畅享|海量|百万|书库|书站|本站|网址|域名|最新|首发|永久|记住"
+    r"|手机|电脑|阅读|下载|更新|免费|无弹窗|全文|章节|一秒|天才"
+    r"|笔趣|顶点|手打|本章|小说"
+)
 _SLIM_RE = re.compile(
     r"[\s\u3000，,。.！!？?、；;：:…\-—－_“”‘’\"'（）()《》〈〉【】\[\]·~@#%&*+=|/\\<>^_]"
 )
@@ -465,6 +479,21 @@ RULES = [
     {"id": "url", "name": "含网址的行", "name_en": "Lines with URLs",
      "tip": "删除只有网址的行；含网址的 HTML 标签整块清除；网址若粘在段尾，只裁掉网址本身，正文保留",
      "tip_en": "Removes URL-only lines (however long the image link), strips HTML tags that contain a URL, and trims only the URL when it is glued to a paragraph end"},
+    {"id": "imgkeep", "name": "保留插图链接", "name_en": "Keep illustration links",
+     "tip": "配图链接不再当广告删掉：按后缀认出 jpg/jpeg/png/webp/gif 的链接，"
+            "「图片：https://…jpg」这种整行、以及粘在正文后面的图链都原样保留；"
+            "若图链落在站点宣传行里，仍然随那一行一起删掉",
+     "tip_en": "Illustration links are no longer deleted as ads: links ending in jpg/jpeg/png/webp/gif "
+               "are recognised, so lines like \u201cimage: https://\u2026.jpg\u201d and links glued to a "
+               "paragraph end are kept as-is. A link sitting on a site-promo line is still deleted with it"},
+    {"id": "imgcheck", "name": "插图链接校验", "name_en": "Verify illustration links",
+     "tip": "对行内所有链接（含没有图片后缀的）各联网请求一次校验：响应头 Content-Type 为 "
+            "image/jpeg、image/png、image/gif、image/webp 的才算插图保留；返回网页的、"
+            "已经失效的链接不保留（单条超时 6 秒）。须先开启「保留插图链接」",
+     "tip_en": "Requests every link on a line (whether or not it has an image suffix) and keeps it only "
+               "when the response Content-Type is image/jpeg, image/png, image/gif or image/webp; "
+               "HTML pages and dead links are not kept (6 s timeout each). Requires "
+               "\u201cKeep illustration links\u201d"},
     {"id": "site", "name": "站点宣传行", "name_en": "Site promo lines",
      "tip": "删除“请收藏本站”“笔趣阁”这类推广行；推广语贴在段尾时只裁掉那一截",
      "tip_en": "Removes promo lines; if the promo is glued to a paragraph end, only that part is trimmed"},
@@ -846,6 +875,104 @@ def _residual(s):
     return _slim(HTML_TAG_RE.sub("", URL_BODY_RE.sub("", s)))
 
 
+# ---------------------------------------------------------------- 插图链接
+# 「保留插图链接」只认后缀，不联网；「插图链接校验」会真的请求一次看响应头。
+# 校验先发 HEAD，服务器不认 HEAD（405/501/403）时退回 GET，拿到响应头就关连接，
+# 不会把整张图下下来。超时设得短：失效站不能把一次批量清洗卡在那里。
+IMG_EXTS = ("jpg", "jpeg", "png", "webp", "gif")
+IMG_MIMES = ("image/jpeg", "image/png", "image/gif", "image/webp")
+IMG_TIMEOUT = 6.0
+IMG_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) DeShelf/%s" % APP_VER
+_IMG_SUFFIX = re.compile(r"\.(?:jpe?g|png|webp|gif)$", re.I)
+_IMG_TRAIL = "'\"，。、；,;）)】"
+
+
+def _img_suffix(url):
+    """链接路径的后缀是不是常用图片格式（查询串、锚点不参与）。"""
+    path = re.split(r"[?#]", url or "", 1)[0].rstrip("/")
+    return bool(_IMG_SUFFIX.search(path))
+
+
+def _img_full_url(url):
+    """补全成可请求的地址：正文里的链接常写成 www.xxx.com/a.jpg。"""
+    url = (url or "").strip().rstrip(_IMG_TRAIL)
+    if re.match(r"^https?://", url, re.I):
+        return url
+    if re.match(r"^(?:www\.|[a-z0-9\-]+\.)", url, re.I):
+        return "http://" + url
+    return ""
+
+
+def _img_content_type(url, timeout=IMG_TIMEOUT):
+    """请求一次，返回归一化的 Content-Type；链接失效、超时、非 http 一律返回 ""。"""
+    full = _img_full_url(url)
+    if not full:
+        return ""
+    headers = {"User-Agent": IMG_UA, "Accept": "image/*,*/*;q=0.8"}
+    for method in ("HEAD", "GET"):
+        try:
+            req = urllib.request.Request(full, method=method, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                ctype = resp.headers.get("Content-Type") or ""
+            return ctype.split(";")[0].strip().lower()
+        except urllib.error.HTTPError as e:
+            # 只对“服务器不认 HEAD”的几种状态换 GET；404/500 之类就是失效
+            if method == "HEAD" and e.code in (403, 405, 501):
+                continue
+            return ""
+        except Exception:
+            return ""       # 超时、DNS 失败、连接被掐断 —— 按失效处理，不再拖时间
+    return ""
+
+
+def find_image_links(s, verify=False, timeout=IMG_TIMEOUT, cache=None):
+    """找出一行里的插图链接，返回 [(起, 止, 网址)]。
+
+    verify=False：只看后缀（jpg/jpeg/png/webp/gif），不发任何请求；
+    verify=True ：行内每个链接（含没有图片后缀的）都请求一次，响应头 Content-Type
+                  是 image/jpeg、image/png、image/gif、image/webp 才算插图；
+                  返回网页的、失效的都不算 —— 顺带完成失效检测。
+    cache 传入 dict 可让同一条链接在一次清洗里只请求一次。
+    """
+    out = []
+    if not s:
+        return out
+    for m in URL_BODY_RE.finditer(s):
+        url = m.group(0).rstrip(_IMG_TRAIL)
+        if not url:
+            continue
+        if verify:
+            hit = cache.get(url) if cache is not None else None
+            if hit is None:
+                hit = _img_content_type(url, timeout)
+                if cache is not None:
+                    cache[url] = hit
+            ok = hit in IMG_MIMES
+        else:
+            ok = _img_suffix(url)
+        if ok:
+            out.append((m.start(), m.end(), url))
+    return out
+
+
+def _promo_only_line(s):
+    """整行除了推广套话和网址，几乎不剩正文。
+
+    `欢迎关注笔趣阁，畅享百万书库https://…` 这种行里网址能有两百个字符，
+    按字数判断会被当成“长正文”；这里先把网址、HTML 标签、推广套话都剥掉，
+    再看还剩几个字 —— 剩不下东西就是广告行。
+    """
+    txt = HTML_TAG_RE.sub("", URL_BODY_RE.sub("", s or "")).strip()
+    if not txt or _slim(txt) > AD_SHORT:
+        return False
+    if not (_PROMO_WORDS.search(txt) or SITE_RE.search(txt)):
+        return False
+    rest = _PROMO_WORDS.sub("", SITE_RE.sub("", txt))
+    # 门槛压得很低（≤3 字）：像「他打开了网址https://…」这种真句子要留下，
+    # 只有剥完推广词几乎不剩字（“欢迎关注笔趣阁，畅享百万书库”）才整行删。
+    return _slim(rest) <= 3
+
+
 def _ad_split(s, use_url, use_site):
     """判定一行里的广告，返回 (动作, 位置)。
 
@@ -873,6 +1000,10 @@ def _ad_split(s, use_url, use_site):
     total = _slim(s)            # 整行有多少真内容
     tail = s[end:]              # 整条网址后面剩下的部分
     tail_slim = _slim(tail)
+    # 推广套话 + 网址、剥掉网址后没剩正文：整行就是广告。
+    # 必须挡在下面「正文 + 贴行尾网址 → 只裁网址」之前，否则会留下一句推广语。
+    if _promo_only_line(s):
+        return "drop", 0
     if site_first:
         # 命中的是推广语：短行整行删；长行只在推广语贴着行尾时裁掉
         if total < AD_SHORT:
@@ -907,7 +1038,8 @@ def _ad_split(s, use_url, use_site):
 def clean_text(text, enabled, stats=None, custom=None):
     """按启用的规则清洗文本，返回 (新文本, 删除行数)。
 
-    stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）。
+    stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）
+    与 img（被当作插图保留的行数）。
     custom 是自定义规则列表（见 compile_custom），在内置规则之后执行。
     """
     on = set(enabled or [])
@@ -930,13 +1062,35 @@ def clean_text(text, enabled, stats=None, custom=None):
     prev_blank = False
     use_url = "url" in on
     use_site = "site" in on
+    # 插图两条规则挂在「含网址的行」下面：网址规则没开时它们无从谈起，直接不生效。
+    # imgcheck 还必须同时开着 imgkeep —— 校验只是把“按后缀认”换成“按响应头认”。
+    use_img = "imgkeep" in on and (use_url or use_site)
+    use_imgchk = use_img and "imgcheck" in on
+    img_cache = {}                  # 同一条链接一本书里只请求一次
+    img_kept = 0
     for raw in text.splitlines():
         s = raw
         if "trim" in on:
             s = s.strip()
         if "half" in on:
             s = to_halfwidth(s)
-        if use_url:
+        cut = 0
+        drop = False
+        protect = False
+        if use_img:
+            links = find_image_links(s, use_imgchk, IMG_TIMEOUT, img_cache)
+            if links:
+                if use_site and SITE_RE.search(s) and _residual(s) < AD_TINY:
+                    # 图链落在站点宣传行里（除链接外没几个字）：跟着整行当广告删掉
+                    drop = True
+                else:
+                    # 这一行是插图：原样保留，不再让网址/广告规则去裁它
+                    protect = True
+                    img_kept += 1
+        if drop:
+            removed += 1
+            continue
+        if use_url and not protect:
             # 含网址的 HTML 标签整块清掉，标签外的文字保留
             s, tag_hit = strip_url_tags(s)
             if tag_hit:
@@ -945,9 +1099,7 @@ def clean_text(text, enabled, stats=None, custom=None):
                     continue
                 if "trim" in on:
                     s = s.strip()
-        cut = 0
-        drop = False
-        if use_url or use_site:
+        if (use_url or use_site) and not protect:
             act, pos = _ad_split(s, use_url, use_site)
             if act == "drop":
                 drop = True
@@ -1019,6 +1171,7 @@ def clean_text(text, enabled, stats=None, custom=None):
         stats["merged"] = merged
         stats["glued"] = glued
         stats["wrap_skip"] = wrap_skip
+        stats["img"] = img_kept
     return "\n".join(out) + ("\n" if out else ""), removed
 
 

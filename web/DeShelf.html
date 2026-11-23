@@ -93,6 +93,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .rule{border:1px solid var(--line2);border-radius:var(--r);padding:8px 10px;background:#fff;cursor:pointer}
 .rule:hover{border-color:var(--blue)}
 .rule.on{border-color:var(--green);background:#f0f8f2}
+.rule.locked{opacity:.55;cursor:not-allowed}
 .rule input{accent-color:var(--green);margin-right:6px}
 .rule .t{font-weight:600}
 .rule .d{color:var(--muted);font-size:12px}
@@ -371,8 +372,9 @@ const Z = {
   ruleOn:"已启用 {n} 条规则", rPrev:"原文", rClean:"清洗后",
   rmStat:"删除 {n} 行", cutStat:"另 {m} 行只裁了行尾网址", jsdupStat:"其中简繁重复 {n} 行",
   mergeStat:"合并断行 {n} 处", glueStat:"标点接回上一行 {n} 处", wrapSkipStat:"{n} 段过长未合并",
+  imgStat:"保留插图链接 {n} 行", imgChecking:"正在逐条校验插图链接（单条最长 6 秒）…",
   loneHint:"另有 {n} 处标点独占一行，勾选「标点单独占一行」可修", wrapHint:"另有 {n} 段疑似句中硬断，勾选「合并句中断行」可合并",
-  prevHint:"仅预览前 500 行：整行划线＝删除；只有网址被划线＝正文保留",
+  prevHint:"仅预览前 500 行：整行划线＝删除；只有网址或 HTML 标签被划线＝正文保留",
   applyDone:"已清洗 {n} 本，共删除 {m} 行垃圾内容",
   cleanAllDone:"全部所选书籍已清洗",
   cleanNeedSel:"书库中没有已选书籍，请先勾选要清洗的书",
@@ -487,8 +489,9 @@ const E = {
   ruleOn:"{n} rules enabled", rPrev:"Original", rClean:"Cleaned",
   rmStat:"{n} lines removed", cutStat:"{m} more lines: only the URL tail trimmed", jsdupStat:"{n} of them were script duplicates",
   mergeStat:"{n} line breaks joined", glueStat:"{n} punctuation marks pulled back up", wrapSkipStat:"{n} paragraphs left alone (too long)",
+  imgStat:"{n} illustration links kept", imgChecking:"Verifying illustration links one by one (6 s each at most)…",
   loneHint:"{n} more lines hold punctuation only — tick \u201cPunctuation alone on a line\u201d to fix", wrapHint:"{n} more paragraphs look hard-wrapped — tick \u201cJoin mid-sentence line breaks\u201d to merge",
-  prevHint:"First 500 lines only: fully struck = removed; only the URL struck = text kept",
+  prevHint:"First 500 lines only: fully struck = removed; only the URL or an HTML tag struck = text kept",
   applyDone:"Cleaned {n} book(s), removed {m} junk lines",
   cleanAllDone:"All selected books cleaned",
   cleanNeedSel:"No books selected in the library. Tick the books to clean first.",
@@ -543,8 +546,8 @@ const E = {
 };
 Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
- +'<p>清洗规则 12 条：网址、站点宣传、翻页残留、乱码、<b>标点单独占一行</b>（整行只有一个收尾引号、句号或逗号的，接回上一行；省略号/破折号独占一行不动，默认关闭）、<b>合并句中断行</b>（按手机屏宽硬断的文件，以空行为段落界接回去，默认关闭）、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
- +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
+ +'<p>清洗规则 14 条：网址、<b>保留插图链接</b>（按 jpg/jpeg/png/webp/gif 后缀留下配图链接）、<b>插图链接校验</b>（逐条校验 Content-Type 与链接是否失效，默认关闭）、站点宣传、翻页残留、乱码、<b>标点单独占一行</b>（整行只有一个收尾引号、句号或逗号的，接回上一行；省略号/破折号独占一行不动，默认关闭）、<b>合并句中断行</b>（按手机屏宽硬断的文件，以空行为段落界接回去，默认关闭）、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
+ +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。唯一会联网的情况是你主动勾选「插图链接校验」——那时才会逐条请求文中链接、只读响应头判断它是不是图片，正文内容不会发送出去。</p>'
  +'<p>技术：单文件 HTML · File System Access（目录模式）/ 拖拽（全浏览器）· TextDecoder 编码识别 · 手写 EPUB 2.0 + ZIP（CompressionStream deflate）。</p>'
  +'<p>同一份 HTML 本地双击即用；放到 GitHub Pages 等 https 静态托管即是"在线版"，功能不变——数据始终不出本机。</p>'
  +'<p class="hint">桌面版（Windows EXE）支持原地覆盖写回与 .bak 备份，批量处理大书库建议用桌面版。</p>'
@@ -556,8 +559,8 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
 E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
- +'<p>Twelve cleaning rules: URLs, site promos, pagination leftovers, corrupted lines, <b>punctuation alone on a line</b> (a line holding only a closing quote, full stop or comma is pulled back; ellipsis/dash-only lines are never touched; off by default), <b>join mid-sentence line breaks</b> (for files hard-wrapped at phone width — blank lines are treated as paragraph breaks; off by default), blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
- +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
+ +'<p>Fourteen cleaning rules: URLs, <b>keep illustration links</b> (jpg/jpeg/png/webp/gif suffixes), <b>verify illustration links</b> (checks Content-Type and dead links; off by default), site promos, pagination leftovers, corrupted lines, <b>punctuation alone on a line</b> (a line holding only a closing quote, full stop or comma is pulled back; ellipsis/dash-only lines are never touched; off by default), <b>join mid-sentence line breaks</b> (for files hard-wrapped at phone width — blank lines are treated as paragraph breaks; off by default), blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
+ +'<p>This page runs locally: no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved. The only network access happens when you tick “Verify illustration links” — links found in the text are then requested one by one so their response headers can be inspected; book text itself is never sent anywhere.</p>'
  +'<p>Tech: single-file HTML · File System Access (directory mode) / drag &amp; drop (every browser) · TextDecoder encoding detection · hand-rolled EPUB 2.0 + ZIP (CompressionStream deflate).</p>'
  +'<p>Double-click the same HTML file for local use, or host it on any https static site (e.g. GitHub Pages) for an “online” version — behavior is identical, and data never leaves your machine.</p>'
  +'<p class="hint">The desktop app (Windows EXE) can overwrite files in place with .bak backup — prefer it for big in-place batch jobs.</p>'
@@ -569,7 +572,7 @@ E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p style="color:var(--muted);font-size:12px">© Lanlan Eternal</p>';
 Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<li><b>书库</b>：Chrome/Edge 点「选择文件夹」授权目录（可整目录扫描、写缓存、批量保存）；其它浏览器或临时用，直接拖入文件即可。</li>'
- +'<li><b>清洗</b>：勾选规则（网址行 / 站点宣传 / 翻页残留 / 乱码行 / 空行压缩等），先「预览」看前后对比，再「应用到所选书籍」。</li>'
+ +'<li><b>清洗</b>：勾选规则（网址行 / 站点宣传 / 翻页残留 / 乱码行 / 空行压缩等），先「预览」看前后对比，再「应用到所选书籍」。勾上「含网址的行」后会多出「保留插图链接」「插图链接校验」：前者按后缀留下配图链接，后者还会逐条请求校验（只读响应头，会联网），图链落在站点宣传行里仍随那一行删除。</li>'
  +'<li><b>分章</b>：选中一本书点「试分章节」看章节目录；标题写法特殊就用面板右上角「常用写法」；「应用分章」后章节目录会随书保存。</li>'
  +'<li><b>导出</b>：勾选格式（EPUB 带目录 / 合并 TXT / 分章 TXT）。单本直接下载；多本自动逐一下载，或先「保存到所选文件夹」把全部结果一次写入你授权的目录。</li></ol>'
  +'<p><b>自定义章节正则</b>（内置认不出的写法才需要）</p><ul>'
@@ -586,7 +589,7 @@ Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<p class="hint">免责：本工具只处理你本机已有的文件，请确保来源合法；软件按现状提供，请在使用前自行备份重要文件。</p>';
 E.helpBody = '<p><b>The four steps</b></p><ol>'
  +'<li><b>Library</b>: in Chrome/Edge hit “Choose Folder” to authorize a directory (full-folder scan, index cache, batch save). Otherwise just drop files in — works in every browser.</li>'
- +'<li><b>Clean</b>: tick rules (URL lines / site promos / page-nav leftovers / mojibake / blank compression…), hit “Preview”, then “Apply to selected books”.</li>'
+ +'<li><b>Clean</b>: tick rules (URL lines / site promos / page-nav leftovers / mojibake / blank compression…), hit “Preview”, then “Apply to selected books”. Ticking “Lines with URLs” reveals “Keep illustration links” and “Verify illustration links” — the latter requests each link (headers only, uses the network) and keeps just real images; a link on a site-promo line is still deleted with it.</li>'
  +'<li><b>Chapters</b>: pick a book and press “Try splitting” to see the TOC; a custom regex is supported; “Apply” keeps the split with the book.</li>'
  +'<li><b>Export</b>: tick formats (EPUB with TOC / merged TXT / per-chapter TXT). A single book downloads directly; multiple books download one by one, or pick “Save to chosen folder” once and write everything there.</li></ol>'
  +'<p><b>Custom chapter regex</b> (only when the built-ins miss)</p><ul>'
@@ -817,11 +820,19 @@ const Core = (() => {
     return {title:title.trim(),author:author.trim()};
   }
 
-  /* ---------- 清洗规则（12 条：原 10 条 + 标点独占一行 + 合并句中断行） ---------- */
+  /* ---------- 清洗规则（14 条：12 条 + 保留插图链接 + 插图链接校验） ----------
+     两条插图规则是「含网址的行」的子项（sub:"url"）：父项没勾时不显示，
+     「插图链接校验」还要等「保留插图链接」勾上才允许勾。 */
   const RULES=[
     {id:"url",name:"含网址的行",name_en:"Lines with URLs",
      tip:"删除只有网址的行；含网址的 HTML 标签整块清除；网址若粘在段尾，只裁掉网址本身，正文保留",
      tip_en:"Removes URL-only lines (however long the image link), strips HTML tags that contain a URL, and trims only the URL when it is glued to a paragraph end"},
+    {id:"imgkeep",name:"保留插图链接",name_en:"Keep illustration links",sub:"url",
+     tip:"配图链接不再当广告删掉：按后缀认出 jpg/jpeg/png/webp/gif 的链接，「图片：https://…jpg」这种整行、以及粘在正文后面的图链都原样保留；若图链落在站点宣传行里，仍然随那一行一起删掉",
+     tip_en:"Illustration links are no longer deleted as ads: links ending in jpg/jpeg/png/webp/gif are recognised, so lines like “image: https://…jpg” and links glued to a paragraph end are kept. A link sitting on a site-promo line is still deleted with it"},
+    {id:"imgcheck",name:"插图链接校验",name_en:"Verify illustration links",sub:"url",need:"imgkeep",
+     tip:"对行内所有链接（含没有图片后缀的）各校验一次：响应头 Content-Type 为 image/jpeg、image/png、image/gif、image/webp 的才算插图保留；跨域读不到响应头时改用图片探测（能正常解码才算），返回网页的、已失效的都不保留（单条超时 6 秒）。须先开启「保留插图链接」",
+     tip_en:"Checks every link on a line (image suffix or not) and keeps it only when Content-Type is image/jpeg, image/png, image/gif or image/webp; if cross-origin headers are unreadable it falls back to loading the picture (must decode). HTML pages and dead links are dropped (6 s each). Requires “Keep illustration links”"},
     {id:"site",name:"站点宣传行",name_en:"Site promo lines",
      tip:"删除“请收藏本站”这类推广行；推广语贴在段尾时只裁掉那一截",
      tip_en:"Removes promo lines; if the promo is glued to a paragraph end, only that part is trimmed"},
@@ -861,10 +872,15 @@ const Core = (() => {
   const URL_BODY_Y=new RegExp(URL_BODY_SRC,"iy");    /* 定点匹配（lastIndex 处） */
   /* 正文里夹带的 HTML 标签（<img src="http://…">、<a href="…">、</a>、<br> 等） */
   const HTML_TAG_RE=/<[A-Za-z\/!][^<>]{0,2000}>/gi;
+  /* 清掉含网址的 HTML 标签：返回 [新文本, 是否命中, 被删标签在原行里的位置]。
+     第三项给预览标红用 —— 标签是从行中间挖掉的，既不是整行删除也不是行尾裁剪。 */
   function stripUrlTags(s){
     const tags=s.match(HTML_TAG_RE);
-    if(!tags||!tags.some(t=>URL_RE.test(t)))return[s,false];
-    return[s.replace(HTML_TAG_RE,""),true];
+    if(!tags||!tags.some(t=>URL_RE.test(t)))return[s,false,[]];
+    const rng=[];
+    HTML_TAG_RE.lastIndex=0;
+    for(const m of s.matchAll(HTML_TAG_RE)) rng.push([m.index,m.index+m[0].length]);
+    return[s.replace(HTML_TAG_RE,""),true,rng];
   }
   /* 去掉网址与 HTML 标签后还剩多少真内容：为 0 说明这行只有网址/标签 */
   function residual(s){return slim(s.replace(URL_BODY_G,"").replace(HTML_TAG_RE,""));}
@@ -878,8 +894,22 @@ const Core = (() => {
   /* 判定“这行是不是广告”用的尺子 */
   const AD_TAIL_MAX=64, AD_MIN_BODY=6, AD_SHORT=32, AD_TINY=24, AD_AFTER=10;
   const AD_HEAD_RE=/(记住|收藏|网址|本站|书站|手机阅读|手机版|最新章|一秒|更新最快|推荐票|月票|笔趣阁|顶点|全文阅读|小说网|手打)/;
+  /* 推广套话的常用词。整行只剩这些词 + 网址时，它就是广告，网址再长也一样。
+     起因：`欢迎关注笔趣阁https://…（两百字符的图链）` 这类行，
+     按字数算的尺子把网址算进正文，于是只裁网址、把一句推广语留成正常段落。 */
+  const PROMO_WORDS=/(?:欢迎(?:关注|访问|来到|光临|阅读|收藏))|(?:(?:感谢|请|求)?(?:关注|收藏|订阅|推荐|打赏|月票))|(?:畅享|海量|百万|书库|书站|本站|网址|域名|最新|首发|永久|记住)|(?:手机|电脑|阅读|下载|更新|免费|无弹窗|全文|章节|一秒|天才)|(?:笔趣|顶点|手打|本章|小说)/;
+  const SITE_G=new RegExp(SITE_RE.source,"gi");
+  const PROMO_G=new RegExp(PROMO_WORDS.source,"gi");
   const SLIM_RE=/[\s\u3000，,。.！!？?、；;：:…\-—－_“”‘’"'（）()《》〈〉【】\[\]·~@#%&*+=|/\\<>^_]/g;
   function slim(s){return s.replace(SLIM_RE,"").length;}
+  /* 整行除了推广套话和网址，几乎不剩正文：`欢迎关注笔趣阁https://…` */
+  function promoOnlyLine(s){
+    const txt=String(s||"").replace(URL_BODY_G,"").replace(HTML_TAG_RE,"").trim();
+    if(!txt||slim(txt)>AD_SHORT) return false;
+    if(!PROMO_WORDS.test(txt)&&!SITE_RE.test(txt)) return false;
+    /* 门槛压得很低（≤3 字）：像「他打开了网址https://…」这种真句子要留下 */
+    return slim(txt.replace(SITE_G,"").replace(PROMO_G,""))<=3;
+  }
   /* 判定一行里的广告：keep 不动 / cut 只裁行尾 / drop 整行丢弃 */
   function adSplit(s,useUrl,useSite){
     const mu=useUrl?URL_RE.exec(s):null, ms=useSite?SITE_RE.exec(s):null;
@@ -896,6 +926,8 @@ const Core = (() => {
     const head=s.slice(0,start);
     const body=slim(head), total=slim(s);
     const tail=s.slice(end), tailSlim=slim(tail);
+    /* 推广套话 + 网址、剥掉网址后没剩正文：整行是广告（不能只裁网址把推广语留下） */
+    if(promoOnlyLine(s))return["drop",0];
     if(siteFirst){
       if(total<AD_SHORT)return["drop",0];
       if(body>=AD_MIN_BODY&&s.length-start<=AD_TAIL_MAX)return["cut",start];
@@ -913,6 +945,44 @@ const Core = (() => {
     }
     if(tailSlim<=AD_AFTER&&s.length-start<=AD_TAIL_MAX)return["cut",start];
     return["keep",0];
+  }
+
+  /* ---------- 插图链接（与桌面版 jzcore 同一套判据） ----------
+     「保留插图链接」只认后缀，不联网；「插图链接校验」逐条请求，读 Content-Type。
+     浏览器跨域读不到响应头（对方没给 CORS 头）时退回 <img> 探测：能解码出图片、
+     且没有 onerror，就说明它是活着的插图；404 的图会直接触发 onerror。 */
+  const IMG_EXT_RE=/(?:jpe?g|png|webp|gif)$/i;
+  const IMG_MIMES=new Set(["image/jpeg","image/png","image/gif","image/webp"]);
+  const IMG_PROBE="image/x-probe";     /* 图片探测通过（读不到响应头，但确实是图） */
+  const IMG_TIMEOUT=6000;              /* 单条链接的超时（毫秒） */
+  const IMG_TRAIL=/["'，。、；,;）)】\]]+$/;
+  function imgFullUrl(u){
+    u=String(u||"").trim().replace(IMG_TRAIL,"");
+    if(/^https?:\/\//i.test(u)) return u;
+    if(/^(?:www\.|[a-z0-9\-]+\.)/i.test(u)) return "http://"+u;
+    return "";
+  }
+  function imgBySuffix(u){
+    return IMG_EXT_RE.test(String(u||"").split(/[?#]/)[0].replace(/\/+$/,""));
+  }
+  /* 找出一行里的插图链接：[[起,止,网址]]。verify 时按 ctMap 里的 Content-Type 认 */
+  function findImageLinks(s,verify,ctMap){
+    const out=[];
+    if(!s) return out;
+    const re=new RegExp(URL_BODY_SRC,"gi");
+    let m;
+    while((m=re.exec(s))){
+      if(!m[0].length){re.lastIndex++;continue;}
+      const url=m[0].replace(IMG_TRAIL,"");
+      if(!url) continue;
+      let ok;
+      if(verify&&ctMap){
+        const ct=ctMap.get(url)||"";
+        ok=IMG_MIMES.has(ct)||ct===IMG_PROBE;
+      }else ok=imgBySuffix(url);   /* 没给校验结果就退回按后缀，别凭空删图 */
+      if(ok) out.push([m.index,m.index+url.length,url]);
+    }
+    return out;
   }
 
   /* ---------- 段落修复：标点独占一行 / 句中断行 ----------
@@ -1226,7 +1296,7 @@ const Core = (() => {
     return {kept,dels};
   }
 
-  function cleanText(text,enabled,wantDel,custom){
+  function cleanText(text,enabled,wantDel,custom,imgCt){
     /* 自定义规则先编译：drop 整行丢弃，cut 只挖掉命中的片段（与桌面版同序） */
     const cust=[];
     for(const r of (custom||[])){
@@ -1237,6 +1307,8 @@ const Core = (() => {
       try{cust.push([new RegExp(pat,fl),r.action==="cut"?"cut":"drop"]);}catch(e){}
     }
     const on=new Set(enabled||[]);let removed=0,trimmed=0;let out=[];const del=new Set();const cut=new Map();
+    /* mark：行内被删掉的片段（原行里的位置区间），预览按范围标红用 */
+    const mark=new Map();
     let glued=0,merged=0,wrapSkip=0;
     /* 段落修复放在逐行规则之前：合并后网址/导航行才判得准 */
     if(on.has("punct")||on.has("unwrap")){
@@ -1247,21 +1319,38 @@ const Core = (() => {
     }
     let prevBlank=false;
     const useUrl=on.has("url"),useSite=on.has("site");
+    /* 插图两条规则挂在「含网址的行」下面；imgcheck 只是把“按后缀认”换成“按响应头认” */
+    const useImg=on.has("imgkeep")&&(useUrl||useSite);
+    const useImgChk=useImg&&on.has("imgcheck");
+    let imgKept=0;
     for(const raw of text.split(/\r\n|\r|\n/)){
       let s=raw,lead=0;
       if(on.has("trim")){lead=raw.length-raw.replace(/^\s+/,"").length;s=s.trim();}
       if(on.has("half")) s=toHalfwidth(s);
-      if(useUrl){
+      let d=0,drop=false,protect=false;
+      if(useImg){
+        const links=findImageLinks(s,useImgChk,imgCt);
+        if(links.length){
+          if(useSite&&SITE_RE.test(s)&&residual(s)<AD_TINY) drop=true;  /* 宣传行里的图链一并删 */
+          else{protect=true;imgKept++;}                                /* 这一行是插图，原样保留 */
+        }
+      }
+      if(drop){removed++;if(wantDel)del.add(raw);continue;}
+      if(useUrl&&!protect){
         /* 含网址的 HTML 标签整块清掉，标签外的文字保留 */
         const st=stripUrlTags(s);
         if(st[1]){
           s=st[0];
           if(!s.replace(/[ \u3000]+/g,"")){removed++;if(wantDel)del.add(raw);continue;}
+          if(wantDel&&st[2].length){          /* 记下被挖掉的那几段，预览要标红 */
+            const cur=mark.get(raw)||[];
+            for(const rg of st[2]) cur.push([rg[0]+lead,rg[1]+lead]);
+            mark.set(raw,cur);
+          }
           if(on.has("trim")) s=s.trim();
         }
       }
-      let d=0,drop=false;
-      if(useUrl||useSite){
+      if((useUrl||useSite)&&!protect){
         const r=adSplit(s,useUrl,useSite);
         if(r[0]==="drop") drop=true;
         else if(r[0]==="cut") d=r[1];
@@ -1308,7 +1397,77 @@ const Core = (() => {
     while(a<b&&!out[a]) a++;
     while(b>a&&!out[b-1]) b--;
     out=out.slice(a,b);
-    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut,jsdup,merged,glued,wrapSkip};
+    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut,mark,jsdup,merged,glued,wrapSkip,img:imgKept};
+  }
+
+  /* ---------- 插图链接校验（异步：请求/探测 + 结果缓存） ---------- */
+  function probeImage(url,timeout){
+    if(typeof Image==="undefined") return Promise.resolve("");
+    return new Promise(res=>{
+      let done=false;
+      const img=new Image();
+      const finish=v=>{if(done)return;done=true;img.onload=null;img.onerror=null;res(v);};
+      setTimeout(()=>finish(""),timeout);
+      img.onload=()=>finish(img.naturalWidth>0?IMG_PROBE:"");
+      img.onerror=()=>finish("");
+      img.referrerPolicy="no-referrer";
+      img.src=url;
+    });
+  }
+  async function imgContentType(url,timeout){
+    const full=imgFullUrl(url);
+    if(!full) return "";
+    const ac=(typeof AbortController!=="undefined")?new AbortController():null;
+    const tid=setTimeout(()=>{if(ac)ac.abort();},timeout);
+    try{
+      for(const method of ["HEAD","GET"]){
+        let resp;
+        try{
+          resp=await fetch(full,{method,cache:"no-store",mode:"cors",signal:ac?ac.signal:undefined});
+        }catch(e){break;}                       /* 跨域/网络失败 → 交给图片探测 */
+        if(!resp.ok){
+          if(method==="HEAD"&&(resp.status===403||resp.status===405||resp.status===501)) continue;
+          return "";                            /* 404/500 等：链接已失效 */
+        }
+        try{if(resp.body&&resp.body.cancel)resp.body.cancel();}catch(e){}
+        const ct=(resp.headers.get("content-type")||"").split(";")[0].trim().toLowerCase();
+        if(ct) return ct;
+        break;
+      }
+    }finally{clearTimeout(tid);}
+    return probeImage(full,timeout);
+  }
+  /* 把整篇文本里的链接各校验一次，返回 Map(网址 → Content-Type)；同一条只算一次 */
+  async function verifyImageLinks(text,limit,timeout){
+    limit=limit||6;timeout=timeout||IMG_TIMEOUT;
+    const map=new Map(),todo=[];
+    const re=new RegExp(URL_BODY_SRC,"gi");
+    for(const line of String(text||"").split(/\r\n|\r|\n/)){
+      re.lastIndex=0;
+      let m;
+      while((m=re.exec(line))){
+        if(!m[0].length){re.lastIndex++;continue;}
+        const url=m[0].replace(IMG_TRAIL,"");
+        if(url&&!map.has(url)){map.set(url,"");todo.push(url);}
+      }
+    }
+    let i=0;
+    const worker=async()=>{
+      while(i<todo.length){
+        const url=todo[i++];
+        map.set(url,await imgContentType(url,timeout));
+      }
+    };
+    const n=Math.min(limit,todo.length);
+    if(n) await Promise.all(Array.from({length:n},worker));
+    return map;
+  }
+  /* 异步清洗：imgcheck 开启时先把链接验一遍，再跑同步的 cleanText */
+  async function cleanTextAsync(text,enabled,wantDel,custom){
+    const on=new Set(enabled||[]);
+    const useImg=on.has("imgkeep")&&(on.has("url")||on.has("site"));
+    const ctMap=(useImg&&on.has("imgcheck"))?await verifyImageLinks(text):null;
+    return cleanText(text,enabled,wantDel,custom,ctMap);
   }
 
   /* ---------- 分章（对齐 split_chapters） ---------- */
@@ -1723,7 +1882,8 @@ const Core = (() => {
   }
 
   return {detectEnc,decodeBytes,countChars,humanSize,guessMeta,cleanName,
-    RULES,DEFAULT_ON,cleanText,toHalfwidth,splitChapters,scanParaIssues,
+    RULES,DEFAULT_ON,cleanText,cleanTextAsync,verifyImageLinks,findImageLinks,
+    toHalfwidth,splitChapters,scanParaIssues,
     buildZip,deflateRawBytes,buildEpub,buildMergedTxt,buildSplitZip,safeFileName,
     THEMES,themeCss,themeById,makeCover,prepareCoverFile,
     exportRulesPack,parseRulesPack,customToText,textToCustom,
@@ -2176,6 +2336,9 @@ function buildRules(){
     const on=St.rulesOn.has(r.id);
     const lab=document.createElement("label");
     lab.className="rule"+(on?" on":"");
+    lab.dataset.rid=r.id;
+    if(r.sub) lab.dataset.sub=r.sub;
+    if(r.need) lab.dataset.need=r.need;
     lab.innerHTML='<input type="checkbox" data-rid="'+r.id+'"'+(on?" checked":"")+'>'
       +'<span class="t">'+esc(zh?r.name:r.name_en)+'</span>'
       +'<div class="d">'+esc(zh?r.tip:r.tip_en)+'</div>';
@@ -2183,11 +2346,27 @@ function buildRules(){
       const rid=ev.target.dataset.rid;
       if(ev.target.checked){St.rulesOn.add(rid);lab.classList.add("on");}
       else{St.rulesOn.delete(rid);lab.classList.remove("on");}
+      syncRuleGates();
       refreshCleanInfo();
     });
     box.appendChild(lab);
   }
+  syncRuleGates();
   refreshCleanInfo();
+}
+/* 子规则联动：「含网址的行」没勾 → 插图两条不显示；
+   「保留插图链接」没勾 → 「插图链接校验」禁用（勾选状态保留，父项重新勾上即可用） */
+function syncRuleGates(){
+  const box=$("ruleBox");if(!box)return;
+  const urlOn=St.rulesOn.has("url"),keepOn=St.rulesOn.has("imgkeep");
+  box.querySelectorAll("label.rule").forEach(lab=>{
+    const inp=lab.querySelector("input");if(!inp)return;
+    if(lab.dataset.sub){lab.style.display=urlOn?"":"none";}
+    if(lab.dataset.need==="imgkeep"){
+      inp.disabled=!keepOn;
+      lab.classList.toggle("locked",!keepOn);
+    }
+  });
 }
 function refreshCleanInfo(){
   const box=$("ruleBox");
@@ -2207,9 +2386,11 @@ async function previewClean(){
   const b=await firstSelectedWithText();
   if(!b){setMsgHint($("cleanInfo"),T("cleanNeedSel"));return;}
   $("btnCleanPrev").disabled=true;
+  if(rules.includes("imgkeep")&&rules.includes("imgcheck")&&rules.includes("url"))
+    setMsgHint($("cleanInfo"),T("imgChecking"));
   try{
     const raw=await bookText(b);
-    const r=Core.cleanText(raw,rules,true,St.customRules);
+    const r=await Core.cleanTextAsync(raw,rules,true,St.customRules);
     /* 两条段落修复默认关，关着的时候也要提示“文件里有几处”，否则用户以为没事 */
     let tip='';
     if(!rules.includes("punct")||!rules.includes("unwrap")){
@@ -2223,12 +2404,26 @@ async function previewClean(){
     for(const line of headRaw){
       if(r.del.has(line)){
         a+='<span class="del">'+esc(line)+'</span>'+"\n";c++;
-      }else if(r.cut&&r.cut.has(line)){
-        const k=r.cut.get(line);
-        a+=esc(line.slice(0,k))+'<span class="del">'+esc(line.slice(k))+'</span>'+"\n";
-      }else{
-        a+=esc(line)+"\n";
+        continue;
       }
+      /* 行内被删的片段：整块 HTML 标签（mark）、行尾网址（cut）—— 都按区间标红，
+         既不在行首也不一定到行尾，所以不能只按“从某处切到行尾”画 */
+      const rs=[];
+      const mk=r.mark&&r.mark.get(line);
+      if(mk) for(const rg of mk) rs.push(rg);
+      const k=r.cut&&r.cut.get(line);
+      if(k!==undefined) rs.push([k,line.length]);
+      if(!rs.length){a+=esc(line)+"\n";continue;}
+      rs.sort((p,q)=>p[0]-q[0]);
+      let pos=0,h='';
+      for(const rg of rs){
+        const from=Math.min(Math.max(rg[0],pos),line.length);
+        const to=Math.min(Math.max(rg[1],from),line.length);
+        if(from>pos) h+=esc(line.slice(pos,from));
+        if(to>from) h+='<span class="del">'+esc(line.slice(from,to))+'</span>';
+        pos=to;
+      }
+      a+=h+esc(line.slice(pos))+"\n";
     }
     $("cleanPane").innerHTML=
       '<div class="pane"><div class="pt"><span>'+esc(T("rPrev"))+' · '+esc(b.title||b.name)+'</span>'
@@ -2239,7 +2434,8 @@ async function previewClean(){
       +(r.jsdup?(' · '+(T("jsdupStat")||"其中简繁重复 {n} 行").replace(/\{n\}/,r.jsdup)):'')
       +(r.merged?(' · '+(T("mergeStat")||"合并断行 {n} 处").replace(/\{n\}/,r.merged)):'')
       +(r.glued?(' · '+(T("glueStat")||"标点接回上一行 {n} 处").replace(/\{n\}/,r.glued)):'')
-      +(r.wrapSkip?(' · '+(T("wrapSkipStat")||"{n} 段过长未合并").replace(/\{n\}/,r.wrapSkip)):'')+tip+'</span></div>'
+      +(r.wrapSkip?(' · '+(T("wrapSkipStat")||"{n} 段过长未合并").replace(/\{n\}/,r.wrapSkip)):'')
+      +(r.img?(' · '+(T("imgStat")||"保留插图链接 {n} 行").replace(/\{n\}/,r.img)):'')+tip+'</span></div>'
       +'<pre>'+(headNew.map(esc).join("\n")||esc(T("cleanEmpty")))+'</pre></div>';
     $("cleanInfo").textContent=fill(T("prevHint"),{});
   }catch(e){setMsgHint($("cleanInfo"),T("noEpubErr").replace("{e}",e.message));}
@@ -2253,8 +2449,10 @@ async function applyClean(){
   let done=0,totalRm=0;
   for(const b of sel){
     try{
+      if(rules.includes("imgkeep")&&rules.includes("imgcheck")&&rules.includes("url"))
+        setMsgHint($("cleanInfo"),T("imgChecking"));
       const raw=await bookText(b);
-      const r=rules.length?Core.cleanText(raw,rules,false,St.customRules):{text:raw,removed:0};
+      const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules):{text:raw,removed:0};
       b._clean=r.text;b.chars=Core.countChars(r.text);b._chap=null;b.chapters=-1;
       totalRm+=r.removed;done++;
     }catch(e){log("清洗失败："+b.name+" "+e.message);}
@@ -2368,7 +2566,7 @@ async function tryChapters(){
      （不写入 b._clean，避免影响清洗页的统计与“应用清洗”流程） */
   if(b._clean===undefined){
     const rules=activeRuleIds();
-    if(rules.length) raw=Core.cleanText(raw,rules,false,St.customRules).text;
+    if(rules.length) raw=(await Core.cleanTextAsync(raw,rules,false,St.customRules)).text;
   }
   let chs;
   try{chs=Core.splitChapters(raw,custom);}catch(e){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
@@ -2412,7 +2610,7 @@ async function chapAll(){
       let raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
       if(b._clean===undefined){
         const rules=activeRuleIds();
-        if(rules.length) raw=Core.cleanText(raw,rules,false,St.customRules).text;
+        if(rules.length) raw=(await Core.cleanTextAsync(raw,rules,false,St.customRules)).text;
       }
       // 这本书自己设了规则就用自己的，否则用全局
       let own=(b.chapRe||custom||"").trim()||undefined;
@@ -2568,7 +2766,7 @@ async function ensureCleaned(b){
   const raw=await bookText(b);
   const rules=activeRuleIds();
   if(b._clean===undefined){
-    const r=rules.length?Core.cleanText(raw,rules,false,St.customRules):{text:raw,removed:0};
+    const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules):{text:raw,removed:0};
     b._clean=r.text;
   }
   return b._clean;
