@@ -61,28 +61,61 @@ EXPECT = [
 ]
 
 
-def run_python(text, rules=None):
+def run_python(text, rules=None, custom=None):
     st = {}
-    out, removed = jzcore.clean_text(text, rules or RULES, st)
-    return {"text": out, "removed": removed, "trimmed": st.get("trimmed", 0)}
+    out, removed = jzcore.clean_text(text, rules or RULES, st, custom, want_trace=True)
+    return {"text": out, "removed": removed, "trimmed": st.get("trimmed", 0),
+            "blank": st.get("blank", 0), "trace": st.get("trace", [])}
 
 
-def run_web(text, rules=None):
+def run_web(text, rules=None, custom=None):
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.dirname(here)
     fd, tmp = tempfile.mkstemp(suffix=".txt")
     os.close(fd)
     try:
         io.open(tmp, "w", encoding="utf-8", newline="").write(text)
-        r = subprocess.run(
-            ["node", os.path.join(here, "_dump_clean.mjs"), tmp, json.dumps(rules or RULES)],
-            capture_output=True, cwd=root,
-        )
+        args = ["node", os.path.join(here, "_dump_clean.mjs"), tmp,
+                json.dumps(rules or RULES)]
+        if custom is not None:
+            args.append(json.dumps(custom, ensure_ascii=False))
+        r = subprocess.run(args, capture_output=True, cwd=root)
         if r.returncode != 0:
             raise SystemExit("node 执行失败：" + r.stderr.decode("utf-8", "ignore")[:400])
         return json.loads(r.stdout.decode("utf-8"))
     finally:
         os.remove(tmp)
+
+
+def run_web_summary(books, opt):
+    """让网页版 Core.buildCleanSummary 生成同一份汇总文本。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    fd, tmp = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    try:
+        io.open(tmp, "w", encoding="utf-8", newline="").write(
+            json.dumps({"books": books, "opt": opt}, ensure_ascii=False))
+        r = subprocess.run(
+            ["node", os.path.join(here, "_dump_clean.mjs"), tmp, "--summary"],
+            capture_output=True, cwd=root,
+        )
+        if r.returncode != 0:
+            raise SystemExit("node 执行失败：" + r.stderr.decode("utf-8", "ignore")[:400])
+        return r.stdout.decode("utf-8")
+    finally:
+        os.remove(tmp)
+
+
+def diff_at(a, b):
+    """返回第一处不同的 (行号, 桌面, 网页)，失败时打印用。"""
+    la, lb = a.split("\n"), b.split("\n")
+    for i in range(max(len(la), len(lb))):
+        x = la[i] if i < len(la) else "<缺行>"
+        y = lb[i] if i < len(lb) else "<缺行>"
+        if x != y:
+            return (i + 1, x, y)
+    return None
 
 
 # —— 简繁双份语料：盗版站常见形态，繁體版 + 简体版 各一份，其中一行还被插了网址 ——
@@ -220,6 +253,71 @@ def main():
     chk("removed 相同", py["removed"] == web["removed"], (py["removed"], web["removed"]))
     chk("trimmed 相同", py["trimmed"] == web["trimmed"], (py["trimmed"], web["trimmed"]))
     chk("裁剪位置相同", len(web["cuts"]) == py["trimmed"], web["cuts"])
+
+    print("== 清理明细（原文行号 / 清理原因 / 空行计数） ==")
+    chk("明细条数相同", len(py["trace"]) == len(web["trace"]),
+        (len(py["trace"]), len(web["trace"])))
+    chk("明细逐条相同（含原文行号与命中规则）", py["trace"] == web["trace"],
+        next((a, b) for a, b in zip(py["trace"], web["trace"]) if a != b)
+        if py["trace"] != web["trace"] else None)
+    chk("空行计数相同", py["blank"] == web["blank"], (py["blank"], web["blank"]))
+    src_lines = CORPUS.split("\n")
+    bad = [e for e in py["trace"] if not 1 <= e["line"] <= len(src_lines)]
+    chk("原文行号都落在文件范围内", not bad, bad[:2])
+    want_line = src_lines.index("上一页　下一页") + 1
+    nav = [e for e in py["trace"] if e["rule"] == "nav"]
+    chk("导航行的行号就是原文那一行", len(nav) == 1 and nav[0]["line"] == want_line,
+        [(e["line"], e["text"]) for e in nav])
+    chk("每条明细都带清理原因", all(e["rule"] for e in py["trace"]),
+        [e for e in py["trace"] if not e["rule"]][:2])
+
+    # 自定义规则的说明（label）两端一致
+    cust_rules = [{"name": "去掉求票尾巴", "pattern": "求票", "action": "cut",
+                   "enabled": True}]
+    small = "正文甲，求票求收藏\n上一页\n正文乙。\n"
+    pyc = run_python(small, ["nav"], cust_rules)
+    webc = run_web(small, ["nav"], cust_rules)
+    chk("自定义规则的明细两端相同", pyc["trace"] == webc["trace"],
+        (pyc["trace"], webc["trace"]))
+    chk("自定义规则写明规则名", bool(pyc["trace"]) and pyc["trace"][0]["label"] == "去掉求票尾巴",
+        pyc["trace"][:1])
+
+    print("== 清洗内容汇总（桌面 / 网页同一份文本） ==")
+    when = "2026-01-01 00:00:00"
+    books_py = [{
+        "title": "阴阳鬼探", "author": "某作者", "file": "阴阳鬼探.txt",
+        "lines_before": len(src_lines),
+        "lines_after": len(py["text"].splitlines()),
+        "blank": py["blank"], "entries": py["trace"], "note": "",
+    }, {
+        "title": "空本", "author": "", "file": "b.txt", "entries": [],
+    }]
+    books_js = [{
+        "title": "阴阳鬼探", "author": "某作者", "file": "阴阳鬼探.txt",
+        "linesBefore": books_py[0]["lines_before"],
+        "linesAfter": books_py[0]["lines_after"],
+        "blank": py["blank"], "entries": web["trace"], "note": "",
+    }, {
+        "title": "空本", "author": "", "file": "b.txt", "entries": [],
+    }]
+    for lang in ("zh", "en"):
+        s_py = jzcore.summary_text(books_py, RULES, lang, when)
+        s_web = run_web_summary(books_js, {"rules": RULES, "lang": lang, "when": when})
+        chk("%s 汇总逐字相同" % ("中文" if lang == "zh" else "英文"), s_py == s_web,
+            diff_at(s_py, s_web))
+    books_c_py = [{"title": "阴阳鬼探", "author": "某作者", "file": "阴阳鬼探.txt",
+                   "lines_before": len(small.splitlines()),
+                   "lines_after": len(pyc["text"].splitlines()),
+                   "blank": pyc["blank"], "entries": pyc["trace"], "note": ""}]
+    books_c_js = [{"title": "阴阳鬼探", "author": "某作者", "file": "阴阳鬼探.txt",
+                   "linesBefore": len(small.splitlines()),
+                   "linesAfter": len(pyc["text"].splitlines()),
+                   "blank": pyc["blank"], "entries": webc["trace"], "note": ""}]
+    s_py = jzcore.summary_text(books_c_py, ["nav"], "zh", when, cust_rules)
+    s_web = run_web_summary(books_c_js,
+                            {"rules": ["nav"], "lang": "zh", "when": when,
+                             "custom": cust_rules})
+    chk("带自定义规则的汇总逐字相同", s_py == s_web, diff_at(s_py, s_web))
 
     print("== 简繁重复行 ==")
     jd_rules = ["jsdup"]

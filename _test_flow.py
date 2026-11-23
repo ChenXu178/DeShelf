@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """端到端流程测试：真实调用 App.run_worker，覆盖 输出到新目录 / 原地覆盖 两种去向。"""
 import os
+import re
 import shutil
 import sys
 import time
@@ -102,13 +103,32 @@ app.fmt_vars["epub"].set(True)
 app.fmt_vars["merge"].set(True)
 app.fmt_vars["split"].set(False)
 app.mode_var.set("new")
+app.sum_var.set(True)
 app.run_worker(books, ["epub", "merge"], "new", OUT, app.active_rules(), None)
 root.update()
 
 produced = sorted(os.listdir(OUT))
 print("  输出目录：", produced)
-check("产物数量（3本 × txt+epub）", len(produced), 6)
+check("产物数量（3本 × txt+epub + 汇总）", len(produced), 7)
 check("重名文件自动加序号", any(n.startswith("斗破苍穹 (1)") for n in produced), True)
+
+# 清洗内容汇总：按书籍分类列出被清理的原文 + 清洗后的行号
+sum_path = os.path.join(OUT, jzcore.SUMMARY_NAME)
+check("已生成清洗内容汇总", os.path.exists(sum_path), True)
+sum_txt = open(sum_path, encoding="utf-8").read()
+check("汇总按书籍分类", "《斗破苍穹》" in sum_txt and "《诡秘之主》" in sum_txt, True)
+check("汇总列出被清理的原文", "返回目录" in sum_txt, True)
+nav_line = BODY.splitlines().index("上一页 | 返回目录 | 加入书签") + 1
+check("汇总记录的是原文行号",
+      bool(re.search(r"^\s*%d\s+翻页导航残留\s+整行删除\s+上一页" % nav_line,
+                     sum_txt, re.M)), True)
+check("汇总标注了启用的规则", "翻页导航残留" in sum_txt, True)
+check("每条内容带清理原因（规则名）",
+      bool(re.search(r"^\s*\d+\s+翻页导航残留\s+整行删除\s+上一页", sum_txt, re.M)), True)
+check("汇总按原因统计条数",
+      bool(re.search(r"原因统计：.*翻页导航残留 \d+ 条", sum_txt)), True)
+check("汇总统计删除的空行数",
+      bool(re.search(r"共 \d+ 本书 · 清理 \d+ 条 · 删除空行 \d+ 行", sum_txt)), True)
 
 dp = os.path.join(OUT, "斗破苍穹.txt")
 body_out = open(dp, encoding="utf-8").read()
@@ -160,7 +180,7 @@ app.run_worker([books[2]], ["epub"], "none", OUT2, [], None)
 root.update()
 got = sorted(os.listdir(OUT2))
 print("  输出目录：", got)
-check("只产出一个 EPUB", got, ["诡秘之主.epub"])
+check("只产出一个 EPUB 与汇总", got, [jzcore.SUMMARY_NAME, "诡秘之主.epub"])
 check("未生成整理后 TXT", os.path.exists(os.path.join(OUT2, "诡秘之主.txt")), False)
 
 print("\n失败项：%d" % len(fails))

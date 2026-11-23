@@ -293,6 +293,31 @@ try {
   ok("模板填入全局正则生效", r.val && /折/.test(r.val.g) && r.val.closed, JSON.stringify(r.val));
   ok("模板填入本书专用生效", r.val && /章/.test(r.val.bk) && r.val.onBook, JSON.stringify(r.val));
 
+  // 8c. 清洗内容汇总：明细随清洗快照缓存，汇总文本按书籍分类并带原文行号与规则
+  r = await evalv(`(() => {
+    const b = St.books[0];
+    const el = document.getElementById('optSum');
+    const tr = b._cleanTrace || [];
+    const txt = Core.buildCleanSummary([{title:b.title||b.name,author:b.author||'',
+      file:b.rel||b.name,linesBefore:b._cleanBefore,linesAfter:Core.lineCount(b._clean),
+      blank:b._cleanBlank||0,entries:tr,note:''}],
+      {rules:activeRuleIds(),lang:CUR,custom:St.customRules,when:'2026-01-01 00:00:00'});
+    return {el:!!el,on:!!(el&&el.checked),n:tr.length,
+      kind:tr.length?tr[0].kind:'',rule:tr.length?tr[0].rule:'',line:tr.length?tr[0].line:0,
+      hasHead:txt.indexOf('清洗内容汇总')>=0,
+      hasCol:txt.indexOf('原文行号')>=0&&txt.indexOf('清理原因')>=0,
+      hasRule:/站点宣传行|含网址的行|翻页导航残留|乱码行/.test(txt),
+      hasStat:txt.indexOf('原因统计：')>=0,
+      hasBlank:txt.indexOf('删除空行')>=0};
+  })()`);
+  console.log("  · 汇总诊断:", JSON.stringify(r.err || r.val));
+  ok("默认勾选「生成清洗内容汇总」", r.val && r.val.el && r.val.on, JSON.stringify(r.val));
+  ok("清洗明细随快照缓存（含原文行号与规则）",
+    r.val && r.val.n > 0 && r.val.rule && r.val.line >= 1, JSON.stringify(r.val));
+  ok("汇总含书头/列名/原因/空行统计",
+    r.val && r.val.hasHead && r.val.hasCol && r.val.hasRule && r.val.hasStat && r.val.hasBlank,
+    JSON.stringify(r.val));
+
   // 9. 全部捕获的 JS 错误汇总
   ok("全程无 JS 运行时错误", errors.length === 0, errors.join(" | "));
 

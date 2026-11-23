@@ -12,6 +12,7 @@ import json
 import os
 import re
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -678,8 +679,11 @@ def _over(a, b):
     return len(a & b) / min(len(a), len(b))
 
 
-def dedupe_script_dup(lines):
+def dedupe_script_dup(lines, gone_out=None):
     """同一段正文有简繁两份时删繁体那份，返回 (保留的行, 删掉的行)。
+
+    gone_out 传入 set 时写入被删行在 lines 里的下标 —— 「清洗内容汇总」要靠它
+    把删掉的位置换算成清洗后的行号。
 
     三步，两端一致：
       1) 繁→简归一后文本相同、字面不同、繁体字更多 → 删；
@@ -837,6 +841,8 @@ def dedupe_script_dup(lines):
             dels.append(s)
         else:
             kept.append(s)
+    if gone_out is not None:
+        gone_out.update(gone)
     return kept, dels
 
 
@@ -1271,7 +1277,7 @@ def _promo_only_line(s):
     return _slim(rest) <= 3
 
 
-def _ad_split(s, use_url, use_site):
+def _ad_split(s, use_url, use_site, why=None):
     """判定一行里的广告，返回 (动作, 位置)。
 
     动作：
@@ -1281,12 +1287,17 @@ def _ad_split(s, use_url, use_site):
 
     很多盗版站把网址直接粘在段落末尾（“……偷走的？”WwW.xxx.com），
     旧逻辑按整行删除，会把整本书的正文一起删光，所以这里要分情况。
+
+    why 传入 dict 时会写入 {"rule": "url" | "site"}：这一行到底是命中
+    「含网址的行」还是「站点宣传行」被处理掉的，汇总要用它标清理原因。
     """
     mu = URL_RE.search(s) if use_url else None
     ms = SITE_RE.search(s) if use_site else None
     if not mu and not ms:
         return "keep", 0
     site_first = bool(ms) and (not mu or ms.start() <= mu.start())
+    if why is not None:
+        why["rule"] = "site" if site_first else "url"
     if site_first:
         start, end = ms.start(), ms.end()
     else:
@@ -1333,11 +1344,12 @@ def _ad_split(s, use_url, use_site):
     return "keep", 0
 
 
-def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=False):
+def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=False,
+               want_trace=False):
     """按启用的规则清洗文本，返回 (新文本, 删除行数)。
 
-    stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）
-    与 img（被当作插图保留的行数）。
+    stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）、
+    img（被当作插图保留的行数）、blank（删掉的空行数，含掐掉的首尾空行）。
     custom 是自定义规则列表（见 compile_custom），在内置规则之后执行。
     img_cache 传入 dict 可复用「插图链接校验」的判定（见 verify_cache）：
     命中时不再联网 —— 「下载插图链接」同时开着时，导出流程就是这样把
@@ -1345,6 +1357,13 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
     want_del=True 时额外在 stats 里写入预览标红所需的三项（与 Web 版一致）：
     del（被整行删掉的原行集合）、cut（原行 → 行尾网址开始的位置）、
     mark（原行 → 行内被挖掉的若干区间）。
+    want_trace=True 时额外在 stats 里写入 trace：按出现顺序记录的清理明细
+    [{"kind", "line", "text", "rule", "label"}]。line 是这条内容在**原文**里的
+    行号（从 1 开始；开了「合并句中断行」时按合并后的行算），kind 见
+    TRACE_KINDS，text 是被清理掉的那段文字，rule 是命中的内置规则 id
+    （url / site / nav / moji / jsdup / custom），label 只给自定义规则用
+    （规则名或正则）。纯空格与空行不留记录。它只服务于「清洗内容汇总」的
+    误删排查，平时不生成。
     """
     on = set(enabled or [])
     cust = compile_custom(custom)
@@ -1357,6 +1376,20 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
     glued = 0
     merged = 0
     wrap_skip = 0
+    blank_n = 0        # 删掉的空行数：不逐条进明细，只在汇总里单独计数
+    trace = [] if want_trace else None
+
+    def _note(kind, txt, line, rule="", label=""):
+        """记一条清理明细。line 是原文行号；rule 是命中的内置规则 id，
+        自定义规则记 kind=custom + label（规则名或正则），汇总据此写明
+        「为什么被清理」。"""
+        if trace is None:
+            return
+        t = (txt or "").strip()
+        if t:
+            trace.append({"kind": kind, "text": t, "line": line,
+                          "rule": rule, "label": label})
+
     # 段落修复放在所有逐行规则之前：后面那些规则（网址、导航、空行）看到合并
     # 后的行才判得准，否则“本节未完”这类被切碎的广告行会漏。
     if "punct" in on or "unwrap" in on:
@@ -1366,7 +1399,6 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
         if "unwrap" in on:
             lines, merged, wrap_skip = unwrap_paragraphs(lines)
         text = "\n".join(lines)
-    out = []
     prev_blank = False
     use_url = "url" in on
     use_site = "site" in on
@@ -1376,7 +1408,9 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
     use_imgchk = use_img and "imgcheck" in on
     img_cache = {} if img_cache is None else img_cache   # 同一条链接只判一次
     img_kept = 0                    # 被当作插图保留的行数
-    for raw in text.splitlines():
+    # out_src 与 out 一一对应：记每行来自原文的第几行（简繁去重要靠它回找行号）
+    out, out_src = [], []
+    for i_raw, raw in enumerate(text.splitlines(), 1):
         s = raw
         lead = 0
         if "trim" in on:
@@ -1387,12 +1421,15 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
         cut = 0
         drop = False
         protect = False
+        rule = ""              # 命中哪条内置规则（汇总里的「清理原因」）
+        label = ""             # 自定义规则的说明（规则名或正则）
         if use_img:
             links = find_image_links(s, use_imgchk, IMG_TIMEOUT, img_cache)
             if links:
                 if use_site and SITE_RE.search(s) and _residual(s) < AD_TINY:
                     # 图链落在站点宣传行里（除链接外没几个字）：跟着整行当广告删掉
                     drop = True
+                    rule = "site"
                 else:
                     # 这一行是插图：原样保留，不再让网址/广告规则去裁它
                     protect = True
@@ -1401,16 +1438,23 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
             removed += 1
             if want_del:
                 del_lines.add(raw)
+            _note("drop", s, i_raw, rule)
             continue
         if use_url and not protect:
             # 含网址的 HTML 标签整块清掉，标签外的文字保留
+            s_before = s
             s, tag_hit, tag_spans = strip_url_tags(s)
             if tag_hit:
                 if not s.strip(" \u3000"):
                     removed += 1
                     if want_del:
                         del_lines.add(raw)
+                    _note("drop", s_before, i_raw, "url")
                     continue
+                if tag_spans:
+                    # 标签是从行中间挖掉的：正文还在，只记被挖掉的那几段
+                    _note("tag", "".join(s_before[a:z] for a, z in tag_spans),
+                          i_raw, "url")
                 if want_del and tag_spans:
                     # 记下被挖掉的那几段，预览要标红
                     cur = mark_map.setdefault(raw, [])
@@ -1419,7 +1463,9 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
                 if "trim" in on:
                     s = s.strip()
         if (use_url or use_site) and not protect:
-            act, pos = _ad_split(s, use_url, use_site)
+            why = {}
+            act, pos = _ad_split(s, use_url, use_site, why)
+            rule = why.get("rule", rule)
             if act == "drop":
                 drop = True
             elif act == "cut":
@@ -1427,67 +1473,92 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
         if not drop and not cut:
             if "nav" in on and NAV_RE.search(s):
                 drop = True
+                rule = "nav"
             elif "moji" in on and MOJI_RE.search(s):
                 drop = True
+                rule = "moji"
         if drop:
             removed += 1
             if want_del:
                 del_lines.add(raw)
+            _note("drop", s, i_raw, rule, label)
             continue
         if cut:
-            s = s[:cut].rstrip(" \u3000，,、；;：:")
+            # 裁掉的是行尾那截广告：留下的是 s[:cut]，被清洗掉的就是余下部分
+            s_head, s_tail = s[:cut], s[cut:]
+            s = s_head.rstrip(" \u3000，,、；;：:")
             if not _slim(s):
                 removed += 1
                 if want_del:
                     del_lines.add(raw)
+                _note("drop", s_head + s_tail, i_raw, rule, label)
                 continue
             trimmed += 1
+            _note("cut", s_tail, i_raw, rule, label)
             if want_del:
                 cut_map[raw] = cut + lead
         # 自定义规则：drop 整行丢弃，cut 只挖掉命中的片段（挖空了交给空行规则处理）
         if cust:
-            for rx, act in cust:
+            hit_rm = ""
+            for rx, act, note in cust:
                 m = rx.search(s)
                 if not m:
                     continue
                 if act == "cut":
+                    hit_rm = m.group(0)
                     s = s[:m.start()] + s[m.end():]
+                    label = note
+                    rule = "custom"
                 else:
                     drop = True
+                    rule = "custom"
+                    label = note
                 break
             if drop:
                 removed += 1
                 if want_del:
                     del_lines.add(raw)
+                _note("drop", s, i_raw, rule, label)
                 continue
+            if hit_rm:
+                _note("custom", hit_rm, i_raw, rule, label)
         if "blank" in on and not s:
             removed += 1
+            blank_n += 1
             if want_del:
                 del_lines.add(raw)
             continue
         if "blank2" in on and not s:
             if prev_blank:
                 removed += 1
+                blank_n += 1
                 if want_del:
                     del_lines.add(raw)
                 continue
             prev_blank = True
             out.append("")
+            out_src.append(i_raw)
             continue
         prev_blank = False
         if "indent" in on and s:
             s = "　　" + s
         out.append(s)
+        out_src.append(i_raw)
     # 简繁重复行：放在缩进之后、掐首尾空行之前，与 Web 版顺序一致
     jsdup_n = 0
+    js_gone = set()          # 简繁去重删掉的行在 out 里的下标
     if "jsdup" in on and out:
-        kept, dels = dedupe_script_dup(out)
+        kept, dels = dedupe_script_dup(out, js_gone)
         if dels:
             jsdup_n = len(dels)
             removed += jsdup_n
             if want_del:
                 del_lines.update(dels)
+            if trace is not None:
+                for j in sorted(js_gone):
+                    _note("jsdup", out[j], out_src[j], "jsdup")
             out = kept
+            out_src = [src for k, src in enumerate(out_src) if k not in js_gone]
     # 去掉首尾空行：用指针扫描避免 pop(0) 在大文本上的 O(n²)
     start = 0
     while start < len(out) and not out[start]:
@@ -1496,7 +1567,13 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
     while end > start and not out[end - 1]:
         end -= 1
     if start or end != len(out):
+        blank_n += start + (len(out) - end)   # 掐掉的首尾空行也算删掉的空行
         out = out[start:end]
+        out_src = out_src[start:end]
+    if trace is not None:
+        # 明细里的 line 直接就是原文行号，只需按行号排一下（简繁去重的条目是
+        # 循环结束后补记的，位置要回到文件顺序上）
+        trace.sort(key=lambda r: r["line"])
     if stats is not None:
         stats["removed"] = removed
         stats["trimmed"] = trimmed
@@ -1505,11 +1582,225 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
         stats["glued"] = glued
         stats["wrap_skip"] = wrap_skip
         stats["img"] = img_kept
+        stats["blank"] = blank_n
         if want_del:
             stats["del"] = del_lines
             stats["cut"] = cut_map
             stats["mark"] = mark_map
+        if trace is not None:
+            stats["trace"] = trace
+            stats["trace_n"] = len(trace)
     return "\n".join(out) + ("\n" if out else ""), removed
+
+
+# ---------------------------------------------------------------- 清洗内容汇总
+# 「导出分发」点「开始处理」后可以落一份汇总：按书籍分类列出被清洗掉的内容，
+# 每条带清洗后的行号与命中的规则。用途单一 —— 回查“是不是把正文误删了”。
+
+SUMMARY_NAME = "清洗内容汇总.txt"
+
+# 清理明细的类型（clean_text 的 stats["trace"][i]["kind"]）
+TRACE_KINDS = ("drop", "cut", "tag", "custom", "jsdup")
+
+_TRACE_LABEL = {
+    "zh": {"drop": "整行删除", "cut": "行尾裁剪", "tag": "HTML 标签",
+           "custom": "自定义规则", "jsdup": "简繁重复"},
+    "en": {"drop": "line removed", "cut": "tail trimmed", "tag": "HTML tag",
+           "custom": "custom rule", "jsdup": "script duplicate"},
+}
+
+_SUM_LABEL = {
+    "zh": {
+        "head": APP_CN + " " + APP_EN + " · 清洗内容汇总",
+        "when": "生成时间：%s",
+        "rules": "清洗规则：%s",
+        "custom_rules": "自定义规则：%s",
+        "none": "（未启用任何规则）",
+        "doc": ("说明：本文件按书籍分类汇总「开始处理」时被清洗掉的内容，用于回查误删。\n"
+                "　　　原文行号 = 该内容在原文件里的行号（从 1 开始；开了「合并句中断行」"
+                "按合并后的行算）；\n"
+                "　　　清理原因 = 命中的那条规则（自定义规则给出规则名或正则）；\n"
+                "　　　空格与空行不逐条列出，只统计删除数量。"),
+        "total": "共 %d 本书 · 清理 %d 条 · 删除空行 %d 行",
+        "book": "[%d/%d] 《%s》%s",
+        "author": " · %s",
+        "file": "源文件：%s",
+        "lines": "%d 行 → 清洗后 %d 行 · 清理 %d 条 · 删除空行 %d 行",
+        "lines_na": "清理 %d 条 · 删除空行 %d 行",
+        "col": ("原文行号", "清理原因", "类型", "被清理的内容"),
+        "stat": "原因统计：%s",
+        "stat_item": "%s %d 条",
+        "stat_blank": "空行 %d 行",
+        "custom": "自定义规则「%s」",
+        "unknown": "（未标注原因）",
+        "empty": "（无清理记录）",
+        "skip": "（未记录明细：%s）",
+    },
+    "en": {
+        "head": APP_CN + " " + APP_EN + " · Cleanup Summary",
+        "when": "Generated: %s",
+        "rules": "Rules: %s",
+        "custom_rules": "Custom rules: %s",
+        "none": "(no rule enabled)",
+        "doc": ("Note: this file groups everything removed by \u201cStart\u201d, by book, so you can "
+                "check whether real text was deleted by mistake.\n"
+                "      Src line = line number in the ORIGINAL text (1-based; with "
+                "\u201cjoin wrapped lines\u201d on, lines are counted after joining);\n"
+                "      Reason = the rule that removed it (custom rules show their name "
+                "or pattern);\n"
+                "      blank lines and whitespace are not listed one by one, only counted."),
+        "total": "%d book(s) · %d record(s) · %d blank line(s) removed",
+        "book": "[%d/%d] %s%s",
+        "author": " by %s",
+        "file": "File: %s",
+        "lines": "%d lines \u2192 %d after cleaning · %d record(s) · %d blank line(s) removed",
+        "lines_na": "%d record(s) · %d blank line(s) removed",
+        "col": ("Src line", "Reason", "Kind", "Removed content"),
+        "stat": "By reason: %s",
+        "stat_item": "%s \u00d7%d",
+        "stat_blank": "blank lines \u00d7%d",
+        "custom": "custom rule \u201c%s\u201d",
+        "unknown": "(reason not recorded)",
+        "empty": "(nothing removed)",
+        "skip": "(detail not recorded: %s)",
+    },
+}
+
+_SUM_SEP = "=" * 78
+_SUM_SUB = "-" * 78
+
+# 汇总表格的列宽（按显示宽度算，中文占两格）
+_SUM_W_LINE = 8
+_SUM_W_REASON = 22
+_SUM_W_KIND = 10
+
+
+def _pad_label(s, width=12, min_sep=1):
+    """按显示宽度补空格（中文算两格），让汇总里的各列对得齐。
+
+    min_sep 是内容超出列宽时至少留的空格数；表头行自己带了列间隔，传 0。
+    """
+    s = s or ""
+    w = sum(2 if ord(c) > 0x2E80 else 1 for c in s)
+    return s + " " * max(min_sep, width - w)
+
+
+def _sum_row(line, reason, kind, text):
+    return "%*d  %s%s%s" % (_SUM_W_LINE, line, _pad_label(reason, _SUM_W_REASON),
+                            _pad_label(kind, _SUM_W_KIND), text)
+
+
+def _reason_text(e, name_of, kinds, L):
+    """一条明细的「清理原因」：自定义规则用规则名/正则，内置规则用规则名。
+
+    老数据没有 rule 字段时退回按类型说明，保证每条都有原因可看。
+    """
+    label = (e.get("label") or "").strip()
+    if label:
+        return L["custom"] % label
+    rid = e.get("rule") or ""
+    if rid == "custom":
+        return kinds.get("custom", "")
+    if rid and name_of.get(rid):
+        return name_of[rid]
+    return kinds.get(e.get("kind"), "") or L["unknown"]
+
+
+def _sum_stats(entries, name_of, kinds, L, blank=0):
+    """按清理原因汇总条数：返回「站点宣传行 3 条 · 含网址的行 1 条 · 空行 2 行」。"""
+    counts = {}
+    for e in entries:
+        k = _reason_text(e, name_of, kinds, L)
+        counts[k] = counts.get(k, 0) + 1
+    items = [L["stat_item"] % (k, n)
+             for k, n in sorted(counts.items(), key=lambda kv: -kv[1])]
+    if blank:
+        items.append(L["stat_blank"] % blank)
+    return " · ".join(items)
+
+
+def summary_text(books, rules=None, lang="zh", when=None, custom=None):
+    """把按书籍分类的清理记录拼成汇总文本（见 write_clean_summary）。
+
+    books: [{"title", "author", "file", "lines_before", "lines_after", "blank",
+             "entries": [{"kind", "line", "text", "rule", "label"}], "note"}]；
+    entries 可直接用 clean_text(stats) 里的 stats["trace"]（rule/label 就是
+    命中的规则），blank 用 stats["blank"]（删掉的空行数，只统计数量）。
+    rules 是启用的内置规则 id；custom 是自定义规则列表，只用于在抬头列出
+    「规则名(正则)」，方便把每条明细的原因对回具体规则。
+    """
+    L = _SUM_LABEL.get(lang) or _SUM_LABEL["zh"]
+    kinds = _TRACE_LABEL.get(lang) or _TRACE_LABEL["zh"]
+    by_id = {r["id"]: (r["name_en"] if lang == "en" else r["name"]) for r in RULES}
+    # 抬头把规则标识一并列出：明细里的原因名能对回这里的 id
+    names = ["%s (%s)" % (by_id.get(i, i), i) for i in (rules or [])]
+    custs = ["%s (%s)" % ((r.get("name") or "").strip() or r.get("pattern", ""),
+                          r.get("pattern", ""))
+             for r in (custom or [])
+             if isinstance(r, dict) and r.get("enabled") is not False
+             and (r.get("pattern") or "").strip()]
+    all_entries = [e for b in books for e in (b.get("entries") or ())]
+    total = len(all_entries)
+    blank_all = sum(int(b.get("blank") or 0) for b in books)
+
+    out = [L["head"],
+           L["when"] % (when or time.strftime("%Y-%m-%d %H:%M:%S")),
+           L["rules"] % (", ".join(names) if names else L["none"])]
+    if custs:
+        out.append(L["custom_rules"] % ", ".join(custs))
+    out += ["",
+            L["doc"],
+            "",
+            L["total"] % (len(books), total, blank_all)]
+    if total or blank_all:
+        out.append(L["stat"] % _sum_stats(all_entries, by_id, kinds, L, blank_all))
+    out.append("")
+    for i, b in enumerate(books, 1):
+        entries = b.get("entries") or []
+        title = b.get("title") or ""
+        author = b.get("author") or ""
+        blank = int(b.get("blank") or 0)
+        out.append(_SUM_SEP)
+        out.append(L["book"] % (i, len(books), title, (L["author"] % author) if author else ""))
+        if b.get("file"):
+            out.append(L["file"] % b["file"])
+        lb, la = b.get("lines_before"), b.get("lines_after")
+        if lb is None or la is None:
+            out.append(L["lines_na"] % (len(entries), blank))
+        else:
+            out.append(L["lines"] % (lb, la, len(entries), blank))
+        stat = _sum_stats(entries, by_id, kinds, L, blank)
+        if stat:
+            out.append(L["stat"] % stat)
+        out.append(_SUM_SUB)
+        if b.get("note"):
+            out.append(L["skip"] % b["note"])
+        if not entries:
+            out.append(L["empty"])
+        else:
+            out.append("  " + _pad_label(L["col"][0], _SUM_W_LINE, 0) + "  "
+                       + _pad_label(L["col"][1], _SUM_W_REASON)
+                       + _pad_label(L["col"][2], _SUM_W_KIND) + L["col"][3])
+            for e in entries:
+                txt = (e.get("text") or "").replace("\r", " ").replace("\n", " ").replace("\t", " ")
+                out.append(_sum_row(int(e.get("line") or 1),
+                                    _reason_text(e, by_id, kinds, L),
+                                    kinds.get(e.get("kind"), e.get("kind") or ""),
+                                    txt))
+        out.append("")
+    return "\n".join(out) + "\n"
+
+
+def write_clean_summary(path, books, rules=None, lang="zh", custom=None):
+    """写「清洗内容汇总.txt」，返回 (路径, 条目数)。
+
+    按书籍分类、逐条记清洗后的行号、清理原因（命中的规则）与被清理的文字，
+    并按原因统计条数，只用于分析误删；条目为空的书也会留一段说明。
+    """
+    data = summary_text(books, rules, lang, custom=custom)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(data)
+    return path, sum(len(b.get("entries") or ()) for b in books)
 
 
 # ---------------------------------------------------------------- 自定义规则包
@@ -1519,9 +1810,10 @@ RULES_PACK_VERSION = 1
 
 
 def compile_custom(rules):
-    """把自定义规则编译成 [(正则, 动作)]，无效项直接跳过（不抛异常）。
+    """把自定义规则编译成 [(正则, 动作, 说明)]，无效项直接跳过（不抛异常）。
 
     动作：drop = 命中就删掉整行；cut = 只删掉命中的片段，其余保留。
+    说明用于「清洗内容汇总」标清理原因：规则有名字就用名字，没有就用正则本身。
     """
     out = []
     for r in rules or []:
@@ -1537,9 +1829,11 @@ def compile_custom(rules):
             flags |= re.I
         if "m" in (r.get("flags") or ""):
             flags |= re.M
+        note = (r.get("name") or "").strip() or pat
         try:
             out.append((re.compile(pat, flags),
-                        "cut" if r.get("action") == "cut" else "drop"))
+                        "cut" if r.get("action") == "cut" else "drop",
+                        note[:60]))
         except re.error:
             continue
     return out

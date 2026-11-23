@@ -108,6 +108,11 @@ HELP_ZH = """卷帙 DeShelf 使用说明
   并在插图下方作为图注显示。
   若清洗页的「插图链接校验」也勾着，开始处理时两者合并成一趟请求：取图的同时
   就完成校验，不会同一批链接先校验一遍、下载时再请求一遍。
+  「生成清洗内容汇总」（默认勾选）会在输出目录写一份「清洗内容汇总.txt」：
+  按书籍分类列出被清洗掉的每一段文字，并标出它在原文件里的行号，
+  以及这条内容命中的是哪条规则（自定义规则写明规则名或正则）；
+  空行不逐条列出，只统计删掉了几行。用来回查有没有把正文当广告误删 ——
+  与清洗页的标红预览是一回事，只是留成文件，便于按书逐条核对。
 
 【小提示】
   · 双击书库中的行可切换勾选；右键可打开文件位置。
@@ -173,6 +178,11 @@ HELP_EN = """DeShelf User Guide
   <img alt="…"> is kept and printed as a caption under the picture.
   If “Verify illustration links” is on as well, the two share a single
   request per link — downloading decides verification, no double fetch.
+  “Write a cleanup summary” (on by default) saves “清洗内容汇总.txt” in the
+  output folder: per book, every removed piece of text, its line number in the
+  ORIGINAL text, and which rule removed it (custom rules show their name or
+  pattern). Blank lines are not listed one by one, only counted, so you can
+  check that no real paragraph was deleted as an ad.
 
 [Tips]
   · Double-click a library row to toggle selection; right-click for file actions.
@@ -428,6 +438,7 @@ TEXTS = {
         "cov_auto": "自动：优先同名图片", "cov_default": "生成默认封面",
         "cov_none": "不加封面",
         "f_imgdl": "下载插图链接",
+        "f_summary": "生成清洗内容汇总（按书籍分类，含原文行号）",
         "grp_out": "输出目录",
         "b_go": "开始处理",
         "out_note": "处理期间请勿关闭窗口。大批量任务建议先选少量书试跑。",
@@ -454,6 +465,11 @@ TEXTS = {
         "log_img_save": "  插图已保存 {0} 张 → {1}",
         "log_img_skip": "  另有 {0} 条链接不是图片或打不开，已跳过",
         "log_img_fail": "  插图下载失败：{0}",
+        "log_summary_ok": "清洗内容汇总已写入 {0}（{1} 本 · {2} 条 · 删除空行 {3} 行）",
+        "log_summary_fail": "清洗内容汇总写入失败：{0}",
+        "log_summary_noout": "未设置输出目录，已跳过清洗内容汇总",
+        "sum_note_snapshot": "沿用清洗页的快照，没有逐条明细（重新批量清洗后再处理即可记录）",
+        "sum_note_fail": "处理失败：{0}",
         "log_outdir_fail": "无法创建输出目录：{0}",
         "log_open_fail": "无法打开资源管理器：{0}",
         "log_file_fail": "无法打开文件：{0}",
@@ -611,6 +627,7 @@ TEXTS = {
         "cov_auto": "Auto: same-name image first", "cov_default": "Generate default cover",
         "cov_none": "No cover",
         "f_imgdl": "Download illustration links",
+        "f_summary": "Write a cleanup summary (by book, with original line numbers)",
         "grp_out": "Output Folder",
         "b_go": "Start",
         "out_note": "Keep the window open while processing. For large batches, try a few books first.",
@@ -636,6 +653,13 @@ TEXTS = {
         "log_img_save": "  {0} illustration(s) saved to {1}",
         "log_img_skip": "  {0} link(s) were not images or unreachable — skipped",
         "log_img_fail": "  Illustration download failed: {0}",
+        "log_summary_ok": "Cleanup summary written to {0} ({1} book(s) · {2} record(s) · "
+                          "{3} blank line(s) removed)",
+        "log_summary_fail": "Cannot write the cleanup summary: {0}",
+        "log_summary_noout": "No output folder set — cleanup summary skipped",
+        "sum_note_snapshot": "reused the snapshot from the Batch Clean tab — no per-item detail "
+                             "(clean the books again to record it)",
+        "sum_note_fail": "processing failed: {0}",
         "log_outdir_fail": "Cannot create output folder: {0}",
         "log_open_fail": "Cannot open Explorer: {0}",
         "log_file_fail": "Cannot open file: {0}",
@@ -851,6 +875,8 @@ class App:
                          "split": tk.BooleanVar(value=False)}
         # 「下载插图链接」默认不勾且置灰，等批量清洗勾了「保留插图链接」才放开
         self.img_dl_var = tk.BooleanVar(value=False)
+        # 「生成清洗内容汇总」默认开：只写一个 txt，用来回查被清洗掉的内容
+        self.sum_var = tk.BooleanVar(value=bool(self.cfg.get("summary", True)))
         self.status_var = tk.StringVar(value=self.S["st_ready"])
         self.prog_var = tk.DoubleVar(value=0)
 
@@ -1215,10 +1241,19 @@ class App:
             self._rule_cb_by_id[r["id"]] = cb
             self._rule_tip_by_id[r["id"]] = lab
         # 插图两条规则跟着「含网址的行」显隐；「插图链接校验」还要等
-        # 「保留插图链接」打开才允许勾选
-        for _rid in ("url", "imgkeep"):
-            self.rule_vars[_rid].trace_add(
-                "write", lambda *a: self.refresh_rule_state())
+        # 「保留插图链接」打开才允许勾选。
+        # 变量上的 trace 回调不随界面重建消失：先摘掉上一轮挂的，否则切几次语言后
+        # 每勾一下都会把 refresh_rule_state 重复调上好几遍（还可能点到已销毁的控件）。
+        for _vid, _name in getattr(self, "_rule_traces", ()):
+            try:
+                self.rule_vars[_vid].trace_remove("write", _name)
+            except Exception:
+                pass
+        self._rule_traces = [
+            (_rid, self.rule_vars[_rid].trace_add(
+                "write", lambda *a: self.refresh_rule_state()))
+            for _rid in ("url", "imgkeep")
+        ]
         self.refresh_rule_state()
 
         # 「下面还有 N 条」提示：光有滚动条不够，一屏只显示 6~8 条时
@@ -1247,14 +1282,23 @@ class App:
 
         cv.configure(yscrollcommand=_sync)
 
+        def _later_sync():
+            # 界面可能在 30ms 内被「切换语言」整棵重建：旧画布已销毁就别再碰它
+            if not self._alive(cv):
+                return
+            try:
+                _sync(*cv.yview())
+            except tk.TclError:
+                pass
+
         # 内层宽度跟随画布（否则文字按请求宽度排版、右边被切）
         def _on_cv_conf(e):
             cv.itemconfigure(cv_win, width=e.width)
-            self.root.after(30, lambda: _sync(*cv.yview()))
+            self.root.after(30, _later_sync)
 
         def _on_inner_conf(_e):
             cv.configure(scrollregion=cv.bbox("all"))
-            self.root.after(30, lambda: _sync(*cv.yview()))
+            self.root.after(30, _later_sync)
 
         cv.bind("<Configure>", _on_cv_conf)
         inner.bind("<Configure>", _on_inner_conf)
@@ -1435,6 +1479,11 @@ class App:
         r.pack(fill="x", padx=px(10), pady=px(6))
         ttk.Entry(r, textvariable=self.out_var).pack(side="left", fill="x", expand=True, padx=(0, px(4)))
         ttk.Button(r, text=S["browse"], command=self.pick_out).pack(side="left")
+        # 汇总文件只落到输出目录，不改正文；用来回查“被清洗掉的是不是正文”
+        self.cb_sum = ttk.Checkbutton(g3, text=S["f_summary"],
+                                      variable=self.sum_var,
+                                      command=self._save_sum_opt)
+        self.cb_sum.pack(anchor="w", padx=px(10), pady=(0, px(6)))
 
         bar = ttk.Frame(f)
         bar.pack(fill="x", padx=px(8), pady=px(10))
@@ -1481,6 +1530,10 @@ class App:
         theme, cover = self.epub_opts()
         self.cfg["theme"] = theme
         self.cfg["cover"] = cover
+        jzcore.save_config(self.cfg)
+
+    def _save_sum_opt(self):
+        self.cfg["summary"] = bool(self.sum_var.get())
         jzcore.save_config(self.cfg)
 
     def _log(self, root):
@@ -2058,7 +2111,7 @@ class App:
         prev = None
         for r in jzcore.RULES:
             row = frames.get(r["id"])
-            if row is None:
+            if not self._alive(row):
                 continue
             if not self._rule_visible(r["id"]):
                 row.pack_forget()
@@ -2070,15 +2123,15 @@ class App:
                     row.pack(anchor="w", fill="x", after=prev)
             prev = row
         cb = self._rule_cb_by_id.get("imgcheck")
-        if cb is not None:
+        if self._alive(cb):
             on = bool(self.rule_vars["imgkeep"].get())
             cb.state(["!disabled"] if on else ["disabled"])
             lab = self._rule_tip_by_id.get("imgcheck")
-            if lab is not None:
+            if self._alive(lab):
                 lab.configure(foreground="#777777" if on else "#B4B4B4")
         cv = getattr(self, "_rules_canvas", None)
         inner = getattr(self, "_rule_inner", None)
-        if cv is not None and inner is not None:
+        if self._alive(cv) and self._alive(inner):
             try:
                 cv.update_idletasks()
                 cv.configure(scrollregion=cv.bbox("all"))
@@ -2086,14 +2139,24 @@ class App:
                 pass
         self.refresh_imgdl_state()
 
+    @staticmethod
+    def _alive(w):
+        """控件是否还在：切换语言会把整棵界面树销毁后重建，旧引用会先失效一阵。"""
+        try:
+            return w is not None and bool(w.winfo_exists())
+        except Exception:
+            return False
+
     def refresh_imgdl_state(self):
         """「下载插图链接」跟随清洗页的「保留插图链接」：没开就置灰且强制不勾。
 
         正文里没有插图链接可下时，这个选项只会让用户以为下了东西，所以默认关死；
         关掉前一条时顺手清空勾选，免得上演“灰着却勾着”的坑。
+        注意：切语言时清洗页先建、导出页后建，这一步可能发生在「下载插图链接」
+        还没重建出来的时候，旧控件又已销毁 —— 所以必须先确认控件还活着。
         """
         cb = getattr(self, "cb_imgdl", None)
-        if cb is None:
+        if not self._alive(cb):
             return
         on = bool(self.rule_vars["imgkeep"].get())
         cb.state(["!disabled"] if on else ["disabled"])
@@ -2298,8 +2361,15 @@ class App:
             self.q.put(("prog", (i - 1, total, S["prog_clean"].format(i, total, b["title"]))))
             try:
                 text = jzcore.load_text(b["path"])
-                text, removed = jzcore.clean_text(text, rules, None, self.custom_rules)
+                b["_clean_before"] = len(text.splitlines())   # 汇总里显示「原 N 行 → 洗后 M 行」
+                st = {}
+                text, removed = jzcore.clean_text(text, rules, st, self.custom_rules,
+                                                  want_trace=True)
                 b["_clean"] = text          # 清洗快照：分章/导出优先使用（与 Web 版一致）
+                # 清理明细随快照一起留着：「导出分发」的清洗内容汇总直接复用它，
+                # 免得为了出一份汇总把已经洗过的正文再洗一遍
+                b["_clean_trace"] = st.get("trace") or []
+                b["_clean_blank"] = st.get("blank", 0)      # 汇总里的「删除空行 N 行」
                 b["chars"] = len(text)
                 b["chapters"] = -1          # 正文已变，旧章数作废（与 Web 版一致）
                 rm_sum += removed
@@ -2588,15 +2658,19 @@ class App:
         theme, cover_mode = self.epub_opts()
         self._save_epub_opts()
         img_dl = self.img_download()
+        want_sum = bool(self.sum_var.get())
         threading.Thread(target=self.run_worker,
                          args=(sel, fmts, mode, outdir, rules, custom,
-                               theme, cover_mode, img_dl),
+                               theme, cover_mode, img_dl, want_sum),
                          daemon=True).start()
 
     def run_worker(self, sel, fmts, mode, outdir, rules, custom,
-                   theme="classic", cover_mode="auto", img_dl=False):
+                   theme="classic", cover_mode="auto", img_dl=False,
+                   want_sum=True):
         S = self.S
         ok = fail = 0
+        # 清洗内容汇总：按书累积清理明细，全部处理完再一次性落盘
+        groups = [] if want_sum else None
         if mode != "inplace" and outdir:
             try:
                 os.makedirs(outdir, exist_ok=True)
@@ -2616,12 +2690,19 @@ class App:
                 raw = None
                 text = None
                 removed = 0
+                st = {} if want_sum else None
+                trace = None
+                blank_n = 0
                 if mode == "inplace":
                     raw = jzcore.load_text(b["path"])
                 else:
                     text = b.get("_clean")
                     if text is None:
                         raw = jzcore.load_text(b["path"])
+                    else:
+                        # 清洗页已经洗过：直接复用当时记下的清理明细，与快照一致
+                        trace = b.get("_clean_trace")
+                        blank_n = int(b.get("_clean_blank") or 0)
                 # 「插图链接校验」和「下载插图链接」同开时只跑一趟网络：先把候选链接
                 # 各取一次（字节非空即插图），判定结果喂给清洗，清洗环节不再联网
                 prefetch = None
@@ -2634,8 +2715,12 @@ class App:
                     text = raw
                     if rules:
                         text, removed = jzcore.clean_text(
-                            text, rules, None, self.custom_rules,
-                            jzcore.verify_cache(prefetch) if prefetch else None)
+                            text, rules, st, self.custom_rules,
+                            jzcore.verify_cache(prefetch) if prefetch else None,
+                            want_trace=want_sum)
+                        if want_sum:
+                            trace = st.get("trace")
+                            blank_n = st.get("blank", 0)
                 chapters = jzcore.split_chapters(text, self._re_for(b, custom))
                 b["chapters"] = len(chapters)       # 实际切分结果回写，供①书库展示
                 title = b["title"] or os.path.splitext(b["name"])[0]
@@ -2675,14 +2760,59 @@ class App:
                 self.q.put(("log", S["log_per_book"].format(i, total, title, len(chapters), removed)))
                 for m in notes:
                     self.q.put(("log", m))
+                if want_sum:
+                    groups.append({
+                        "title": title,
+                        "author": b.get("author") or "",
+                        "file": b.get("rel") or b.get("name") or b["path"],
+                        "lines_before": (len(raw.splitlines()) if raw is not None
+                                         else b.get("_clean_before")),
+                        "lines_after": len(text.splitlines()),
+                        "blank": blank_n,
+                        "entries": trace or [],
+                        "note": "" if (trace is not None or not rules)
+                                else S["sum_note_snapshot"],
+                    })
                 ok += 1
             except Exception as e:
                 fail += 1
                 self.q.put(("log", S["log_book_fail"].format(i, total, b["title"], e)))
                 self.q.put(("log", traceback.format_exc(limit=1).strip()))
+                if want_sum:
+                    groups.append({
+                        "title": b.get("title") or b.get("name") or "",
+                        "author": b.get("author") or "",
+                        "file": b.get("rel") or b.get("name") or b.get("path") or "",
+                        "entries": (),
+                        "note": S["sum_note_fail"].format(e),
+                    })
+        if want_sum:
+            self._write_summary(groups, outdir, rules)
         self.q.put(("prog", (total, total, S["prog_done"])))
         final = outdir if mode != "inplace" else (outdir or S["log_out_final"])
         self.q.put(("done", ("run", ok, fail, final)))
+
+    def _write_summary(self, groups, outdir, rules):
+        """把本次处理清洗掉的内容汇总成「输出目录/清洗内容汇总.txt」。
+
+        写失败只记一行日志：汇总只是排查误删的辅助文件，不该让整批处理报错。
+        """
+        S = self.S
+        if not outdir:
+            self.q.put(("log", S["log_summary_noout"]))
+            return
+        if not groups:
+            return
+        try:
+            path, n = jzcore.write_clean_summary(
+                os.path.join(outdir, jzcore.SUMMARY_NAME), groups,
+                rules=rules, lang="en" if self.lang == EN else "zh",
+                custom=self.custom_rules)
+        except OSError as e:
+            self.q.put(("log", S["log_summary_fail"].format(e)))
+            return
+        blank_all = sum(int(g.get("blank") or 0) for g in groups)
+        self.q.put(("log", S["log_summary_ok"].format(path, len(groups), n, blank_all)))
 
     def fetch_images(self, text, outdir, base, prefetch=None, notes=None):
         """把一本书的插图下载到「输出目录/插图/书名」，返回 {链接: 本地路径}。

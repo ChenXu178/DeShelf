@@ -287,6 +287,7 @@ b.dark{color:var(--ink)}
       <button class="btn b2" id="btnRun" data-k="btnRun">▶ 开始处理所选书籍</button>
       <span class="btn ghost" id="btnSaveDir" data-k="btnSaveDir">保存到所选文件夹…</span>
       <label class="lab" style="margin-left:6px"><input type="checkbox" id="optSkipDup"> <span data-k="optSkipDup"></span></label>
+      <label class="lab" style="margin-left:6px" id="sumWrap"><input type="checkbox" id="optSum" checked> <span data-k="optSum"></span></label>
     </div>
     <div class="msg hidden" id="outMsg"></div>
     <div class="prog" id="progBar"><div></div></div>
@@ -353,6 +354,12 @@ const Z = {
   optImgDl:"下载插图链接",
   optImgDlTip:"网页版受浏览器跨域（CORS）限制：站点没发跨域许可的图片，浏览器读不到图片字节，只能跳过。这类图请用桌面版（exe）下载，桌面端不受此限制。",
   optInplace:"原地覆盖原文件（先备份 .bak）",
+  optSum:"生成清洗内容汇总",
+  optSumTip:"按书籍分类列出被清洗掉的每一段文字、它在原文件里的行号，以及命中的规则（自定义规则写明规则名或正则）；空格与空行不逐条列出，只统计数量。用来回查有没有把正文误删",
+  logSumOk:"清洗内容汇总：{f}（{n} 本 · {m} 条 · 删除空行 {b} 行）",
+  logSumFail:"清洗内容汇总写入失败：{e}",
+  sumFail:"处理失败：{e}",
+  sumNoteSnap:"沿用清洗页的快照，没有逐条明细（重新批量清洗后再处理即可记录）",
   savHintCopy:"原文件不动，新文件名为「原名 + 后缀」，与原书并排存放",
   savHintInplace:"清洗后的全文写回原文件；首次覆盖时把原文备份为「文件名.bak」",
   savHintNoDir:"需先用「选择文件夹」授权书库目录",
@@ -477,6 +484,12 @@ const E = {
   optImgDl:"Download illustrations",
   optImgDlTip:"Browser CORS limit: images from sites that send no CORS header cannot be read here and are skipped. Use the desktop app for those — it is not subject to CORS.",
   optInplace:"Overwrite originals (backup .bak)",
+  optSum:"Write a cleanup summary",
+  optSumTip:"Per book, every removed piece of text, its line number in the ORIGINAL file, and the rule that removed it (custom rules show their name or pattern). Blank lines are only counted. Use it to check that no real text was deleted by mistake",
+  logSumOk:"Cleanup summary: {f} ({n} book(s) · {m} record(s) · {b} blank line(s) removed)",
+  logSumFail:"Cannot write the cleanup summary: {e}",
+  sumFail:"processing failed: {e}",
+  sumNoteSnap:"reused the snapshot from the Clean tab — no per-item detail (clean the books again to record it)",
   savHintCopy:"Originals untouched — new files are “name + suffix”, sitting next to the original",
   savHintInplace:"Cleaned text is written back; the first overwrite saves the original as “name.bak”",
   savHintNoDir:"pick a folder first",
@@ -590,7 +603,8 @@ Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<li><b>书库</b>：Chrome/Edge 点「选择文件夹」授权目录（可整目录扫描、写缓存、批量保存）；其它浏览器或临时用，直接拖入文件即可。</li>'
  +'<li><b>清洗</b>：勾选规则（网址行 / 站点宣传 / 翻页残留 / 乱码行 / 空行压缩等），先「预览」看前后对比，再「应用到所选书籍」。勾上「含网址的行」后会多出「保留插图链接」「插图链接校验」：前者按后缀留下配图链接，后者还会逐条请求校验（只读响应头，会联网），图链落在站点宣传行里仍随那一行删除。</li>'
  +'<li><b>分章</b>：选中一本书点「试分章节」看章节目录；标题写法特殊就用面板右上角「常用写法」；「应用分章」后章节目录会随书保存。</li>'
- +'<li><b>导出</b>：勾选格式（EPUB 带目录 / 合并 TXT / 分章 TXT）。单本直接下载；多本自动逐一下载，或先「保存到所选文件夹」把全部结果一次写入你授权的目录。</li></ol>'
+ +'<li><b>导出</b>：勾选格式（EPUB 带目录 / 合并 TXT / 分章 TXT）。单本直接下载；多本自动逐一下载，或先「保存到所选文件夹」把全部结果一次写入你授权的目录。</li>'
+ +'<li><b>清洗内容汇总</b>（默认勾选）：处理完会多出一份「清洗内容汇总.txt」，按书籍分类列出被清洗掉的每一段文字、它在原文件里的行号，以及命中的规则（自定义规则写明规则名或正则）；空格与空行不逐条列出，只统计数量。用来回查有没有把正文当广告误删。</li></ol>'
  +'<p><b>自定义章节正则</b>（内置认不出的写法才需要）</p><ul>'
  +'<li>内置只认「第X章/节/回」「卷X」「序章/楔子/尾声/番外」。书里写成「第一折」「01」「卷一 第3回」，整本会被当成一章。</li>'
  +'<li>上面那格对所有书生效；下面「本书专用规则」只对选中的那本生效，并优先于上面那格。填了自定义正则后内置规则不再参与，所以规则要盖住这本书的每种标题写法。</li>'
@@ -607,7 +621,8 @@ E.helpBody = '<p><b>The four steps</b></p><ol>'
  +'<li><b>Library</b>: in Chrome/Edge hit “Choose Folder” to authorize a directory (full-folder scan, index cache, batch save). Otherwise just drop files in — works in every browser.</li>'
  +'<li><b>Clean</b>: tick rules (URL lines / site promos / page-nav leftovers / mojibake / blank compression…), hit “Preview”, then “Apply to selected books”. Ticking “Lines with URLs” reveals “Keep illustration links” and “Verify illustration links” — the latter requests each link (headers only, uses the network) and keeps just real images; a link on a site-promo line is still deleted with it.</li>'
  +'<li><b>Chapters</b>: pick a book and press “Try splitting” to see the TOC; a custom regex is supported; “Apply” keeps the split with the book.</li>'
- +'<li><b>Export</b>: tick formats (EPUB with TOC / merged TXT / per-chapter TXT). A single book downloads directly; multiple books download one by one, or pick “Save to chosen folder” once and write everything there.</li></ol>'
+ +'<li><b>Export</b>: tick formats (EPUB with TOC / merged TXT / per-chapter TXT). A single book downloads directly; multiple books download one by one, or pick “Save to chosen folder” once and write everything there.</li>'
+ +'<li><b>Cleanup summary</b> (on by default): after processing you also get “清洗内容汇总.txt” — per book, every removed piece of text, its line number in the original file, and the rule that removed it (custom rules show their name or pattern). Blank lines are only counted. Use it to check that no real paragraph was deleted as an ad.</li></ol>'
  +'<p><b>Custom chapter regex</b> (only when the built-ins miss)</p><ul>'
  +'<li>Built-ins know 第X章/节/回, 卷X and 序章/楔子/尾声/番外 only. A book using 第一折 / 01 / 卷一 第3回 becomes one single chapter.</li>'
  +'<li>The upper box applies to every book; the per-book rule below applies only to the selected book and wins over it. Any custom regex replaces the built-in library, so it must cover every heading form.</li>'
@@ -926,11 +941,14 @@ const Core = (() => {
     /* 门槛压得很低（≤3 字）：像「他打开了网址https://…」这种真句子要留下 */
     return slim(txt.replace(SITE_G,"").replace(PROMO_G,""))<=3;
   }
-  /* 判定一行里的广告：keep 不动 / cut 只裁行尾 / drop 整行丢弃 */
-  function adSplit(s,useUrl,useSite){
+  /* 判定一行里的广告：keep 不动 / cut 只裁行尾 / drop 整行丢弃。
+     why 传入对象时写入 {rule:"url"|"site"}：这一行是命中「含网址的行」还是
+     「站点宣传行」被处理掉的，清洗内容汇总要用它标清理原因。 */
+  function adSplit(s,useUrl,useSite,why){
     const mu=useUrl?URL_RE.exec(s):null, ms=useSite?SITE_RE.exec(s):null;
     if(!mu&&!ms)return["keep",0];
     const siteFirst=!!ms&&(!mu||ms.index<=mu.index);
+    if(why) why.rule=siteFirst?"site":"url";
     const start=siteFirst?ms.index:mu.index;
     let end;
     if(siteFirst) end=ms.index+ms[0].length;
@@ -1210,7 +1228,7 @@ const Core = (() => {
      ② 一边被插了乱码/网址，归一后对不上，按 bigram 包含率认成同一句 → 删；
      ③ 整块「简体一份 + 繁体一份」，连两岸用词差异（螢幕/屏幕）都算差异，
         于是按偏移找出成对整块，整块删繁体那份。 */
-  function dedupeScriptDup(lines){
+  function dedupeScriptDup(lines,goneOut){
     const n=lines.length,keys=new Array(n).fill(""),sc=new Array(n).fill(0);
     const gone=new Set();
     for(let i=0;i<n;i++)if(lines[i]&&_isVerMark(lines[i]))gone.add(i);  /* 版本标记行：先去 */
@@ -1330,26 +1348,37 @@ const Core = (() => {
       if(gone.has(i)){dels.push(lines[i]);continue;}
       kept.push(lines[i]);
     }
+    if(goneOut) for(const i of gone) goneOut.add(i);   /* 汇总要靠它回找原文行号 */
     return {kept,dels};
   }
 
-  function cleanText(text,enabled,wantDel,custom,imgCt){
-    /* 自定义规则先编译：drop 整行丢弃，cut 只挖掉命中的片段（与桌面版同序） */
+  function cleanText(text,enabled,wantDel,custom,imgCt,wantTrace){
+    /* 自定义规则先编译：drop 整行丢弃，cut 只挖掉命中的片段（与桌面版同序）。
+       第三项是规则说明（规则名，缺省用正则），「清洗内容汇总」标原因用 */
     const cust=[];
     for(const r of (custom||[])){
       if(!r||r.enabled===false)continue;
       const pat=String(r.pattern||"").trim();
       if(!pat)continue;
       const fl=String(r.flags||"").replace(/[^im]/g,"");
-      try{cust.push([new RegExp(pat,fl),r.action==="cut"?"cut":"drop"]);}catch(e){}
+      const lab=(String(r.name||"").trim()||pat).slice(0,60);
+      try{cust.push([new RegExp(pat,fl),r.action==="cut"?"cut":"drop",lab]);}catch(e){}
     }
     const on=new Set(enabled||[]);let removed=0,trimmed=0;let out=[];const del=new Set();const cut=new Map();
     /* mark：行内被删掉的片段（原行里的位置区间），预览按范围标红用 */
     const mark=new Map();
     let glued=0,merged=0,wrapSkip=0;
+    let blankN=0;                        /* 删掉的空行数：不进明细，只统计数量 */
+    /* 清理明细：line 是原文行号（从 1 起），rule 是命中的内置规则 id */
+    const trace=wantTrace?[]:null;
+    const noteTrace=(kind,txt,line,rule,label)=>{
+      if(!trace)return;
+      const t=String(txt==null?"":txt).trim();
+      if(t) trace.push({kind,text:t,line,rule:rule||"",label:label||""});
+    };
     /* 段落修复放在逐行规则之前：合并后网址/导航行才判得准 */
     if(on.has("punct")||on.has("unwrap")){
-      let ls=text.split(/\r\n|\r|\n/);
+      let ls=splitLines(text);
       if(on.has("punct")){const a=fixLineHeads(ls);ls=a[0];glued=a[1];}
       if(on.has("unwrap")){const a=unwrapParagraphs(ls);ls=a[0];merged=a[1];wrapSkip=a[2];}
       text=ls.join("\n");
@@ -1360,25 +1389,33 @@ const Core = (() => {
     const useImg=on.has("imgkeep")&&(useUrl||useSite);
     const useImgChk=useImg&&on.has("imgcheck");
     let imgKept=0;
-    for(const raw of text.split(/\r\n|\r|\n/)){
+    /* outSrc 与 out 一一对应：记每行来自原文第几行（简繁去重要回找行号） */
+    let outSrc=[];
+    let iRaw=0;
+    for(const raw of splitLines(text)){
+      iRaw++;
       let s=raw,lead=0;
       if(on.has("trim")){lead=raw.length-raw.replace(/^\s+/,"").length;s=s.trim();}
       if(on.has("half")) s=toHalfwidth(s);
-      let d=0,drop=false,protect=false;
+      let d=0,drop=false,protect=false,rule="",label="";
       if(useImg){
         const links=findImageLinks(s,useImgChk,imgCt);
         if(links.length){
-          if(useSite&&SITE_RE.test(s)&&residual(s)<AD_TINY) drop=true;  /* 宣传行里的图链一并删 */
-          else{protect=true;imgKept++;}                                /* 这一行是插图，原样保留 */
+          if(useSite&&SITE_RE.test(s)&&residual(s)<AD_TINY){drop=true;rule="site";}  /* 宣传行里的图链一并删 */
+          else{protect=true;imgKept++;}                                             /* 这一行是插图，原样保留 */
         }
       }
-      if(drop){removed++;if(wantDel)del.add(raw);continue;}
+      if(drop){removed++;if(wantDel)del.add(raw);noteTrace("drop",s,iRaw,rule);continue;}
       if(useUrl&&!protect){
         /* 含网址的 HTML 标签整块清掉，标签外的文字保留 */
+        const before=s;
         const st=stripUrlTags(s);
         if(st[1]){
           s=st[0];
-          if(!s.replace(/[ \u3000]+/g,"")){removed++;if(wantDel)del.add(raw);continue;}
+          if(!s.replace(/[ \u3000]+/g,"")){removed++;if(wantDel)del.add(raw);noteTrace("drop",before,iRaw,"url");continue;}
+          if(st[2].length){                   /* 标签是从行中间挖掉的：正文还在，只记被挖掉的那几段 */
+            noteTrace("tag",st[2].map(rg=>before.slice(rg[0],rg[1])).join(""),iRaw,"url");
+          }
           if(wantDel&&st[2].length){          /* 记下被挖掉的那几段，预览要标红 */
             const cur=mark.get(raw)||[];
             for(const rg of st[2]) cur.push([rg[0]+lead,rg[1]+lead]);
@@ -1388,53 +1425,67 @@ const Core = (() => {
         }
       }
       if((useUrl||useSite)&&!protect){
-        const r=adSplit(s,useUrl,useSite);
+        const why={};
+        const r=adSplit(s,useUrl,useSite,why);
+        rule=why.rule||rule;
         if(r[0]==="drop") drop=true;
         else if(r[0]==="cut") d=r[1];
       }
       if(!drop&&!d){
-        if(on.has("nav")&&NAV_RE.test(s)) drop=true;
-        else if(on.has("moji")&&MOJI_RE.test(s)) drop=true;
+        if(on.has("nav")&&NAV_RE.test(s)){drop=true;rule="nav";}
+        else if(on.has("moji")&&MOJI_RE.test(s)){drop=true;rule="moji";}
       }
-      if(drop){removed++;if(wantDel)del.add(raw);continue;}
+      if(drop){removed++;if(wantDel)del.add(raw);noteTrace("drop",s,iRaw,rule,label);continue;}
       if(d){
-        s=s.slice(0,d).replace(/[ \u3000，,、；;：:]+$/,"");
-        if(!slim(s)){removed++;if(wantDel)del.add(raw);continue;}
+        /* 裁掉的是行尾那截广告：留下的是 s[:d]，被清洗掉的就是余下部分 */
+        const head=s.slice(0,d),tail=s.slice(d);
+        s=head.replace(/[ \u3000，,、；;：:]+$/,"");
+        if(!slim(s)){removed++;if(wantDel)del.add(raw);noteTrace("drop",head+tail,iRaw,rule,label);continue;}
         trimmed++;
+        noteTrace("cut",tail,iRaw,rule,label);
         if(wantDel)cut.set(raw,d+lead);
       }
       if(cust.length&&!drop){
+        let hit="";
         for(const item of cust){
           const m=item[0].exec(s);
           if(!m)continue;
-          if(item[1]==="cut") s=s.slice(0,m.index)+s.slice(m.index+m[0].length);
+          if(item[1]==="cut"){hit=m[0];s=s.slice(0,m.index)+s.slice(m.index+m[0].length);}
           else drop=true;
+          rule="custom";label=item[2];
           break;
         }
-        if(drop){removed++;if(wantDel)del.add(raw);continue;}
+        if(drop){removed++;if(wantDel)del.add(raw);noteTrace("drop",s,iRaw,rule,label);continue;}
+        if(hit) noteTrace("custom",hit,iRaw,rule,label);
       }
-      if(on.has("blank")&&!s){removed++;if(wantDel)del.add(raw);continue;}
+      if(on.has("blank")&&!s){removed++;blankN++;if(wantDel)del.add(raw);continue;}
       if(on.has("blank2")&&!s){
-        if(prevBlank){removed++;if(wantDel)del.add(raw);continue;}
-        prevBlank=true;out.push("");continue;}
+        if(prevBlank){removed++;blankN++;if(wantDel)del.add(raw);continue;}
+        prevBlank=true;out.push("");outSrc.push(iRaw);continue;}
       prevBlank=false;
       if(on.has("indent")&&s) s="　　"+s;
-      out.push(s);
+      out.push(s);outSrc.push(iRaw);
     }
     let jsdup=0;
     if(on.has("jsdup")&&out.length){
-      const r=dedupeScriptDup(out);
+      const gone=new Set();
+      const r=dedupeScriptDup(out,gone);
       if(r.dels.length){
         jsdup=r.dels.length;removed+=jsdup;
         if(wantDel)for(const x of r.dels)del.add(x);
+        if(trace) for(const j of [...gone].sort((x,y)=>x-y)) noteTrace("jsdup",out[j],outSrc[j],"jsdup");
         out=r.kept;
+        outSrc=outSrc.filter((_,i)=>!gone.has(i));
       }
     }
     let a=0,b=out.length;
     while(a<b&&!out[a]) a++;
     while(b>a&&!out[b-1]) b--;
-    out=out.slice(a,b);
-    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut,mark,jsdup,merged,glued,wrapSkip,img:imgKept};
+    if(a||b!==out.length) blankN+=a+(out.length-b);   /* 掐掉的首尾空行也算删掉的空行 */
+    out=out.slice(a,b);outSrc=outSrc.slice(a,b);
+    if(trace) trace.sort((x,y)=>x.line-y.line);      /* 简繁去重的条目是循环后补记的 */
+    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut,mark,jsdup,merged,glued,wrapSkip,img:imgKept,
+      blank:blankN,trace:trace||[]};
   }
 
   /* ---------- 插图链接校验（异步：请求/探测 + 结果缓存） ---------- */
@@ -1501,12 +1552,12 @@ const Core = (() => {
   }
   /* 异步清洗：imgcheck 开启时先把链接验一遍，再跑同步的 cleanText。
      ctMap 若已由 fetchImages 那一趟填好，就不再单独请求（校验与下载合并）。 */
-  async function cleanTextAsync(text,enabled,wantDel,custom,ctMap){
+  async function cleanTextAsync(text,enabled,wantDel,custom,ctMap,wantTrace){
     const on=new Set(enabled||[]);
     const useImg=on.has("imgkeep")&&(on.has("url")||on.has("site"));
     let map=ctMap||null;
     if(useImg&&on.has("imgcheck")&&!map) map=await verifyImageLinks(text);
-    return cleanText(text,enabled,wantDel,custom,map);
+    return cleanText(text,enabled,wantDel,custom,map,wantTrace);
   }
 
   /* ---------- 插图下载（打进 EPUB / 写到目录） ----------
@@ -2157,6 +2208,168 @@ const Core = (() => {
     for(const ch of chapters){parts.push(ch.t);parts.push(ch.b);}
     return parts.filter(Boolean).join("\n\n")+"\n";
   }
+  /* ---------- 清洗内容汇总（与桌面版 jzcore.summary_text 同一套格式） ----------
+     books: [{title,author,file,linesBefore,linesAfter,blank,entries,note}]
+     entries 直接取 cleanText 的 trace（kind/line/text/rule/label），
+     blank 是删掉的空行数，linesBefore/After 是原行数与清洗后行数。
+     opt: {rules:启用的规则 id, lang:"zh"|"en", custom:自定义规则, when:时间串} */
+  const SUM_KINDS={
+    zh:{drop:"整行删除",cut:"行尾裁剪",tag:"HTML 标签",custom:"自定义规则",jsdup:"简繁重复"},
+    en:{drop:"line removed",cut:"tail trimmed",tag:"HTML tag",custom:"custom rule",jsdup:"script duplicate"}};
+  const SUM_TEXT={
+    zh:{
+      head:"卷帙 DeShelf · 清洗内容汇总",
+      when:"生成时间：%s",
+      rules:"清洗规则：%s",
+      custom_rules:"自定义规则：%s",
+      none:"（未启用任何规则）",
+      doc:"说明：本文件按书籍分类汇总「开始处理」时被清洗掉的内容，用于回查误删。\n"
+        +"　　　原文行号 = 该内容在原文件里的行号（从 1 开始；开了「合并句中断行」按合并后的行算）；\n"
+        +"　　　清理原因 = 命中的那条规则（自定义规则给出规则名或正则）；\n"
+        +"　　　空格与空行不逐条列出，只统计删除数量。",
+      total:"共 %s 本书 · 清理 %s 条 · 删除空行 %s 行",
+      book:"[%s/%s] 《%s》%s",
+      author:" · %s",
+      file:"源文件：%s",
+      lines:"%s 行 → 清洗后 %s 行 · 清理 %s 条 · 删除空行 %s 行",
+      lines_na:"清理 %s 条 · 删除空行 %s 行",
+      col:["原文行号","清理原因","类型","被清理的内容"],
+      stat:"原因统计：%s",
+      stat_item:"%s %s 条",
+      stat_blank:"空行 %s 行",
+      custom:"自定义规则「%s」",
+      unknown:"（未标注原因）",
+      empty:"（无清理记录）",
+      skip:"（未记录明细：%s）"},
+    en:{
+      head:"卷帙 DeShelf · Cleanup Summary",
+      when:"Generated: %s",
+      rules:"Rules: %s",
+      custom_rules:"Custom rules: %s",
+      none:"(no rule enabled)",
+      doc:"Note: this file groups everything removed by \u201cStart\u201d, by book, so you can check whether real text was deleted by mistake.\n"
+        +"      Src line = line number in the ORIGINAL text (1-based; with \u201cjoin wrapped lines\u201d on, lines are counted after joining);\n"
+        +"      Reason = the rule that removed it (custom rules show their name or pattern);\n"
+        +"      blank lines and whitespace are not listed one by one, only counted.",
+      total:"%s book(s) · %s record(s) · %s blank line(s) removed",
+      book:"[%s/%s] %s%s",
+      author:" by %s",
+      file:"File: %s",
+      lines:"%s lines \u2192 %s after cleaning · %s record(s) · %s blank line(s) removed",
+      lines_na:"%s record(s) · %s blank line(s) removed",
+      col:["Src line","Reason","Kind","Removed content"],
+      stat:"By reason: %s",
+      stat_item:"%s \u00d7%s",
+      stat_blank:"blank lines \u00d7%s",
+      custom:"custom rule \u201c%s\u201d",
+      unknown:"(reason not recorded)",
+      empty:"(nothing removed)",
+      skip:"(detail not recorded: %s)"}};
+  const SUM_SEP="=".repeat(78),SUM_SUB="-".repeat(78);
+  const SUM_W_LINE=8,SUM_W_REASON=22,SUM_W_KIND=10;
+  function sumFmt(tpl){
+    const a=[].slice.call(arguments,1);let i=0;
+    return String(tpl).replace(/%s/g,()=>String(a[i++]));
+  }
+  /* 全角/中文按两格算，列才对得齐 */
+  function sumWidth(s){let w=0;for(const c of String(s==null?"":s))w+=(c.codePointAt(0)>0x2E80?2:1);return w;}
+  function sumPad(s,width,minSep){
+    s=String(s==null?"":s);
+    return s+" ".repeat(Math.max(minSep===undefined?1:minSep,width-sumWidth(s)));
+  }
+  function nowStamp(){
+    const d=new Date(),p=n=>String(n).padStart(2,"0");
+    return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+
+      p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+  }
+  /* 按行拆开，口径与桌面版 Python 的 splitlines() 对齐：
+     末尾的那个换行不额外产生一行空行（三条换行都认） */
+  function splitLines(s){
+    s=String(s==null?"":s);
+    if(!s)return [];
+    const parts=s.split(/\r\n|\r|\n/);
+    if(parts.length&&parts[parts.length-1]==="")parts.pop();
+    return parts;
+  }
+  function lineCount(s){return splitLines(s).length;}
+  function sumRuleName(rid,lang){
+    const r=RULES.find(x=>x.id===rid);
+    return r?(lang==="en"?r.name_en:r.name):"";
+  }
+  /* 一条明细的清理原因：自定义规则用规则名/正则，内置规则用规则名 */
+  function sumReasonText(e,lang,kinds,L){
+    const lab=String((e&&e.label)||"").trim();
+    if(lab)return sumFmt(L.custom,lab);
+    const rid=(e&&e.rule)||"";
+    if(rid==="custom")return kinds.custom||"";
+    const nm=rid?sumRuleName(rid,lang):"";
+    if(nm)return nm;
+    return kinds[e&&e.kind]||L.unknown;
+  }
+  function sumStats(entries,lang,kinds,L,blank){
+    const counts=new Map();
+    for(const e of (entries||[])){
+      const k=sumReasonText(e,lang,kinds,L);
+      counts.set(k,(counts.get(k)||0)+1);
+    }
+    const items=[...counts.entries()].sort((x,y)=>y[1]-x[1])
+      .map(it=>sumFmt(L.stat_item,it[0],it[1]));
+    if(blank)items.push(sumFmt(L.stat_blank,blank));
+    return items.join(" · ");
+  }
+  function buildCleanSummary(books,opt){
+    opt=opt||{};
+    const lang=opt.lang==="en"?"en":"zh";
+    const L=SUM_TEXT[lang],kinds=SUM_KINDS[lang];
+    const rules=opt.rules||[];
+    /* 抬头把规则标识一并列出：明细里的原因名能对回这里的 id */
+    const names=rules.map(id=>(sumRuleName(id,lang)||id)+" ("+id+")");
+    const custs=(opt.custom||[]).filter(r=>r&&r.enabled!==false&&String(r.pattern||"").trim())
+      .map(r=>{
+        const pat=String(r.pattern).trim();
+        return (String(r.name||"").trim()||pat)+" ("+pat+")";
+      });
+    const allEntries=[];
+    for(const b of (books||[]))for(const e of (b.entries||[]))allEntries.push(e);
+    const total=allEntries.length;
+    const blankAll=(books||[]).reduce((n,b)=>n+((b.blank||0)|0),0);
+    const out=[L.head,
+      sumFmt(L.when,opt.when||nowStamp()),
+      sumFmt(L.rules,names.length?names.join(", "):L.none)];
+    if(custs.length)out.push(sumFmt(L.custom_rules,custs.join(", ")));
+    out.push("",L.doc,"",sumFmt(L.total,(books||[]).length,total,blankAll));
+    if(total||blankAll)out.push(sumFmt(L.stat,sumStats(allEntries,lang,kinds,L,blankAll)));
+    out.push("");
+    (books||[]).forEach((b,i)=>{
+      const entries=b.entries||[];
+      const blank=(b.blank||0)|0;
+      out.push(SUM_SEP);
+      out.push(sumFmt(L.book,i+1,books.length,b.title||"",b.author?sumFmt(L.author,b.author):""));
+      if(b.file)out.push(sumFmt(L.file,b.file));
+      const lb=b.linesBefore,la=b.linesAfter;
+      if(lb===undefined||lb===null||la===undefined||la===null)
+        out.push(sumFmt(L.lines_na,entries.length,blank));
+      else out.push(sumFmt(L.lines,lb,la,entries.length,blank));
+      const st=sumStats(entries,lang,kinds,L,blank);
+      if(st)out.push(sumFmt(L.stat,st));
+      out.push(SUM_SUB);
+      if(b.note)out.push(sumFmt(L.skip,b.note));
+      if(!entries.length)out.push(L.empty);
+      else{
+        out.push("  "+sumPad(L.col[0],SUM_W_LINE,0)+"  "+
+          sumPad(L.col[1],SUM_W_REASON)+sumPad(L.col[2],SUM_W_KIND)+L.col[3]);
+        for(const e of entries){
+          const txt=String(e.text==null?"":e.text).replace(/[\r\n\t]/g," ");
+          out.push(String(e.line||1).padStart(SUM_W_LINE," ")+"  "+
+            sumPad(sumReasonText(e,lang,kinds,L),SUM_W_REASON)+
+            sumPad(kinds[e.kind]||e.kind||"",SUM_W_KIND)+txt);
+        }
+      }
+      out.push("");
+    });
+    return out.join("\n")+"\n";
+  }
+
   function safeFileName(s,maxlen,fallback){
     const x=String(s||"").replace(/[\\/:*?"<>|]/g,"_").slice(0,maxlen||60).trim();
     return x||fallback;
@@ -2177,6 +2390,7 @@ const Core = (() => {
     imageLinksInText,fetchImages,imagesForEpub,
     toHalfwidth,splitChapters,scanParaIssues,
     buildZip,deflateRawBytes,buildEpub,buildMergedTxt,buildSplitZip,safeFileName,
+    buildCleanSummary,lineCount,nowStamp,SUM_KINDS,SUM_TEXT,
     THEMES,themeCss,themeById,makeCover,prepareCoverFile,
     exportRulesPack,parseRulesPack,customToText,textToCustom,
     xmlEsc,crc32,sha256hex};
@@ -2481,6 +2695,8 @@ function applyStatic(){
   /* 「下载插图链接」：网页端有跨域上限，鼠标停上去就说明白 */
   const imgDl=$("imgDlWrap");
   if(imgDl) imgDl.title=T("optImgDlTip");
+  const sumWrap=$("sumWrap");
+  if(sumWrap) sumWrap.title=T("optSumTip");
   document.documentElement.lang = CUR==="zh"?"zh-CN":"en";
   applyCapability();
 }
@@ -2748,8 +2964,11 @@ async function applyClean(){
       if(rules.includes("imgkeep")&&rules.includes("imgcheck")&&rules.includes("url"))
         setMsgHint($("cleanInfo"),T("imgChecking"));
       const raw=await bookText(b);
-      const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules):{text:raw,removed:0};
+      const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules,null,true)
+                          :{text:raw,removed:0,trace:[],blank:0};
       b._clean=r.text;b.chars=Core.countChars(r.text);b._chap=null;b.chapters=-1;
+      /* 清理明细随清洗快照一起留着：「导出」的清洗内容汇总直接复用它 */
+      b._cleanTrace=r.trace||[];b._cleanBlank=r.blank||0;b._cleanBefore=Core.lineCount(raw);
       totalRm+=r.removed;done++;
     }catch(e){log("清洗失败："+b.name+" "+e.message);}
   }
@@ -3070,13 +3289,19 @@ function refreshSavHint(){
     : T("savHintCopy");
 }
 /* ctMap/rawText 由「下载插图链接」那趟预取带来：清洗里的插图校验直接命中，
-   不再单独请求一遍（预览/其它入口不传，行为与原来一致） */
+   不再单独请求一遍（预览/其它入口不传，行为与原来一致）。
+   清理明细（trace/blank/原行数）随快照一起缓存：导出时的「清洗内容汇总」
+   直接复用，不必为了出汇总把已经洗过的正文再洗一遍 */
 async function ensureCleaned(b,ctMap,rawText){
   const raw=(rawText===undefined||rawText===null)?await bookText(b):rawText;
   const rules=activeRuleIds();
   if(b._clean===undefined){
-    const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules,ctMap||null):{text:raw,removed:0};
+    const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules,ctMap||null,true)
+                        :{text:raw,removed:0,trace:[],blank:0};
     b._clean=r.text;
+    b._cleanTrace=r.trace||[];
+    b._cleanBlank=r.blank||0;
+    b._cleanBefore=Core.lineCount(raw);
   }
   return b._clean;
 }
@@ -3121,6 +3346,9 @@ async function runExport(){
   const tb=$("outTbl");const L=TX();
   tb.innerHTML="<tr><th>"+esc(L.thName)+"</th><th>"+esc(T("thStatus"))+"</th><th style='text-align:right'>"+esc(L.thSize)+"</th></tr>";
   let ok=0,fail=0,skip=0,fileN=0;
+  /* 清洗内容汇总：按书累积清理明细，全部处理完再一次性落盘 */
+  const wantSum=!!($("optSum")&&$("optSum").checked);
+  const sumBooks=[];
   for(let i=0;i<sel.length;i++){
     const b=sel[i];const row=document.createElement("tr");
     const tdN=document.createElement("td");tdN.className="name";tdN.textContent=b.title||b.name;
@@ -3185,11 +3413,44 @@ async function runExport(){
       b._exported=true;
       tdS.textContent=done.length?done.join(" + "):"—";
       tdZ.textContent=Core.humanSize(files.reduce((n,f)=>n+blobSize(f),0));
+      if(wantSum){
+        sumBooks.push({
+          title:b.title||b.name||"",
+          author:b.author||"",
+          file:b.rel||b.name||"",
+          linesBefore:b._cleanBefore,
+          linesAfter:Core.lineCount(b._clean===undefined?"":b._clean),
+          blank:b._cleanBlank||0,
+          entries:b._cleanTrace||[],
+          note:(("_cleanTrace" in b)||!activeRuleIds().length)?"":T("sumNoteSnap"),
+        });
+      }
       ok++;
       log(fill(T("logExported"),{name:b.title||b.name,f:files.map(f=>f.name).join(", ")}));
     }catch(e){
       fail++;tdS.textContent="✗ "+(e&&e.message||e);
       log("导出失败："+(b.title||b.name)+" — "+(e&&e.message||e));
+      if(wantSum){
+        sumBooks.push({title:b.title||b.name||"",author:b.author||"",
+          file:b.rel||b.name||"",entries:[],
+          note:fill(T("sumFail"),{e:(e&&e.message||e)})});
+      }
+    }
+  }
+  /* 清洗内容汇总：有输出目录就写进去，否则作为文件下载 */
+  if(wantSum&&sumBooks.length){
+    const sname="清洗内容汇总.txt";
+    const nEnt=sumBooks.reduce((n,b)=>n+(b.entries?b.entries.length:0),0);
+    const nBlank=sumBooks.reduce((n,b)=>n+(b.blank||0),0);
+    try{
+      const txt=Core.buildCleanSummary(sumBooks,
+        {rules:activeRuleIds(),lang:CUR,custom:St.customRules});
+      let wrote=sname;
+      if(toDir) wrote=await writeTextToDir(dir,sname,txt);
+      else{dlBytes(sname,txt,"text/plain;charset=utf-8",false);fileN++;await sleep(150);}
+      log(fill(T("logSumOk"),{f:wrote,n:sumBooks.length,m:nEnt,b:nBlank}));
+    }catch(e){
+      log(fill(T("logSumFail"),{e:(e&&e.message||e)}));
     }
   }
   pb.firstElementChild.style.width="100%";
@@ -3218,6 +3479,14 @@ async function writeImagesToDir(dir,name,images){
     await w.close();
   }
   return "插图/"+name;
+}
+/* 汇总文件每次重跑都覆盖（不像正文那样堆「(1)(2)」），免得目录里越积越多 */
+async function writeTextToDir(dir,name,text){
+  const hf=await dir.getFileHandle(name,{create:true});
+  const w=await hf.createWritable();
+  await w.write(new TextEncoder().encode(text));
+  await w.close();
+  return name;
 }
 async function writeToDir(dir,name,data){
   // 存在同名则追加 (1)(2)…
@@ -3313,6 +3582,8 @@ function bindSteps(){
   const thEl=$("selTheme"),cvEl=$("selCover");
   if(thEl) thEl.onchange=()=>cfgSet("theme",thEl.value);
   if(cvEl) cvEl.onchange=()=>cfgSet("cover",cvEl.value);
+  const sumEl=$("optSum");
+  if(sumEl) sumEl.onchange=()=>cfgSet("sum",sumEl.checked?"1":"0");
 }
 
 /* ================= 启动 ================= */
@@ -3322,6 +3593,7 @@ async function boot(){
   applyStatic();bindNav();bindLib();bindDrop();bindTop();bindSteps();bindRulesPack();buildRules();
   if(cfgKey("savSuffix")!==null&&$("savSuffix")) $("savSuffix").value=cfgKey("savSuffix");
   if(cfgKey("inplace")==="1"&&$("optInplace")) $("optInplace").checked=true;
+  if(cfgKey("sum")==="0"&&$("optSum")) $("optSum").checked=false;
   refreshThemeSelect();refreshCoverSelect();
   try{
     const cr=cfgKey("customRules");
