@@ -208,5 +208,74 @@ function zipEntries(zip) {
   ok("分章 zip 中文文件名", sent.every(e => e.name.includes("样例/") && e.name.endsWith(".txt")));
 }
 
+console.log("== 插图下载（伪造 fetch / Image） ==");
+{
+  const realFetch = globalThis.fetch, realImage = globalThis.Image, realLoc = globalThis.location;
+  globalThis.location = { protocol: "file:", href: "file:///x" };
+  globalThis.Image = class {                       // 只有 /probe-ok 能当图解码
+    set referrerPolicy(v) { }
+    set src(v) {
+      const ok = String(v).includes("probe-ok");
+      setTimeout(() => { if (ok) { this.naturalWidth = 8; this.onload && this.onload(); }
+                         else this.onerror && this.onerror(); }, 0);
+    }
+  };
+  const jpeg = Uint8Array.from([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]);
+  let calls = [];
+  globalThis.fetch = async (u) => {
+    calls.push(String(u));
+    if (String(u).includes("/page"))
+      return new Response(new TextEncoder().encode("<html>x</html>"),
+        { status: 200, headers: { "content-type": "text/html" } });
+    if (String(u).includes("/dead"))
+      return new Response(jpeg, { status: 404, headers: { "content-type": "text/plain" } });
+    /* 模拟 CORS/混合内容：http 请求直接抛，https 能正常读 */
+    if (String(u).startsWith("https://"))
+      return new Response(jpeg, { status: 200, headers: { "content-type": "image/jpeg" } });
+    throw new TypeError("Failed to fetch");
+  };
+  try {
+    const links = Core.imageLinksInText('A <img src="//cdn.x.com/a.jpg"> B http://b.com/c.png');
+    ok("认出协议相对 <img src>", links.includes("//cdn.x.com/a.jpg"), links);
+    ok("认出裸链接", links.includes("http://b.com/c.png"), links);
+    ok("不重复认被截断的短地址", !links.includes("x.com/a.jpg"), links);
+
+    calls = [];
+    let r = await Core.fetchImages("图 http://img.site.com/a.jpg 尾", { limit: 2 });
+    ok("http 被掐后改试 https", calls.length === 2 && calls[1].startsWith("https://"), calls);
+    ok("取到 1 张", r.images === 1 && r.map.size === 1, r.images);
+
+    calls = [];
+    r = await Core.fetchImages("图 https://x.com/probe-ok/page 尾", { limit: 2 });
+    ok("返回网页不当图", r.images === 0, r.images);
+    ok("探测通过计入 missed（跨域读不到字节）", r.missed === 1, r.missed);
+
+    calls = [];
+    r = await Core.fetchImages('A <img src="//cdn2.x.com/b.jpg"> B', { limit: 2 });
+    ok("协议相对补成 https", calls[0] === "https://cdn2.x.com/b.jpg", calls);
+    ok("协议相对能下载", r.images === 1, r.images);
+
+    calls = [];
+    r = await Core.fetchImages("图 https://x.com/dead.jpg 尾", { limit: 2 });
+    ok("404 不换协议重试", calls.length === 1, calls);
+
+    r = await Core.fetchImages("图1 https://x.com/1.jpg 图2 https://x.com/2.jpg", { limit: 2 });
+    const imap = Core.imagesForEpub(r, "图1 https://x.com/1.jpg 图2 https://x.com/2.jpg");
+    ok("epub 编号 001/002", [...imap.values()].map(v => v.name).join(",") === "001.jpg,002.jpg",
+      [...imap.values()].map(v => v.name));
+
+    /* 预取结果喂给清洗：<img src="//…"> 的写法要去重后仍能命中校验，
+       否则整行会被当「含网址的行」删掉，图就白下载了 */
+    const raw = "正文。http://a.com/x.jpg\n\n插图：<img src=\"//cdn.b.com/pic1.jpg\">\n";
+    const pre = await Core.fetchImages(raw, { limit: 4 });
+    const cleaned = Core.cleanText(raw, ["url", "imgkeep", "imgcheck"], false, null, pre.ctMap).text;
+    ok("插图行不被当网址删掉", cleaned.includes('<img src="//cdn.b.com/pic1.jpg">'), cleaned);
+    ok("两张图都进 epub", Core.imagesForEpub(pre, cleaned).size === 2,
+      [...Core.imagesForEpub(pre, cleaned).keys()]);
+  } finally {
+    globalThis.fetch = realFetch; globalThis.Image = realImage; globalThis.location = realLoc;
+  }
+}
+
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

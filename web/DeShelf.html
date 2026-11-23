@@ -273,6 +273,8 @@ b.dark{color:var(--ink)}
       <select id="selTheme" class="select" style="width:132px"></select>
       <span class="hint" data-k="outCover" style="margin-left:14px"></span>
       <select id="selCover" class="select" style="width:196px"></select>
+      <label class="lab" id="imgDlWrap" style="margin-left:14px">
+        <input type="checkbox" id="optImgDl" disabled> <span data-k="optImgDl"></span></label>
     </div>
     <div class="check" style="margin-top:-2px">
       <span class="hint" data-k="savAs"></span>
@@ -348,6 +350,8 @@ const Z = {
   savAs:"保存方式：", savSuf:"另存时加后缀",
   outTheme:"版面主题：", outCover:"封面：",
   coverAuto:"自动（优先同名图片）", coverDefault:"生成默认封面", coverNone:"不加封面",
+  optImgDl:"下载插图链接",
+  optImgDlTip:"网页版受浏览器跨域（CORS）限制：站点没发跨域许可的图片，浏览器读不到图片字节，只能跳过。这类图请用桌面版（exe）下载，桌面端不受此限制。",
   optInplace:"原地覆盖原文件（先备份 .bak）",
   savHintCopy:"原文件不动，新文件名为「原名 + 后缀」，与原书并排存放",
   savHintInplace:"清洗后的全文写回原文件；首次覆盖时把原文备份为「文件名.bak」",
@@ -402,6 +406,11 @@ const Z = {
   modeFull:"目录模式 · 可写缓存可批量保存", modeBasic:"文件模式 · 仅导出下载",
   dlNone:"没有生成任何文件",
   dlMulti:"生成 {n} 个文件，逐一下载中（浏览器可能询问允许）",
+  logImgPrefetch:"《{name}》插图链接：检查 {n} 条，认出 {m} 张",
+  logImgSaved:"《{name}》插图 {n} 张已打进 EPUB",
+  logImgDir:"《{name}》插图 {n} 张已写入 {d}",
+  logImgCors:"· 另有 {k} 条确实是插图，但站点没给跨域许可，浏览器读不到图片（桌面版可下载）",
+  logImgSkip:"· 另有 {k} 条链接不是图片或已失效，已跳过",
   zipName:"DeShelf导出_{ts}", epDupName:"（重复）",
   closeX:"关闭", copy:"复制",
   aboutTitle:"关于 卷帙 DeShelf",
@@ -465,6 +474,8 @@ const E = {
   savAs:"Save as:", savSuf:"Suffix",
   outTheme:"Layout:", outCover:"Cover:",
   coverAuto:"Auto (same-name image first)", coverDefault:"Generate default cover", coverNone:"No cover",
+  optImgDl:"Download illustrations",
+  optImgDlTip:"Browser CORS limit: images from sites that send no CORS header cannot be read here and are skipped. Use the desktop app for those — it is not subject to CORS.",
   optInplace:"Overwrite originals (backup .bak)",
   savHintCopy:"Originals untouched — new files are “name + suffix”, sitting next to the original",
   savHintInplace:"Cleaned text is written back; the first overwrite saves the original as “name.bak”",
@@ -519,6 +530,11 @@ const E = {
   modeFull:"Directory mode · index cache + batch save", modeBasic:"File mode · export downloads only",
   dlNone:"Nothing generated",
   dlMulti:"{n} files generated — downloading one by one (the browser may ask for permission)",
+  logImgPrefetch:"“{name}”: {n} illustration links checked, {m} image(s) found (verify + download share one request)",
+  logImgSaved:"“{name}”: {n} illustration(s) packed into the EPUB",
+  logImgDir:"“{name}”: {n} illustration(s) written to {d}",
+  logImgCors:"· {k} link(s) really are images, but the site sends no CORS header — the browser cannot read them (use the desktop app)",
+  logImgSkip:"· {k} link(s) were not images or are dead — skipped",
   zipName:"DeShelfExport_{ts}", epDupName:"(dup)",
   closeX:"Close", copy:"Copy",
   aboutTitle:"About 卷帙 DeShelf",
@@ -955,15 +971,36 @@ const Core = (() => {
   const IMG_MIMES=new Set(["image/jpeg","image/png","image/gif","image/webp"]);
   const IMG_PROBE="image/x-probe";     /* 图片探测通过（读不到响应头，但确实是图） */
   const IMG_TIMEOUT=6000;              /* 单条链接的超时（毫秒） */
+  const IMG_DL_TIMEOUT=20000;          /* 下载插图放宽到 20 秒：整张图比响应头慢得多 */
   const IMG_TRAIL=/["'，。、；,;）)】\]]+$/;
   function imgFullUrl(u){
     u=String(u||"").trim().replace(IMG_TRAIL,"");
     if(/^https?:\/\//i.test(u)) return u;
+    /* 协议相对地址（//cdn.xxx.com/a.jpg）：跟当前页面走；页面是 file:// 时按 https 试 */
+    if(u.startsWith("//")){
+      const p=(typeof location!=="undefined"&&/^https?:$/.test(location.protocol))?location.protocol:"https:";
+      return p+u;
+    }
     if(/^(?:www\.|[a-z0-9\-]+\.)/i.test(u)) return "http://"+u;
     return "";
   }
   function imgBySuffix(u){
     return IMG_EXT_RE.test(String(u||"").split(/[?#]/)[0].replace(/\/+$/,""));
+  }
+  /* 查一条链接的校验结果。行里认出的写法常和预取的键不同：
+     <img src="//cdn.x.com/a.jpg"> 会被裸域名规则从中间截断成 x.com/a.jpg，
+     直接查不到就按「后缀 + 分隔符」再对一次，免得把好好的插图行当网址删掉 */
+  function ctOfLink(ctMap,url){
+    if(!ctMap||!url)return "";
+    const direct=ctMap.get(url);
+    if(direct!==undefined)return direct||"";
+    const byKey=ctMap.get(imgKey(url));
+    if(byKey!==undefined)return byKey||"";
+    for(const [key,ct] of ctMap){
+      if(!ct||!key.endsWith(url))continue;
+      if(/[.\/]/.test(key.charAt(key.length-url.length-1)||""))return ct;
+    }
+    return "";
   }
   /* 找出一行里的插图链接：[[起,止,网址]]。verify 时按 ctMap 里的 Content-Type 认 */
   function findImageLinks(s,verify,ctMap){
@@ -977,7 +1014,7 @@ const Core = (() => {
       if(!url) continue;
       let ok;
       if(verify&&ctMap){
-        const ct=ctMap.get(url)||"";
+        const ct=ctOfLink(ctMap,url);
         ok=IMG_MIMES.has(ct)||ct===IMG_PROBE;
       }else ok=imgBySuffix(url);   /* 没给校验结果就退回按后缀，别凭空删图 */
       if(ok) out.push([m.index,m.index+url.length,url]);
@@ -1462,12 +1499,195 @@ const Core = (() => {
     if(n) await Promise.all(Array.from({length:n},worker));
     return map;
   }
-  /* 异步清洗：imgcheck 开启时先把链接验一遍，再跑同步的 cleanText */
-  async function cleanTextAsync(text,enabled,wantDel,custom){
+  /* 异步清洗：imgcheck 开启时先把链接验一遍，再跑同步的 cleanText。
+     ctMap 若已由 fetchImages 那一趟填好，就不再单独请求（校验与下载合并）。 */
+  async function cleanTextAsync(text,enabled,wantDel,custom,ctMap){
     const on=new Set(enabled||[]);
     const useImg=on.has("imgkeep")&&(on.has("url")||on.has("site"));
-    const ctMap=(useImg&&on.has("imgcheck"))?await verifyImageLinks(text):null;
-    return cleanText(text,enabled,wantDel,custom,ctMap);
+    let map=ctMap||null;
+    if(useImg&&on.has("imgcheck")&&!map) map=await verifyImageLinks(text);
+    return cleanText(text,enabled,wantDel,custom,map);
+  }
+
+  /* ---------- 插图下载（打进 EPUB / 写到目录） ----------
+     与桌面版同一套判据，区别在于浏览器只能读到带 CORS 头的图片字节：
+     fetch 拿不到正文时退回 <img> 探测，判定照旧，只是没法把图存下来。 */
+  const IMG_HREF_DIR="images/";
+  const IMG_MAX_TRIES=300;             /* 一本书最多试这么多条链接 */
+  const IMG_EXT_BY_MIME={"image/jpeg":".jpg","image/jpg":".jpg","image/png":".png",
+    "image/gif":".gif","image/webp":".webp","image/bmp":".bmp"};
+  const IMG_MIME_BY_EXT={".jpg":"image/jpeg",".jpeg":"image/jpeg",".png":"image/png",
+    ".gif":"image/gif",".webp":"image/webp",".bmp":"image/bmp"};
+  const IMG_SAFE_EXT=/(jpe?g|png|gif|webp|bmp)$/i;
+  function imgKey(u){return imgFullUrl(u)||String(u||"").trim().replace(IMG_TRAIL,"");}
+  /* 取标签里某个属性：双引号、单引号、不带引号三种写法都认 */
+  function tagAttr(tag,name){
+    const re=new RegExp(name+"\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'<>]+))","i");
+    const m=re.exec(String(tag||""));
+    return m?String(m[1]||m[2]||m[3]||"").trim():"";
+  }
+  function htmlImageSources(s){
+    const out=[],re=/<img\b[^<>]*>/gi;let m;
+    while((m=re.exec(String(s||"")))){
+      const u=tagAttr(m[0],"src");
+      if(u)out.push(u);
+    }
+    return out;
+  }
+  /* 整篇里的全部链接（按链接去重）：下载的候选，也是清洗前那趟校验的清单 */
+  function imageLinksInText(text){
+    const seen=new Set(),out=[];
+    for(const line of String(text||"").split(/\r\n|\r|\n/)){
+      const re=new RegExp(URL_BODY_SRC,"gi");let m;
+      const found=[];
+      while((m=re.exec(line))){
+        if(!m[0].length){re.lastIndex++;continue;}
+        const u=m[0].replace(IMG_TRAIL,"");
+        if(u)found.push(u);
+      }
+      found.push(...htmlImageSources(line));
+      /* 裸域名规则会把长地址从中间截断（//cdn2.x.com/a.jpg 只认出 x.com/a.jpg），
+         同一行里被另一条完整地址包含的短地址直接丢掉，省一次必然失败的请求 */
+      const solid=found.filter(u=>!found.some(o=>{
+        const a=String(o),b=String(u);
+        if(a.length<=b.length||!a.endsWith(b))return false;
+        return /[.\/]/.test(a.charAt(a.length-b.length-1)||"");
+      }));
+      for(const u of solid){
+        const k=imgKey(u);
+        if(k&&!seen.has(k)){seen.add(k);out.push(u);}
+      }
+    }
+    return out;
+  }
+  /* 认图片后缀：先看文件头（最可靠），再看 Content-Type，最后看链接 */
+  function imgExtOfBytes(b){
+    if(!b||!b.length)return"";
+    if(b[0]===0xFF&&b[1]===0xD8&&b[2]===0xFF)return".jpg";
+    if(b[0]===0x89&&b[1]===0x50&&b[2]===0x4E&&b[3]===0x47)return".png";
+    if(b[0]===0x47&&b[1]===0x49&&b[2]===0x46)return".gif";
+    if(b[0]===0x52&&b[1]===0x49&&b[2]===0x46&&b[3]===0x46
+      &&b[8]===0x57&&b[9]===0x45&&b[10]===0x42&&b[11]===0x50)return".webp";
+    if(b[0]===0x42&&b[1]===0x4D)return".bmp";
+    return"";
+  }
+  function imgExtOfUrl(u){
+    const p=String(imgFullUrl(u)||"").split(/[?#]/)[0];
+    const m=/\.([A-Za-z0-9]+)$/.exec(p);
+    if(!m)return"";
+    const e="."+m[1].toLowerCase();
+    return IMG_SAFE_EXT.test(e)?e:"";
+  }
+  /* 请求一张图，返回 {got,timedOut,retry}。retry 只在“请求根本没发出去/被掐掉”
+     （跨域被拒、混合内容、DNS 失败）时为真 —— 这种换个协议再试可能就好了；
+     超时和 404/403 是站点层面的，重试只是白等 */
+  async function fetchImageOnce(full,timeout){
+    const ac=(typeof AbortController!=="undefined")?new AbortController():null;
+    let timedOut=false;
+    const tid=setTimeout(()=>{timedOut=true;if(ac)ac.abort();},timeout);
+    try{
+      /* referrerPolicy=no-referrer 与桌面版一致：不少站点按 Referer 判防盗链，
+         浏览器又发不了自定义 UA/Referer，能去掉的就别带 */
+      const resp=await fetch(full,{method:"GET",mode:"cors",credentials:"omit",
+        referrerPolicy:"no-referrer",cache:"no-store",signal:ac?ac.signal:undefined});
+      if(!resp.ok)return {got:null,timedOut:false};
+      const ct=(resp.headers.get("content-type")||"").split(";")[0].trim().toLowerCase();
+      const data=new Uint8Array(await resp.arrayBuffer());
+      if(!data.length)return {got:null,timedOut:false};
+      const byHead=imgExtOfBytes(data);
+      /* 200 但返回网页：既认不出文件头、Content-Type 也不是图片 → 丢掉 */
+      if(!byHead&&!ct.startsWith("image/"))return {got:null,timedOut:false};
+      const ext=byHead||IMG_EXT_BY_MIME[ct]||imgExtOfUrl(full);
+      if(!ext)return {got:null,timedOut:false};
+      return {got:{data:data,ext:ext,mime:IMG_MIME_BY_EXT[ext]||ct||"image/jpeg",
+        ct:ct||IMG_MIME_BY_EXT[ext]},timedOut:false};
+    }catch(e){
+      return {got:null,timedOut:timedOut,retry:!timedOut};
+    }finally{clearTimeout(tid);}
+  }
+  /* 候选地址：原样 + 协议互换。页面是 https 时 http 图会被当混合内容直接掐掉，
+     反过来也有站点只认 https，失败一次换个协议常常就好了 */
+  function imgUrlCandidates(url){
+    const out=[],full=imgFullUrl(url);
+    if(full)out.push(full);
+    if(/^http:\/\//i.test(full)){
+      const alt="https://"+full.slice(7);
+      if(out.indexOf(alt)<0)out.push(alt);
+    }else if(/^https:\/\//i.test(full)){
+      const alt="http://"+full.slice(8);
+      if(out.indexOf(alt)<0)out.push(alt);
+    }
+    return out;
+  }
+  /* 取一张图：成功返回 {data,ext,mime,ct}，取不到返回 null（跨域挡住的也算取不到） */
+  async function fetchImageBytes(url,timeout){
+    timeout=timeout||IMG_DL_TIMEOUT;
+    for(const full of imgUrlCandidates(url)){
+      const r=await fetchImageOnce(full,timeout);
+      if(r.got)return r.got;
+      if(!r.retry)break;
+    }
+    return null;
+  }
+  /* 阅读器对 webp/gif/bmp 支持参差：转成 jpg 再打包（canvas 转不动就保留原样） */
+  async function imageToJpeg(got){
+    if(!got||got.ext===".jpg"||got.ext===".jpeg"||got.ext===".png")return got;
+    try{
+      const bmp=await createImageBitmap(new Blob([got.data]));
+      const cv=document.createElement("canvas");
+      cv.width=bmp.width;cv.height=bmp.height;
+      const g=cv.getContext("2d");
+      g.fillStyle="#ffffff";g.fillRect(0,0,cv.width,cv.height);  /* 透明底转 JPEG 会发黑 */
+      g.drawImage(bmp,0,0);
+      const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.88));
+      if(!blob)return got;
+      return {data:new Uint8Array(await blob.arrayBuffer()),ext:".jpg",
+        mime:"image/jpeg",ct:"image/jpeg"};
+    }catch(e){return got;}
+  }
+  /* 全篇候选链接各请求一次：既当「下载」，也当「校验」。
+     返回 {map, ctMap, checked, images, missed} —— ctMap 可直接喂给 cleanText */
+  async function fetchImages(text,opt){
+    opt=opt||{};
+    const limit=opt.limit||6,timeout=opt.timeout||IMG_DL_TIMEOUT;
+    const urls=imageLinksInText(text).slice(0,IMG_MAX_TRIES);
+    const map=new Map(),ctMap=new Map();
+    let i=0,images=0,missed=0;
+    const worker=async()=>{
+      while(i<urls.length){
+        const u=urls[i++];
+        const got=await imageToJpeg(await fetchImageBytes(u,timeout));
+        let ct="";
+        if(got){
+          images++;map.set(imgKey(u),got);ct=got.ct||IMG_MIME_BY_EXT[got.ext]||"";
+        }else{
+          /* 拿不到字节：退回图片探测，保证「按响应头认图」的清洗判据不变。
+             探测通过却没有字节 = 确实是图，但站点没给跨域许可（missed） */
+          ct=await probeImage(imgFullUrl(u),IMG_TIMEOUT);
+          if(ct)missed++;
+        }
+        ctMap.set(u,ct||"");
+        const k2=imgKey(u);
+        if(k2&&k2!==u)ctMap.set(k2,ct||"");   /* 归一化写法也存一份，清洗时好查 */
+      }
+    };
+    const n=Math.min(limit,urls.length);
+    if(n)await Promise.all(Array.from({length:n},worker));
+    return {map:map,ctMap:ctMap,checked:urls.length,images:images,missed:missed};
+  }
+  /* 按清洗后正文里的顺序编号（001.jpg…），返回 Map(链接键 → {name,data,mime}) */
+  function imagesForEpub(fetched,cleaned){
+    const out=new Map();
+    if(!fetched)return out;
+    let n=0;
+    for(const url of imageLinksInText(cleaned)){
+      const got=fetched.map.get(imgKey(url));
+      if(!got||!got.data)continue;
+      n++;
+      out.set(imgKey(url),{name:String(n).padStart(3,"0")+(got.ext||".jpg"),
+        data:got.data,mime:got.mime||"image/jpeg"});
+    }
+    return out;
   }
 
   /* ---------- 分章（对齐 split_chapters） ---------- */
@@ -1716,19 +1936,78 @@ const Core = (() => {
     "    <rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/>\n"+
     "  </rootfiles>\n</container>\n";
   function xmlEsc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-  async function buildEpub({title,author,chapters,cover,theme}){
+  function xmlEscAttr(s){return xmlEsc(s||"").replace(/"/g,"&quot;");}
+  /* ---------- 正文里的插图：换成 images/xxx，HTML 写法与裸链接都认 ---------- */
+  const IMG_PH="\u0000";
+  function picTag(href,alt){return '<img class="pic" src="'+href+'" alt="'+xmlEscAttr(alt)+'"/>';}
+  function dropUrlTags(s){
+    return String(s).replace(HTML_TAG_RE,function(t){return URL_RE.test(t)?"":t;});
+  }
+  /* 一行正文 → epub 里的 html；行内没有已打包的插图时返回 null，走普通段落 */
+  function paraWithImages(line,images){
+    if(!images||!images.size)return null;
+    const slots=[];
+    const put=function(url,alt){
+      const got=images.get(imgKey(url));
+      if(!got)return null;
+      slots.push([IMG_HREF_DIR+got.name,alt||""]);
+      return IMG_PH+(slots.length-1)+IMG_PH;
+    };
+    /* 先换 <img> 标签，再把指着原网址的残标签（外层 <a href>）删掉 ——
+       否则那个 href 会被当成第二条图链，同张图出现两次 */
+    let s=String(line).replace(/<img\b[^<>]*>/gi,function(tag){
+      const u=tagAttr(tag,"src");
+      if(!u)return tag;
+      const got=put(u,tagAttr(tag,"alt"));
+      return got===null?tag:got;
+    });
+    s=dropUrlTags(s);
+    const re=new RegExp(URL_BODY_SRC,"gi");
+    let out="",last=0,m;
+    while((m=re.exec(s))){
+      if(!m[0].length){re.lastIndex++;continue;}
+      const url=m[0].replace(IMG_TRAIL,"");
+      const got=put(url,"");
+      if(got===null)continue;
+      out+=s.slice(last,m.index)+got;
+      last=m.index+url.length;
+    }
+    if(last)s=out+s.slice(last);
+    if(!slots.length)return null;
+    const plain=s.replace(/\u0000\d+\u0000/g,"").replace(HTML_TAG_RE,"");
+    if(!slim(plain)){
+      /* 只剩「图片：」这类标签文字：让插图独占一段，HTML 写法的 alt 当图注放图下方 */
+      return slots.map(function(it){
+        const cap=it[1]?'<p class="cap">'+xmlEsc(it[1])+"</p>":"";
+        return '    <div class="pic">'+picTag(it[0],it[1])+cap+"</div>";
+      }).join("\n");
+    }
+    let esc=xmlEsc(s);
+    slots.forEach(function(it,i){esc=esc.split(IMG_PH+i+IMG_PH).join(picTag(it[0],it[1]));});
+    return "    <p>"+esc+"</p>";
+  }
+  async function buildEpub({title,author,chapters,cover,theme,images}){
     title=title||"未命名";author=author||"佚名";
     const uid="urn:uuid:"+cryptoRandomUuid();
     const hasCover=!!(cover&&cover.data);
+    const hasImg=!!(images&&images.size);
     const manifest=[],spine=[],navpoints=[],pages=[];
     if(hasCover){
       manifest.push('    <item id="cover-img" href="'+cover.name+'" media-type="'+cover.mime+'"/>');
       manifest.push('    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>');
     }
+    if(hasImg){
+      let k=0;
+      images.forEach(function(it){
+        k++;
+        manifest.push('    <item id="im'+k+'" href="'+IMG_HREF_DIR+it.name+'" media-type="'+
+          (it.mime||"image/jpeg")+'"/>');
+      });
+    }
     chapters.forEach((ch,i)=>{
       const n=i+1;
       let paras=ch.b.split(/\r\n|\r|\n/).map(x=>x.trim()).filter(Boolean)
-        .map(x=>"    <p>"+xmlEsc(x)+"</p>").join("\n");
+        .map(x=>paraWithImages(x,images)||("    <p>"+xmlEsc(x)+"</p>")).join("\n");
       if(!paras) paras="    <p>（本章无正文）</p>";
       pages.push({i:n,t:ch.t,html:paras});
       manifest.push('    <item id="c'+n+'" href="c'+pad4(n)+'.xhtml" media-type="application/xhtml+xml"/>');
@@ -1764,10 +2043,22 @@ const Core = (() => {
     entries.push({name:"META-INF/container.xml",data:CONTAINER});
     entries.push({name:"OEBPS/content.opf",data:opf});
     entries.push({name:"OEBPS/toc.ncx",data:ncx});
-    entries.push({name:"OEBPS/style.css",data:themeCss(theme)});
+    let css=themeCss(theme);
+    if(hasImg){
+      /* 只给带插图的书追几条：不插图时 css 与旧版完全一致 */
+      css+="\nimg.pic{max-width:100%;height:auto;}\n"+
+        "div.pic{margin:1em 0;text-align:center;}\n"+
+        "p.cap{font-size:.85em;color:#666666;margin:.3em 0 0;text-indent:0;}\n";
+    }
+    entries.push({name:"OEBPS/style.css",data:css});
     if(hasCover){
       entries.push({name:"OEBPS/"+cover.name,data:cover.data});
       entries.push({name:"OEBPS/cover.xhtml",data:COVER_PAGE.replace("__COVER_SRC__",cover.name)});
+    }
+    if(hasImg){
+      images.forEach(function(it){
+        entries.push({name:"OEBPS/"+IMG_HREF_DIR+it.name,data:it.data});
+      });
     }
     for(const pg of pages){
       entries.push({name:"OEBPS/c"+pad4(pg.i)+".xhtml",data:
@@ -1883,6 +2174,7 @@ const Core = (() => {
 
   return {detectEnc,decodeBytes,countChars,humanSize,guessMeta,cleanName,
     RULES,DEFAULT_ON,cleanText,cleanTextAsync,verifyImageLinks,findImageLinks,
+    imageLinksInText,fetchImages,imagesForEpub,
     toHalfwidth,splitChapters,scanParaIssues,
     buildZip,deflateRawBytes,buildEpub,buildMergedTxt,buildSplitZip,safeFileName,
     THEMES,themeCss,themeById,makeCover,prepareCoverFile,
@@ -2186,6 +2478,9 @@ function applyStatic(){
   const langBtn=$("btnLang");
   langBtn.textContent = CUR==="zh" ? "EN" : "中文";
   langBtn.title = CUR==="zh" ? "Switch to English" : "切换到中文";
+  /* 「下载插图链接」：网页端有跨域上限，鼠标停上去就说明白 */
+  const imgDl=$("imgDlWrap");
+  if(imgDl) imgDl.title=T("optImgDlTip");
   document.documentElement.lang = CUR==="zh"?"zh-CN":"en";
   applyCapability();
 }
@@ -2367,6 +2662,7 @@ function syncRuleGates(){
       lab.classList.toggle("locked",!keepOn);
     }
   });
+  refreshImgDlState();
 }
 function refreshCleanInfo(){
   const box=$("ruleBox");
@@ -2699,6 +2995,17 @@ function relStem(rel){const s=String(rel||"");const b=s.slice(s.lastIndexOf("/")
   return b.replace(/\.[^.]+$/,"").trim().toLowerCase();}
 function themeId(){const el=$("selTheme");return el&&el.value?el.value:"classic";}
 function coverMode(){const el=$("selCover");return el&&el.value?el.value:"auto";}
+/* 「下载插图链接」跟随清洗页的「保留插图链接」：没开就置灰且强制不勾 */
+function refreshImgDlState(){
+  const el=$("optImgDl");if(!el)return;
+  const on=St.rulesOn.has("imgkeep");
+  el.disabled=!on;
+  if(!on&&el.checked)el.checked=false;
+}
+function imgDownloadOn(){
+  const el=$("optImgDl");
+  return !!(el&&el.checked&&!el.disabled&&St.rulesOn.has("imgkeep"));
+}
 function refreshThemeSelect(){
   const el=$("selTheme");if(!el)return;
   const cur=el.value||cfgKey("theme")||"classic";
@@ -2762,17 +3069,19 @@ function refreshSavHint(){
     ? T("savHintInplace")+(St.rootHandle?"":" · "+T("savHintNoDir"))
     : T("savHintCopy");
 }
-async function ensureCleaned(b){
-  const raw=await bookText(b);
+/* ctMap/rawText 由「下载插图链接」那趟预取带来：清洗里的插图校验直接命中，
+   不再单独请求一遍（预览/其它入口不传，行为与原来一致） */
+async function ensureCleaned(b,ctMap,rawText){
+  const raw=(rawText===undefined||rawText===null)?await bookText(b):rawText;
   const rules=activeRuleIds();
   if(b._clean===undefined){
-    const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules):{text:raw,removed:0};
+    const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules,ctMap||null):{text:raw,removed:0};
     b._clean=r.text;
   }
   return b._clean;
 }
-async function chaptersFor(b){
-  const cleaned=await ensureCleaned(b);
+async function chaptersFor(b,ctMap,rawText){
+  const cleaned=await ensureCleaned(b,ctMap,rawText);
   if(b._chap) return b._chap;
   const custom=((b.chapRe||$("chapRegex").value)||"").trim()||null;
   let reOk=true;if(custom){try{new RegExp(custom);}catch(e){reOk=false;}}
@@ -2822,12 +3131,37 @@ async function runExport(){
     try{
       if(skipDup&&b._exported){skip++;tdS.textContent=T("dupYes");continue;}
       const base=fileBaseName(b);
-      const chapters=await chaptersFor(b);
+      /* 「下载插图链接」：先一趟请求把图取下来（同时充当清洗的插图校验），
+         之后清洗命中这份判定、epub 打包用这批字节，整本书只请求一次 */
+      const wantImg=imgDownloadOn()&&(fmts.includes("epub")||toDir);
+      let prefetch=null,rawText=null;
+      if(wantImg){
+        rawText=await bookText(b);
+        prefetch=await Core.fetchImages(rawText,{limit:6});
+        log(fill(T("logImgPrefetch"),{name:b.title||b.name,n:prefetch.checked,m:prefetch.images}));
+      }
+      const chapters=await chaptersFor(b,prefetch?prefetch.ctMap:null,rawText);
+      const cleaned=prefetch?await ensureCleaned(b,prefetch.ctMap,rawText):null;
+      const epubImages=prefetch?Core.imagesForEpub(prefetch,cleaned):null;
       const files=[];
+      const hasImgs=!!(epubImages&&epubImages.size);
       if(fmts.includes("epub")){
         const u8=await Core.buildEpub({title:b.title||base,author:b.author||"",chapters,
-          theme:themeId(),cover:await bookCover(b)});
+          theme:themeId(),cover:await bookCover(b),images:epubImages});
         files.push({name:base+".epub",data:u8,mime:"application/epub+zip"});
+        if(hasImgs) log(fill(T("logImgSaved"),{name:b.title||b.name,n:epubImages.size}));
+      }
+      /* 导出到目录时插图另存「插图/书名/001.jpg…」（与桌面版同一套落盘方式） */
+      if(toDir&&hasImgs){
+        const sub=await writeImagesToDir(dir,base,epubImages);
+        log(fill(T("logImgDir"),{name:b.title||b.name,n:epubImages.size,d:sub}));
+      }
+      if(prefetch){
+        const used=hasImgs?epubImages.size:0;
+        const blocked=prefetch.missed||0;
+        const skipped=prefetch.checked-used-blocked;
+        if(blocked>0) log(fill(T("logImgCors"),{k:blocked}));
+        if(skipped>0) log(fill(T("logImgSkip"),{k:skipped}));
       }
       if(fmts.includes("txt")&&!inplace){
         const s=Core.buildMergedTxt(chapters);
@@ -2872,6 +3206,19 @@ async function runExport(){
 }
 function refreshOutInfoRowWarn(){}
 function blobSize(f){return typeof f.data==="string"?new Blob([f.data]).size:f.data.length;}
+/* 插图落到「导出目录/插图/书名/」，编号沿用 epub 里的 001.jpg…
+   同一本书重跑只覆盖同名文件，不堆「书名 (1)」 */
+async function writeImagesToDir(dir,name,images){
+  const root=await dir.getDirectoryHandle("插图",{create:true});
+  const sub=await root.getDirectoryHandle(name,{create:true});
+  for(const it of images.values()){
+    const hf=await sub.getFileHandle(it.name,{create:true});
+    const w=await hf.createWritable();
+    await w.write(it.data);
+    await w.close();
+  }
+  return "插图/"+name;
+}
 async function writeToDir(dir,name,data){
   // 存在同名则追加 (1)(2)…
   let target=name;

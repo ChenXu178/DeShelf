@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """卷帙 DeShelf — 本地文本整理核心逻辑层。
 
-仅依赖 Python 标准库。默认全程离线；只有用户勾选「插图链接校验」时，才会对
-正文里出现的链接各发一次请求，只读响应头判断它是不是插图、有没有失效，
-正文与文件内容一律不上传。
+仅依赖 Python 标准库。默认全程离线；只有用户勾选「插图链接校验」（逐条请求
+响应头判断是不是插图、有没有失效）或「下载插图链接」（把插图存到本机输出目录）
+时才会联网，正文与文件内容一律不上传。
 """
 
 import hashlib
@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import tempfile
 import urllib.error
 import urllib.request
 import uuid
@@ -877,8 +878,8 @@ def _residual(s):
 
 # ---------------------------------------------------------------- 插图链接
 # 「保留插图链接」只认后缀，不联网；「插图链接校验」会真的请求一次看响应头。
-# 校验先发 HEAD，服务器不认 HEAD（405/501/403）时退回 GET，拿到响应头就关连接，
-# 不会把整张图下下来。超时设得短：失效站不能把一次批量清洗卡在那里。
+# 所有联网判断都走 _img_fetch：校验只要响应头，下载才把正文读下来。
+# 超时设得短：失效站不能把一次批量清洗卡在那里。
 IMG_EXTS = ("jpg", "jpeg", "png", "webp", "gif")
 IMG_MIMES = ("image/jpeg", "image/png", "image/gif", "image/webp")
 IMG_TIMEOUT = 6.0
@@ -898,31 +899,60 @@ def _img_full_url(url):
     url = (url or "").strip().rstrip(_IMG_TRAIL)
     if re.match(r"^https?://", url, re.I):
         return url
+    if url.startswith("//"):        # 协议相对地址：//cdn.xxx.com/a.jpg
+        return "http:" + url
     if re.match(r"^(?:www\.|[a-z0-9\-]+\.)", url, re.I):
         return "http://" + url
     return ""
 
 
-def _img_content_type(url, timeout=IMG_TIMEOUT):
-    """请求一次，返回归一化的 Content-Type；链接失效、超时、非 http 一律返回 ""。"""
+def _img_fetch(url, timeout=IMG_TIMEOUT, want_body=False, limit=0):
+    """请求一次链接，返回 (归一化的 Content-Type, 正文)；失败一律返回 ("", b"")。
+
+    校验与下载共用这一个出口，只是取的东西不同：
+    want_body=False（校验）：先 HEAD，服务器不认 HEAD（403/405/501）时退回 GET，
+                            拿到响应头就关连接，不会把整张图下下来；
+    want_body=True （下载）：直接 GET，最多读 limit 字节正文。
+    """
     full = _img_full_url(url)
     if not full:
-        return ""
+        return "", b""
     headers = {"User-Agent": IMG_UA, "Accept": "image/*,*/*;q=0.8"}
-    for method in ("HEAD", "GET"):
+    for method in (("GET",) if want_body else ("HEAD", "GET")):
         try:
             req = urllib.request.Request(full, method=method, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 ctype = resp.headers.get("Content-Type") or ""
-            return ctype.split(";")[0].strip().lower()
+                data = resp.read(limit + 1) if want_body else b""
+            return ctype.split(";")[0].strip().lower(), data
         except urllib.error.HTTPError as e:
             # 只对“服务器不认 HEAD”的几种状态换 GET；404/500 之类就是失效
             if method == "HEAD" and e.code in (403, 405, 501):
                 continue
-            return ""
+            return "", b""
         except Exception:
-            return ""       # 超时、DNS 失败、连接被掐断 —— 按失效处理，不再拖时间
-    return ""
+            return "", b""   # 超时、DNS 失败、连接被掐断 —— 按失效处理，不再拖时间
+    return "", b""
+
+
+def _img_content_type(url, timeout=IMG_TIMEOUT):
+    """请求一次，返回归一化的 Content-Type；链接失效、超时、非 http 一律返回 ""。"""
+    return _img_fetch(url, timeout)[0]
+
+
+def _is_image_url(url, timeout=IMG_TIMEOUT):
+    """请求一次看响应头，判断是不是插图（「插图链接校验」的判定）。"""
+    return _img_content_type(url, timeout) in IMG_MIMES
+
+
+def _line_links(s):
+    """一行里的所有链接，返回 [(起, 止, 网址)]；网址去掉粘在末尾的标点。"""
+    out = []
+    for m in URL_BODY_RE.finditer(s or ""):
+        url = m.group(0).rstrip(_IMG_TRAIL)
+        if url:
+            out.append((m.start(), m.end(), url))
+    return out
 
 
 def find_image_links(s, verify=False, timeout=IMG_TIMEOUT, cache=None):
@@ -932,26 +962,292 @@ def find_image_links(s, verify=False, timeout=IMG_TIMEOUT, cache=None):
     verify=True ：行内每个链接（含没有图片后缀的）都请求一次，响应头 Content-Type
                   是 image/jpeg、image/png、image/gif、image/webp 才算插图；
                   返回网页的、失效的都不算 —— 顺带完成失效检测。
-    cache 传入 dict 可让同一条链接在一次清洗里只请求一次。
+    cache 传入 dict 可让同一条链接只判一次：键是 image_key(url)，值是布尔；
+           verify_cache(prefetch_images(...)) 的结果可以直接传进来复用。
     """
     out = []
-    if not s:
-        return out
-    for m in URL_BODY_RE.finditer(s):
-        url = m.group(0).rstrip(_IMG_TRAIL)
-        if not url:
-            continue
+    for start, end, url in _line_links(s):
         if verify:
-            hit = cache.get(url) if cache is not None else None
+            key = image_key(url)
+            hit = cache.get(key) if cache is not None else None
             if hit is None:
-                hit = _img_content_type(url, timeout)
+                hit = _is_image_url(url, timeout)
                 if cache is not None:
-                    cache[url] = hit
-            ok = hit in IMG_MIMES
+                    cache[key] = hit
+            ok = hit
         else:
             ok = _img_suffix(url)
         if ok:
-            out.append((m.start(), m.end(), url))
+            out.append((start, end, url))
+    return out
+
+
+# ---------------------------------------------------------------- 插图下载
+# 「下载插图链接」是唯一会把图片落到本机的选项：正文里的插图按出现顺序存成
+# 001.jpg、002.png …，导出的 epub 再照同一份映射把链接换成 images/001.jpg。
+IMG_DIRNAME = "插图"            # 输出目录下放插图的根目录
+IMG_HREF_DIR = "images/"        # epub 内部的插图目录（相对 OEBPS）
+IMG_DL_TIMEOUT = 20.0           # 单张图超时；比校验松，图片本身可能很大
+IMG_MAX_BYTES = 16 * 1024 * 1024
+IMG_MAX_TRIES = 300             # 一本书最多试这么多条链接（无后缀的也要请求一次）
+IMG_PREFETCH_BYTES = 96 * 1024 * 1024   # 校验+下载合并时，预取图暂存在内存里的上限
+_IMG_TAG_RE = re.compile(r"<img\b[^<>]*>", re.I)
+_IMG_MIME_BY_EXT = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+                    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp"}
+_IMG_EXT_BY_MIME = {m: e for e, m in _IMG_MIME_BY_EXT.items()}
+_IMG_EXT_BY_MIME["image/jpg"] = ".jpg"          # 非标准写法，个别站点这么发
+_IMG_KNOWN_EXT = tuple(_IMG_MIME_BY_EXT)
+
+
+def tag_attr(tag, name):
+    """取标签里某个属性的值：双引号、单引号、不带引号三种写法都认。"""
+    m = re.search(name + r"""\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>]+))""",
+                  tag or "", re.I)
+    return ((m.group(1) or m.group(2) or m.group(3) or "").strip()) if m else ""
+
+
+def image_key(url):
+    """链接归一化成映射键：补全协议、去掉正文里粘上的尾随标点，方便原样回找。"""
+    return _img_full_url(url) or (url or "").strip().rstrip(_IMG_TRAIL)
+
+
+def image_mime(name):
+    return _IMG_MIME_BY_EXT.get(os.path.splitext(name or "")[1].lower(), "image/jpeg")
+
+
+def html_image_sources(s):
+    """取出一行里 <img src="…"> 的链接。
+
+    这类链接不看后缀：站内图片常写成 showimg.php?id=123，按后缀永远认不出。
+    """
+    out = []
+    for tag in _IMG_TAG_RE.findall(s or ""):
+        url = tag_attr(tag, "src")
+        if url:
+            out.append(url)
+    return out
+
+
+def image_links_in_text(text):
+    """按出现顺序返回整篇正文里的全部链接（去重），作为插图下载的候选。
+
+    这里不按后缀挑：图床常写 /images?q=tbn:… 这种没有后缀的地址，后缀永远认不出。
+    是不是图由下载时的响应头 / 文件头判（见 _download_image），认不出的自然被丢掉。
+    <img src> 里的链接也算候选 —— 它常不带后缀，且不一定出现在正文文字里。
+    """
+    seen = set()
+    out = []
+    for line in (text or "").splitlines():
+        found = [u for _s, _e, u in _line_links(line)]
+        found.extend(html_image_sources(line))
+        for u in found:
+            k = image_key(u)
+            if k and k not in seen:
+                seen.add(k)
+                out.append(u)
+    return out
+
+
+def _sniff_image_ext(data):
+    """按文件头认格式：比 Content-Type 可靠（不少站点直接返回 octet-stream）。"""
+    if data[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    if data[:2] == b"BM":
+        return ".bmp"
+    return ""
+
+
+def _image_ext(url, ctype, data):
+    """确认这次响应确实是图，并给出后缀；不是图返回 ""。
+
+    先看文件头（最可靠），再看响应头，最后才看链接后缀。
+    """
+    if not data or len(data) > IMG_MAX_BYTES:
+        return ""
+    ext = _sniff_image_ext(data)
+    if ext:
+        return ext
+    # 文件头认不出时只信 Content-Type：返回网页、防盗链提示的都按失败处理
+    if not ctype.startswith("image/"):
+        return ""
+    ext = _IMG_EXT_BY_MIME.get(ctype, "")
+    if ext:
+        return ext
+    full = _img_full_url(url)
+    ext = os.path.splitext(re.split(r"[?#]", full, 1)[0])[1].lower()
+    return ext if ext in _IMG_KNOWN_EXT else ""
+
+
+def _fetch_image(url, timeout=IMG_DL_TIMEOUT):
+    """请求一次并判断是不是插图，返回 (Content-Type, 字节, 后缀)。
+
+    不是图（网页、失效、超大）时字节为空串。校验与下载合并时，
+    「字节非空」就是「这是插图」的判据。
+    """
+    ctype, data = _img_fetch(url, timeout, want_body=True, limit=IMG_MAX_BYTES)
+    ext = _image_ext(url, ctype, data)
+    if not ext:
+        return ctype, b"", ""
+    return ctype, data, ext
+
+
+def _download_image(url, timeout=IMG_DL_TIMEOUT):
+    """下载一张插图，返回 (字节, 后缀)。
+
+    超时、404、连不上、超过体积上限、以及“200 但返回的是网页”一律返回 (None, "")，
+    由调用方跳过这一张 —— 一张图失败不该毁掉整本书的导出。
+    """
+    _ctype, data, ext = _fetch_image(url, timeout)
+    return (data, ext) if data else (None, "")
+
+
+def _to_jpeg(data, ext, quality=88):
+    """jpg/jpeg/png 以外的格式（webp、gif、bmp）统一转成 jpg，返回 (字节, 后缀)。
+
+    转换直接借用 prepare_cover_image（它内部就是 PIL 转 JPEG）；没有 Pillow 时
+    它返回 None，这里就保留原格式 —— 格式支持面窄总比把图丢了强。
+    """
+    if ext in (".jpg", ".jpeg", ".png"):
+        return data, ext
+    path = None
+    got = None
+    try:
+        fd, path = tempfile.mkstemp(suffix=ext)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        got = prepare_cover_image(path, quality=quality)
+    except Exception:
+        got = None
+    finally:
+        if path:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    if not got:
+        return data, ext
+    return got[0], ".jpg"
+
+
+def prefetch_images(text, timeout=IMG_DL_TIMEOUT, stats=None):
+    """把正文候选链接各请求一次，返回 {链接键: (Content-Type, 字节, 后缀)}。
+
+    「插图链接校验」与「下载插图链接」同时开着时用它：一趟请求既拿到图，
+    又给出「这是不是插图」的判定，避免校验一次、下载再一次。
+    字节为空即不是图。结果可交给 verify_cache / save_images 使用。
+    stats 若传入 dict，会写入 links（检查条数）、images（认出张数）、bytes（暂存字节）。
+    """
+    out = {}
+    held = 0
+    for url in image_links_in_text(text)[:IMG_MAX_TRIES]:
+        if held >= IMG_PREFETCH_BYTES:
+            # 图太多的书不硬撑内存：剩下的照旧由清洗校验、由下载另取一次
+            break
+        hit = _fetch_image(url, timeout)
+        held += len(hit[1])
+        out[image_key(url)] = hit
+    if stats is not None:
+        stats["links"] = len(out)
+        stats["images"] = sum(1 for v in out.values() if v[1])
+        stats["bytes"] = held
+    return out
+
+
+def verify_cache(prefetch):
+    """把预取结果转成「插图链接校验」的缓存：命中就不再联网。
+
+    值是布尔（是不是图），键与 find_image_links 的缓存一致（image_key）。
+    """
+    return {k: bool(v[1]) for k, v in (prefetch or {}).items()}
+
+
+def save_images(prefetch, text, dest_dir, stats=None):
+    """按 text 里插图出现的顺序，把已预取的图片落盘，返回 {链接键: 本地路径}。
+
+    只写清洗后仍留在正文里的图：被当广告删掉的行，它的图不再占编号。
+    jpg/png 以外（webp、gif、bmp）转成 jpg 再存。
+    stats 若传入 dict，会写入 links（候选链接数）与 saved（实际保存张数）。
+    """
+    urls = image_links_in_text(text)
+    if stats is not None:
+        stats["links"] = len(urls)
+        stats["saved"] = 0
+    if not urls or not prefetch:
+        return {}
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+    except OSError:
+        return {}
+    out = {}
+    n = 0
+    for url in urls:
+        key = image_key(url)
+        hit = prefetch.get(key)
+        if not hit or not hit[1]:
+            continue
+        data, ext = _to_jpeg(hit[1], hit[2])     # webp/gif/bmp 统一转 jpg
+        n += 1
+        path = os.path.join(dest_dir, "%03d%s" % (n, ext))
+        try:
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError:
+            n -= 1
+            continue
+        out[key] = path
+    if stats is not None:
+        stats["saved"] = len(out)
+    return out
+
+
+def download_images(text, dest_dir, timeout=IMG_DL_TIMEOUT, stats=None):
+    """把正文里的插图按出现顺序下载到 dest_dir，返回 {链接键: 本地路径}。
+
+    候选是行内全部链接（见 image_links_in_text），真图假图由响应头决定。
+    dest_dir 通常是「输出目录/插图/书名」，文件按 001.jpg、002.png … 顺序编号，
+    同一条链接只下一次。jpg/png 以外（webp、gif、bmp）转成 jpg 再存，
+    阅读器支持面更宽。下载失败的链接不进返回值，正文里那条链接就保持原样。
+    stats 若传入 dict，会写入 links（候选链接数）与 saved（实际保存张数）。
+    """
+    urls = image_links_in_text(text)
+    if stats is not None:
+        stats["links"] = len(urls)
+        stats["saved"] = 0
+    if not urls:
+        return {}
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+    except OSError:
+        return {}
+    out = {}
+    n = 0
+    tries = 0
+    for url in urls:
+        # 满篇推广链接的书不该把导出卡在这里：试到上限就收手
+        if tries >= IMG_MAX_TRIES:
+            break
+        tries += 1
+        data, ext = _download_image(url, timeout)
+        if not data:
+            continue
+        data, ext = _to_jpeg(data, ext)          # webp/gif/bmp 统一转 jpg
+        n += 1
+        path = os.path.join(dest_dir, "%03d%s" % (n, ext))
+        try:
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError:
+            n -= 1
+            continue
+        out[image_key(url)] = path
+    if stats is not None:
+        stats["saved"] = len(out)
     return out
 
 
@@ -1035,12 +1331,15 @@ def _ad_split(s, use_url, use_site):
     return "keep", 0
 
 
-def clean_text(text, enabled, stats=None, custom=None):
+def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
     """按启用的规则清洗文本，返回 (新文本, 删除行数)。
 
     stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）
     与 img（被当作插图保留的行数）。
     custom 是自定义规则列表（见 compile_custom），在内置规则之后执行。
+    img_cache 传入 dict 可复用「插图链接校验」的判定（见 verify_cache）：
+    命中时不再联网 —— 「下载插图链接」同时开着时，导出流程就是这样把
+    校验与下载合并成一趟请求的。
     """
     on = set(enabled or [])
     cust = compile_custom(custom)
@@ -1066,8 +1365,8 @@ def clean_text(text, enabled, stats=None, custom=None):
     # imgcheck 还必须同时开着 imgkeep —— 校验只是把“按后缀认”换成“按响应头认”。
     use_img = "imgkeep" in on and (use_url or use_site)
     use_imgchk = use_img and "imgcheck" in on
-    img_cache = {}                  # 同一条链接一本书里只请求一次
-    img_kept = 0
+    img_cache = {} if img_cache is None else img_cache   # 同一条链接只判一次
+    img_kept = 0                    # 被当作插图保留的行数
     for raw in text.splitlines():
         s = raw
         if "trim" in on:
@@ -1828,23 +2127,133 @@ div.cover img{max-width:100%;max-height:100%;}</style>
 """
 
 
-def write_epub(path, title, author, chapters, cover=None, theme="classic"):
+def _esc_attr(s):
+    """属性值转义：除了 & < >，引号也要转，否则 alt 里的引号会把标签截断。"""
+    return _esc(s or "").replace('"', "&quot;")
+
+
+def _img_tag_html(href, alt=""):
+    return '<img class="pic" src="%s" alt="%s"/>' % (href, _esc_attr(alt))
+
+
+_PH_RE = re.compile(r"\x00\d+\x00")
+
+
+def _put_back(esc, slots):
+    """把占位符换回 <img> 标签。占位符里带 \x00，_esc 不会动它。
+
+    slots 是 [(本地路径, alt)]：夹在正文里的插图只把 alt 留在 alt 属性上，
+    图注另起一段会把一句话割断。
+    """
+    for i, (href, alt) in enumerate(slots):
+        esc = esc.replace("\x00%d\x00" % i, _img_tag_html(href, alt))
+    return esc
+
+
+def _pic_block(slots):
+    """插图独占一段：图在上，HTML 写法里的 alt 当图注显示在图下方。"""
+    parts = []
+    for href, alt in slots:
+        cap = '<p class="cap">%s</p>' % _esc(alt) if alt else ""
+        parts.append('    <div class="pic">%s%s</div>' % (_img_tag_html(href, alt), cap))
+    return "\n".join(parts)
+
+
+def _drop_url_tags(s):
+    """删掉仍然含网址的 HTML 残标签：插图换成本地文件后，外层 <a href> 已无意义。"""
+    def rep(m):
+        return "" if URL_RE.search(m.group(0)) else m.group(0)
+    return HTML_TAG_RE.sub(rep, s)
+
+
+def _para_with_images(line, images):
+    """一行正文 → epub 里的 html，插图链接已换成 images/xxx。
+
+    两种写法都认：`<img src="https://…/a.jpg" alt="…">` 整串标签换成本地插图
+    （alt 原样保留，独占一段时还会当图注显示在图下方），以及粘在正文里或独占一行
+    的裸链接。行内没有已下载的插图时返回 None，调用方按普通段落输出 ——
+    这样不开「下载插图链接」时 epub 与旧版逐字节相同。
+    """
+    if not images:
+        return None
+    slots = []
+
+    def put(url, alt=""):
+        href = images.get(image_key(url))
+        if not href:
+            return None
+        slots.append((href, alt))
+        return "\x00%d\x00" % (len(slots) - 1)
+
+    def rep_tag(m):
+        tag = m.group(0)
+        url = tag_attr(tag, "src")
+        if not url:
+            return tag
+        got = put(url, tag_attr(tag, "alt"))
+        return tag if got is None else got
+
+    s = _IMG_TAG_RE.sub(rep_tag, line)
+    # <a href="原链接"><img …></a> 这类包装：图已经换成本地文件，那个指着原网址的
+    # 标签留着只会被转义成源码。必须在处理裸链接之前删，否则 href 会被再换成一张图。
+    s = _drop_url_tags(s)
+    out = []
+    pos = 0
+    for m in URL_BODY_RE.finditer(s):
+        url = m.group(0).rstrip(_IMG_TRAIL)
+        got = put(url)
+        if got is None:
+            continue
+        out.append(s[pos:m.start()])
+        out.append(got)
+        pos = m.start() + len(url)
+    if pos:
+        out.append(s[pos:])
+        s = "".join(out)
+    if not slots:
+        return None
+    # 去掉插图后这行只剩「图片：」这类标签文字时，让插图独占一段
+    plain = _PH_RE.sub("", HTML_TAG_RE.sub("", s))
+    if _slim(plain) == 0:
+        return _pic_block(slots)
+    return "    <p>%s</p>" % _put_back(_esc(s), slots)
+
+
+def write_epub(path, title, author, chapters, cover=None, theme="classic",
+               images=None):
     """用标准库 zipfile 手写 EPUB 2.0（含 toc.ncx，兼容绝大多数阅读器）。
 
     cover: cover_for_book / make_cover / prepare_cover_image 的返回值，
            None 表示不带封面（与旧版输出一致）
     theme: THEMES 里的 id，只影响 style.css
+    images: download_images 的返回值 {链接键: 本地图片路径}；None / 空表示不带插图，
+           给了就把正文里的插图链接换成 images/xxx 并把图片一起打进 epub
     """
     uid = "urn:uuid:" + str(uuid.uuid4())
     title = title or "未命名"
     author = author or "佚名"
+    # 先把图片读进内存：读失败的直接不算，正文里那条链接就保持原样
+    img_files = []                 # [(epub 内文件名, mime, 字节)]
+    img_map = {}                   # 链接键 -> epub 内 href
+    for key, local in (images or {}).items():
+        try:
+            with open(local, "rb") as f:
+                data = f.read()
+        except (OSError, TypeError):
+            continue
+        name = os.path.basename(str(local))
+        if not data or not name:
+            continue
+        img_files.append((name, image_mime(name), data))
+        img_map[key] = IMG_HREF_DIR + name
     pages = []
     for i, (ctitle, body) in enumerate(chapters, 1):
         paras = []
         for p in body.splitlines():
             p = p.strip()
             if p:
-                paras.append("    <p>%s</p>" % _esc(p))
+                paras.append(_para_with_images(p, img_map)
+                             or ("    <p>%s</p>" % _esc(p)))
         pages.append((i, ctitle, "\n".join(paras) or "    <p>（本章无正文）</p>"))
 
     manifest = []
@@ -1859,6 +2268,9 @@ def write_epub(path, title, author, chapters, cover=None, theme="classic"):
             '      <content src="c%04d.xhtml"/>\n'
             "    </navPoint>" % (i, i, _esc(ctitle), i)
         )
+    for k, (iname, imime, _data) in enumerate(img_files, 1):
+        manifest.append('    <item id="im%d" href="%s%s" media-type="%s"/>'
+                        % (k, IMG_HREF_DIR, iname, imime))
 
     has_cover = bool(cover)
     cover_name = ""
@@ -1916,12 +2328,21 @@ def write_epub(path, title, author, chapters, cover=None, theme="classic"):
         z.writestr("META-INF/container.xml", CONTAINER, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/content.opf", opf, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/toc.ncx", ncx, zipfile.ZIP_DEFLATED)
-        z.writestr("OEBPS/style.css", theme_css(theme), zipfile.ZIP_DEFLATED)
+        css = theme_css(theme)
+        if img_files:
+            # 只给带插图的书追几条：不插图时不改 css，输出与旧版逐字节相同
+            css += ('\nimg.pic{max-width:100%;height:auto;}\n'
+                    'div.pic{margin:1em 0;text-align:center;}\n'
+                    'p.cap{font-size:.85em;color:#666666;margin:.3em 0 0;'
+                    'text-indent:0;}\n')
+        z.writestr("OEBPS/style.css", css, zipfile.ZIP_DEFLATED)
         if has_cover:
             z.writestr("OEBPS/" + cover_name, cdata, zipfile.ZIP_DEFLATED)
             z.writestr("OEBPS/cover.xhtml",
                        _COVER_PAGE.replace("__COVER_SRC__", cover_name),
                        zipfile.ZIP_DEFLATED)
+        for iname, _imime, idata in img_files:
+            z.writestr("OEBPS/" + IMG_HREF_DIR + iname, idata, zipfile.ZIP_DEFLATED)
         for i, ctitle, html_body in pages:
             page = (
                 "<?xml version='1.0' encoding='utf-8'?>\n"

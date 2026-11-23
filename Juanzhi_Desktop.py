@@ -99,6 +99,15 @@ HELP_ZH = """卷帙 DeShelf 使用说明
     原地覆盖 — 先备份为 .bak 再写回，省空间但有风险
     仅导出 — 不落盘整理后的 TXT，只生成导出文件
   导出格式可多选：EPUB（兼容绝大多数阅读器）、合并 TXT、分章 TXT。
+  「下载插图链接」需先在批量清洗里勾「保留插图链接」，否则一直置灰：
+  勾上后正文里的插图会下载到「输出目录/插图/书名」，按 001、002… 顺序命名
+  （webp/gif/bmp 会转成 jpg 再存，阅读器支持面更宽）；
+  没有图片后缀的链接（如 images?q=tbn:…）也会请求一次，是不是图以响应头为准；
+  同时导出 EPUB 时，插图会一并打包进 epub，正文里的链接（含 <img> 标签写法）
+  自动替换成 epub 内的插图路径；<img … alt="…"> 的 alt 会原样保留，
+  并在插图下方作为图注显示。
+  若清洗页的「插图链接校验」也勾着，开始处理时两者合并成一趟请求：取图的同时
+  就完成校验，不会同一批链接先校验一遍、下载时再请求一遍。
 
 【小提示】
   · 双击书库中的行可切换勾选；右键可打开文件位置。
@@ -153,6 +162,17 @@ HELP_EN = """DeShelf User Guide
     Export only — keep no cleaned TXT, just generated files
   Formats (multi-select): EPUB (TOC, most readers), merged TXT,
   per-chapter TXT.
+  “Download illustration links” stays greyed out until “Keep illustration
+  links” is ticked on the cleaning page. Once ticked, illustrations are saved
+  to “output folder/插图/book title” as 001, 002… (webp/gif/bmp are converted
+  to jpg); links without an image suffix (e.g. images?q=tbn:…) are requested
+  too — the Content-Type decides;
+  when EPUB is also exported
+  they are packed into the epub and the links in the text (including <img>
+  tags) are replaced with the in-epub image paths. The alt text of an
+  <img alt="…"> is kept and printed as a caption under the picture.
+  If “Verify illustration links” is on as well, the two share a single
+  request per link — downloading decides verification, no double fetch.
 
 [Tips]
   · Double-click a library row to toggle selection; right-click for file actions.
@@ -163,8 +183,10 @@ HELP_EN = """DeShelf User Guide
 
 DISC_ZH = """免责声明
 
-卷帙 DeShelf 是一款纯本地的文本整理工具：它不联网、不下载、不上传、
+卷帙 DeShelf 是一款纯本地的文本整理工具：默认不联网、不上传、
 不提供也不存储任何书籍内容，仅对用户本机已有的文件做清洗、分章与格式转换。
+只有你主动勾选「插图链接校验」或「下载插图链接」时，程序才会按正文里的链接
+取回插图信息或图片本身，且只保存在你自己的电脑上。
 
 用户应确保其处理的文件拥有合法来源并仅用于个人学习研究，
 因使用本工具产生的任何版权或法律问题，由使用者自行承担。
@@ -175,9 +197,12 @@ DISC_ZH = """免责声明
 
 DISC_EN = """Disclaimer
 
-DeShelf is a purely local text-organizing tool: it does not connect to the
-network, download, upload, host or store any book content. It only cleans,
-splits and converts files that already exist on the user's own machine.
+DeShelf is a purely local text-organizing tool: by default it does not connect
+to the network or upload anything, and it never hosts or stores book content.
+It only cleans, splits and converts files that already exist on your machine.
+Network access happens solely when you tick “Verify illustration links” or
+“Download illustration links”, which fetches image info or the images
+themselves — and keeps them on your own computer.
 
 Users are responsible for ensuring the files they process have a legal
 source and are used for personal study only. Any copyright or legal issue
@@ -192,7 +217,8 @@ ABOUT_ZH = """版权与许可 · Copyright & License
 
 卷帙 DeShelf {ver}
 本地 TXT 整理工具：扫描 · 清洗 · 分章 · 导出 EPUB / TXT。
-纯离线运行——不联网、不上传、不下载任何书籍内容，全部处理只在这台电脑上完成。
+纯本地运行——不上传、不下载任何书籍内容，全部处理只在这台电脑上完成；
+仅在你勾选插图校验 / 下载插图时按正文里的链接取图。
 
 【作者与署名】
 © 2026 永远的兰兰 (Lanlan Eternal)
@@ -234,7 +260,8 @@ ABOUT_EN = """Copyright & License
 
 DeShelf {ver}
 A local TXT organizer: scan · clean · split · export EPUB / TXT.
-Fully offline — no network, no uploads, no downloads of any book content.
+Runs entirely on your machine — no uploads, no downloads of any book content;
+only opted-in illustration verification / download touches the network.
 
 [ Author & attribution ]
 © 2026 Lanlan Eternal
@@ -400,6 +427,7 @@ TEXTS = {
         "f_theme": "版面主题", "f_cover": "封面",
         "cov_auto": "自动：优先同名图片", "cov_default": "生成默认封面",
         "cov_none": "不加封面",
+        "f_imgdl": "下载插图链接",
         "grp_out": "输出目录",
         "b_go": "开始处理",
         "out_note": "处理期间请勿关闭窗口。大批量任务建议先选少量书试跑。",
@@ -422,6 +450,10 @@ TEXTS = {
         "prog_done": "处理完成",
         "log_per_book": "[{0}/{1}] {2}：{3} 章，清洗删除 {4} 行",
         "log_book_fail": "[{0}/{1}] {2} 失败：{3}",
+        "log_img_prefetch": "  插图链接：检查 {0} 条，认出 {1} 张",
+        "log_img_save": "  插图已保存 {0} 张 → {1}",
+        "log_img_skip": "  另有 {0} 条链接不是图片或打不开，已跳过",
+        "log_img_fail": "  插图下载失败：{0}",
         "log_outdir_fail": "无法创建输出目录：{0}",
         "log_open_fail": "无法打开资源管理器：{0}",
         "log_file_fail": "无法打开文件：{0}",
@@ -456,7 +488,7 @@ TEXTS = {
         # 关于 / 帮助
         "about_title": "关于 %s %s",
         "about_what": "本地文本整理工具：扫描 · 清洗 · 分章 · 导出\n"
-                      "纯离线运行，不联网、不下载、不上传任何内容。",
+                      "纯本地运行，不上传、不下载任何书籍内容。",
         "about_repo": "GitHub 主页 / 查看最新版：\nhttps://github.com/podcatcher962/DeShelf/releases",
         "usage_title": "使用说明", "disclaimer_title": "免责声明",
         "help_text": HELP_ZH, "disclaimer_text": DISC_ZH,
@@ -578,6 +610,7 @@ TEXTS = {
         "f_theme": "Layout", "f_cover": "Cover",
         "cov_auto": "Auto: same-name image first", "cov_default": "Generate default cover",
         "cov_none": "No cover",
+        "f_imgdl": "Download illustration links",
         "grp_out": "Output Folder",
         "b_go": "Start",
         "out_note": "Keep the window open while processing. For large batches, try a few books first.",
@@ -599,6 +632,10 @@ TEXTS = {
         "prog_done": "Done",
         "log_per_book": "[{0}/{1}] {2}: {3} chapters, {4} lines removed",
         "log_book_fail": "[{0}/{1}] {2} failed: {3}",
+        "log_img_prefetch": "  Illustration links: {0} checked, {1} image(s) found",
+        "log_img_save": "  {0} illustration(s) saved to {1}",
+        "log_img_skip": "  {0} link(s) were not images or unreachable — skipped",
+        "log_img_fail": "  Illustration download failed: {0}",
         "log_outdir_fail": "Cannot create output folder: {0}",
         "log_open_fail": "Cannot open Explorer: {0}",
         "log_file_fail": "Cannot open file: {0}",
@@ -624,7 +661,7 @@ TEXTS = {
         "csv_name": "library_list.csv", "csv_type": "CSV files",
         "about_title": "About %s %s",
         "about_what": "A local TXT organizer: scan · clean · split · export\n"
-                      "Fully offline — no network, no upload, nothing leaves your computer.",
+                      "Runs on your machine — no upload, nothing leaves your computer.",
         "about_repo": "GitHub homepage / latest release:\nhttps://github.com/podcatcher962/DeShelf/releases",
         "usage_title": "User Guide", "disclaimer_title": "Disclaimer",
         "help_text": HELP_EN, "disclaimer_text": DISC_EN,
@@ -803,6 +840,8 @@ class App:
         self.fmt_vars = {"epub": tk.BooleanVar(value=True),
                          "merge": tk.BooleanVar(value=False),
                          "split": tk.BooleanVar(value=False)}
+        # 「下载插图链接」默认不勾且置灰，等批量清洗勾了「保留插图链接」才放开
+        self.img_dl_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value=self.S["st_ready"])
         self.prog_var = tk.DoubleVar(value=0)
 
@@ -1358,6 +1397,11 @@ class App:
         self.cb_cover = ttk.Combobox(row2, state="readonly", width=20,
                                      values=self.cover_names)
         self.cb_cover.pack(side="left", padx=(px(4), 0))
+        # 插图下载：只影响 epub 打包与「插图/书名」目录，不改正文
+        self.cb_imgdl = ttk.Checkbutton(row2, text=S["f_imgdl"],
+                                        variable=self.img_dl_var)
+        self.cb_imgdl.pack(side="left", padx=(px(16), 0))
+        self.refresh_imgdl_state()
         self._restore_epub_opts()
         self.cb_theme.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
         self.cb_cover.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
@@ -2017,6 +2061,25 @@ class App:
                 cv.configure(scrollregion=cv.bbox("all"))
             except Exception:
                 pass
+        self.refresh_imgdl_state()
+
+    def refresh_imgdl_state(self):
+        """「下载插图链接」跟随清洗页的「保留插图链接」：没开就置灰且强制不勾。
+
+        正文里没有插图链接可下时，这个选项只会让用户以为下了东西，所以默认关死；
+        关掉前一条时顺手清空勾选，免得上演“灰着却勾着”的坑。
+        """
+        cb = getattr(self, "cb_imgdl", None)
+        if cb is None:
+            return
+        on = bool(self.rule_vars["imgkeep"].get())
+        cb.state(["!disabled"] if on else ["disabled"])
+        if not on and self.img_dl_var.get():
+            self.img_dl_var.set(False)
+
+    def img_download(self):
+        """主线程取当前选择：清洗规则没开「保留插图链接」时一律按不下载处理。"""
+        return bool(self.img_dl_var.get()) and bool(self.rule_vars["imgkeep"].get())
 
     def set_rules(self, val):
         for r in jzcore.RULES:
@@ -2464,13 +2527,14 @@ class App:
         custom = self.custom_re.get().strip() or None
         theme, cover_mode = self.epub_opts()
         self._save_epub_opts()
+        img_dl = self.img_download()
         threading.Thread(target=self.run_worker,
                          args=(sel, fmts, mode, outdir, rules, custom,
-                               theme, cover_mode),
+                               theme, cover_mode, img_dl),
                          daemon=True).start()
 
     def run_worker(self, sel, fmts, mode, outdir, rules, custom,
-                   theme="classic", cover_mode="auto"):
+                   theme="classic", cover_mode="auto", img_dl=False):
         S = self.S
         ok = fail = 0
         if mode != "inplace" and outdir:
@@ -2486,23 +2550,39 @@ class App:
                 break
             self.q.put(("prog", (i - 1, total, S["prog_run"].format(i, total, b["title"]))))
             try:
+                # 这本书的插图日志先攒着，等「[i/N] 书名…」那行之后再一起打
+                notes = []
                 # 原地覆盖始终从磁盘原文按当前规则重洗写回；其余模式优先用内存清洗快照
+                raw = None
+                text = None
+                removed = 0
                 if mode == "inplace":
-                    text = jzcore.load_text(b["path"])
-                    removed = 0
-                    if rules:
-                        text, removed = jzcore.clean_text(text, rules, None, self.custom_rules)
+                    raw = jzcore.load_text(b["path"])
                 else:
                     text = b.get("_clean")
-                    removed = 0
                     if text is None:
-                        text = jzcore.load_text(b["path"])
-                        if rules:
-                            text, removed = jzcore.clean_text(text, rules, None, self.custom_rules)
+                        raw = jzcore.load_text(b["path"])
+                # 「插图链接校验」和「下载插图链接」同开时只跑一趟网络：先把候选链接
+                # 各取一次（字节非空即插图），判定结果喂给清洗，清洗环节不再联网
+                prefetch = None
+                if img_dl and outdir and raw is not None and "imgcheck" in rules:
+                    pst = {}
+                    prefetch = jzcore.prefetch_images(raw, stats=pst)
+                    notes.append(S["log_img_prefetch"].format(
+                        pst.get("links", 0), pst.get("images", 0)))
+                if raw is not None:
+                    text = raw
+                    if rules:
+                        text, removed = jzcore.clean_text(
+                            text, rules, None, self.custom_rules,
+                            jzcore.verify_cache(prefetch) if prefetch else None)
                 chapters = jzcore.split_chapters(text, self._re_for(b, custom))
                 b["chapters"] = len(chapters)       # 实际切分结果回写，供①书库展示
                 title = b["title"] or os.path.splitext(b["name"])[0]
                 base = safe_name(title, fallback=S["unnamed"])
+                # 插图先落到「输出目录/插图/书名」，epub 再照这份映射打包
+                images = (self.fetch_images(text, outdir, base, prefetch, notes)
+                          if (img_dl and outdir) else None)
                 if mode == "inplace":
                     bak = b["path"] + ".bak"
                     if not os.path.exists(bak):
@@ -2525,13 +2605,16 @@ class App:
                             cover = None
                         jzcore.write_epub(self.uniq(outdir, base + ".epub"),
                                           title, b["author"], chapters,
-                                          cover=cover, theme=theme)
+                                          cover=cover, theme=theme,
+                                          images=images)
                     # “输出到新目录”落盘的 TXT 与合并 TXT 内容等价，避免生成重复文件
                     if "merge" in fmts and mode != "new":
                         jzcore.save_txt(chapters, self.uniq(outdir, base + ".txt"), merge=True)
                     if "split" in fmts:
                         jzcore.save_txt(chapters, self.uniq(outdir, base + ".txt"), merge=False)
                 self.q.put(("log", S["log_per_book"].format(i, total, title, len(chapters), removed)))
+                for m in notes:
+                    self.q.put(("log", m))
                 ok += 1
             except Exception as e:
                 fail += 1
@@ -2540,6 +2623,38 @@ class App:
         self.q.put(("prog", (total, total, S["prog_done"])))
         final = outdir if mode != "inplace" else (outdir or S["log_out_final"])
         self.q.put(("done", ("run", ok, fail, final)))
+
+    def fetch_images(self, text, outdir, base, prefetch=None, notes=None):
+        """把一本书的插图下载到「输出目录/插图/书名」，返回 {链接: 本地路径}。
+
+        目录按书名复用：同一本书重跑只是覆盖同名编号文件，不会堆出「书名 (1)」。
+        prefetch 是清洗前那趟请求的结果（见 jzcore.prefetch_images）：给了它就直接
+        落盘，不再联网，避免同一批链接被请求两次。
+        notes 传入 list 时，成功/跳过的统计攒进去由调用方统一输出；报错仍即时打。
+        """
+        S = self.S
+        dest = os.path.join(outdir, jzcore.IMG_DIRNAME, base)
+        st = {}
+        try:
+            if prefetch is not None:
+                got = jzcore.save_images(prefetch, text, dest, st)
+            else:
+                got = jzcore.download_images(text, dest, stats=st)
+        except Exception as e:
+            self.q.put(("log", S["log_img_fail"].format(e)))
+            return None
+        msgs = []
+        if got:
+            msgs.append(S["log_img_save"].format(len(got), dest))
+        skip = st.get("links", 0) - len(got or {})
+        if skip > 0:
+            msgs.append(S["log_img_skip"].format(skip))
+        if notes is None:
+            for m in msgs:
+                self.q.put(("log", m))
+        else:
+            notes.extend(msgs)
+        return got or None
 
     def uniq(self, outdir, filename):
         p = os.path.join(outdir, filename)
