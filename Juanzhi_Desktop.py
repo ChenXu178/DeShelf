@@ -372,7 +372,7 @@ TEXTS = {
         "prog_clean": "清洗 {0}/{1}：《{2}》",
         "st_clean_done": "已清洗 {0} 本 · 共删除 {1} 行",
         "log_clean_done": "批量清洗完成：{0} 本 · 删除 {1} 行",
-        "clean_hint": "  对第一本勾选的书试跑，左边原文、右边清洗后",
+        "clean_hint": "  对第一本勾选的书试跑：左边原文（被清洗的部分标红）、右边清洗后",
         "col_pre": "清洗前", "col_post": "清洗后",
         "cmp_var": "删除 {0} 行，{1} → {2} 字",
         "cmp_var_cut": "删除 {0} 行、另 {3} 行只裁了行尾网址，{1} → {2} 字",
@@ -547,7 +547,7 @@ TEXTS = {
         "prog_clean": "Cleaning {0}/{1}: {2}",
         "st_clean_done": "Cleaned {0} books · {1} lines removed",
         "log_clean_done": "Batch clean done: {0} books · {1} lines removed",
-        "clean_hint": "  Dry-run on the first selected book: original left, cleaned right",
+        "clean_hint": "  Dry-run on the first selected book: original left (removed parts in red), cleaned right",
         "col_pre": "Original", "col_post": "Cleaned",
         "cmp_var": "{0} lines removed, {1} → {2} chars",
         "cmp_var_cut": "{0} lines removed, {3} more only had a trailing URL trimmed, {1} → {2} chars",
@@ -719,6 +719,15 @@ def px(v):
     都必须经过这里换算，否则开启系统缩放后只有字号变大、布局不变。
     """
     return int(round(v * _SCALE))
+
+
+def _wrap_label(e):
+    """Label 的 wraplength 跟随自身宽度：窗口变窄时自动折行，而不是被切掉。
+
+    用法：lab.bind("<Configure>", _wrap_label)；不需要时给 lab 一个
+    wraplength 常量即可，别指望 pack 会自动换行。
+    """
+    e.widget.configure(wraplength=max(px(120), e.width - px(8)))
 
 
 def _set_dpi_aware():
@@ -1277,19 +1286,33 @@ class App:
         right.pack(side="left", fill="both", expand=True, padx=px(4), pady=px(6))
         bar = ttk.Frame(right)
         bar.pack(fill="x")
-        ttk.Button(bar, text=S["b_preview"], style="Accent.TButton",
+        btnrow = ttk.Frame(bar)
+        btnrow.pack(fill="x")
+        ttk.Button(btnrow, text=S["b_preview"], style="Accent.TButton",
                    command=self.preview_clean).pack(side="left")
-        self.btn_clean_apply = ttk.Button(bar, text=S["b_clean_apply"],
+        self.btn_clean_apply = ttk.Button(btnrow, text=S["b_clean_apply"],
                                           style="Go.TButton",
                                           command=self.start_clean)
         self.btn_clean_apply.pack(side="left", padx=(px(6), 0))
-        ttk.Label(bar, text=S["clean_hint"], foreground="#666666").pack(side="left")
         self.cmp_var = tk.StringVar(value="")
-        ttk.Label(bar, textvariable=self.cmp_var, foreground="#2E7D32").pack(side="right")
+        # 预览统计可能很长（删除行数、合并断行、插图链接…），同样按可用宽度折行；
+        # 折行后必须左对齐，右对齐会让第二行起每行都顶着右边，看起来像排版错乱
+        cmp_lab = ttk.Label(btnrow, textvariable=self.cmp_var, foreground="#2E7D32",
+                            justify="left", anchor="w")
+        cmp_lab.pack(side="left", fill="x", expand=True, padx=(px(8), 0))
+        cmp_lab.bind("<Configure>", _wrap_label)
+        # 提示文字单独占一行，并按可用宽度自动换行：跟按钮挤在同一行时，
+        # 窗口一窄就被切掉，用户得拉宽窗口才看得到后半句。
+        self.hint_lab = ttk.Label(bar, text=S["clean_hint"], foreground="#666666",
+                                  justify="left", anchor="w")
+        self.hint_lab.pack(fill="x", pady=(px(2), 0))
+        self.hint_lab.bind("<Configure>", _wrap_label)
         box = ttk.Frame(right)
         box.pack(fill="both", expand=True, pady=px(4))
         self.txt_before = self._mk_text(box, S["col_pre"])
         self.txt_after = self._mk_text(box, S["col_post"])
+        # 预览时被清洗掉的内容标红：整行删除的整行标红，行内挖掉的只标那一段
+        self.txt_before.tag_configure("del", foreground=RED)
 
     def _mk_text(self, parent, title):
         f = ttk.LabelFrame(parent, text=title, style="Card.TLabelframe")
@@ -2162,6 +2185,41 @@ class App:
         ttk.Button(bar, text=S["d_ok"], command=_ok).pack(side="right")
         ttk.Button(bar, text=S["d_cancel"], command=w.destroy).pack(side="right", padx=px(6))
 
+    def _fill_before(self, text, stats):
+        """左栏原文：被清洗掉的内容标红（与 Web 版预览同一套标记）。
+
+        整行被删的整行标红；行内只挖掉一段的（HTML 标签、行尾网址）只标那一段，
+        其余正文保持原色，所以「划线的是垃圾、没标的是正文」一眼能分清。
+        """
+        t = self.txt_before
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        dels = stats.get("del") or set()
+        cuts = stats.get("cut") or {}
+        marks = stats.get("mark") or {}
+        for line in text.splitlines()[:400]:
+            if line in dels:
+                t.insert("end", line + "\n", "del")
+                continue
+            ranges = list(marks.get(line, ()))
+            if line in cuts:
+                ranges.append((cuts[line], len(line)))
+            if not ranges:
+                t.insert("end", line + "\n")
+                continue
+            ranges.sort()
+            pos = 0
+            for start, end in ranges:
+                a = min(max(start, pos), len(line))
+                z = min(max(end, a), len(line))
+                if a > pos:
+                    t.insert("end", line[pos:a])
+                if z > a:
+                    t.insert("end", line[a:z], "del")
+                pos = z
+            t.insert("end", line[pos:] + "\n")
+        t.configure(state="disabled")
+
     def preview_clean(self):
         S = self.S
         b = self.first_selected()
@@ -2172,15 +2230,17 @@ class App:
             text = jzcore.load_text(b["path"])
             rules = self.active_rules()
             stats = {}
-            cleaned, removed = jzcore.clean_text(text, rules, stats, self.custom_rules)
+            cleaned, removed = jzcore.clean_text(text, rules, stats, self.custom_rules,
+                                                 want_del=True)
         except Exception as e:
             messagebox.showerror(S["d_preview_fail"], str(e))
             return
-        for t, s in ((self.txt_before, text), (self.txt_after, cleaned)):
-            t.configure(state="normal")
-            t.delete("1.0", "end")
-            t.insert("1.0", "\n".join(s.splitlines()[:400]))
-            t.configure(state="disabled")
+        self._fill_before(text, stats)
+        t = self.txt_after
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        t.insert("1.0", "\n".join(cleaned.splitlines()[:400]))
+        t.configure(state="disabled")
         cut = stats.get("trimmed", 0)
         key = "cmp_var_cut" if cut else "cmp_var"
         dup = stats.get("jsdup", 0)

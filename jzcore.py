@@ -860,15 +860,17 @@ def _slim(s):
 
 
 def strip_url_tags(s):
-    """清掉含网址的 HTML 标签，返回 (新文本, 是否命中)。
+    """清掉含网址的 HTML 标签，返回 (新文本, 是否命中, 被删标签在原行里的位置)。
 
     盗版站常把配图直接塞进正文（<img src="https://…jpg" alt='…'>），整串标签都是垃圾。
     命中时把这一行的标签全部去掉（否则会留下半截 </a>），标签外面的正文文字照样保留。
+    第三项给预览标红用：标签是从行中间挖掉的，既不是整行删除也不是行尾裁剪。
     """
     tags = HTML_TAG_RE.findall(s)
     if not tags or not any(URL_RE.search(t) for t in tags):
-        return s, False
-    return HTML_TAG_RE.sub("", s), True
+        return s, False, ()
+    spans = tuple((m.start(), m.end()) for m in HTML_TAG_RE.finditer(s))
+    return HTML_TAG_RE.sub("", s), True, spans
 
 
 def _residual(s):
@@ -1331,7 +1333,7 @@ def _ad_split(s, use_url, use_site):
     return "keep", 0
 
 
-def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
+def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=False):
     """按启用的规则清洗文本，返回 (新文本, 删除行数)。
 
     stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）
@@ -1340,9 +1342,16 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
     img_cache 传入 dict 可复用「插图链接校验」的判定（见 verify_cache）：
     命中时不再联网 —— 「下载插图链接」同时开着时，导出流程就是这样把
     校验与下载合并成一趟请求的。
+    want_del=True 时额外在 stats 里写入预览标红所需的三项（与 Web 版一致）：
+    del（被整行删掉的原行集合）、cut（原行 → 行尾网址开始的位置）、
+    mark（原行 → 行内被挖掉的若干区间）。
     """
     on = set(enabled or [])
     cust = compile_custom(custom)
+    # 预览标红用：只有预览会传 want_del，批量清洗不记录，省内存也省时间
+    del_lines = set() if want_del else None
+    cut_map = {} if want_del else None
+    mark_map = {} if want_del else None
     removed = 0
     trimmed = 0
     glued = 0
@@ -1369,10 +1378,12 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
     img_kept = 0                    # 被当作插图保留的行数
     for raw in text.splitlines():
         s = raw
+        lead = 0
         if "trim" in on:
+            lead = len(raw) - len(raw.lstrip())   # 行首抹掉的空白：行内位置要加回它
             s = s.strip()
         if "half" in on:
-            s = to_halfwidth(s)
+            s = to_halfwidth(s)                   # 全角转半角一对一，长度不变
         cut = 0
         drop = False
         protect = False
@@ -1388,14 +1399,23 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
                     img_kept += 1
         if drop:
             removed += 1
+            if want_del:
+                del_lines.add(raw)
             continue
         if use_url and not protect:
             # 含网址的 HTML 标签整块清掉，标签外的文字保留
-            s, tag_hit = strip_url_tags(s)
+            s, tag_hit, tag_spans = strip_url_tags(s)
             if tag_hit:
                 if not s.strip(" \u3000"):
                     removed += 1
+                    if want_del:
+                        del_lines.add(raw)
                     continue
+                if want_del and tag_spans:
+                    # 记下被挖掉的那几段，预览要标红
+                    cur = mark_map.setdefault(raw, [])
+                    for a, z in tag_spans:
+                        cur.append((a + lead, z + lead))
                 if "trim" in on:
                     s = s.strip()
         if (use_url or use_site) and not protect:
@@ -1411,13 +1431,19 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
                 drop = True
         if drop:
             removed += 1
+            if want_del:
+                del_lines.add(raw)
             continue
         if cut:
             s = s[:cut].rstrip(" \u3000，,、；;：:")
             if not _slim(s):
                 removed += 1
+                if want_del:
+                    del_lines.add(raw)
                 continue
             trimmed += 1
+            if want_del:
+                cut_map[raw] = cut + lead
         # 自定义规则：drop 整行丢弃，cut 只挖掉命中的片段（挖空了交给空行规则处理）
         if cust:
             for rx, act in cust:
@@ -1431,13 +1457,19 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
                 break
             if drop:
                 removed += 1
+                if want_del:
+                    del_lines.add(raw)
                 continue
         if "blank" in on and not s:
             removed += 1
+            if want_del:
+                del_lines.add(raw)
             continue
         if "blank2" in on and not s:
             if prev_blank:
                 removed += 1
+                if want_del:
+                    del_lines.add(raw)
                 continue
             prev_blank = True
             out.append("")
@@ -1453,6 +1485,8 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
         if dels:
             jsdup_n = len(dels)
             removed += jsdup_n
+            if want_del:
+                del_lines.update(dels)
             out = kept
     # 去掉首尾空行：用指针扫描避免 pop(0) 在大文本上的 O(n²)
     start = 0
@@ -1471,6 +1505,10 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None):
         stats["glued"] = glued
         stats["wrap_skip"] = wrap_skip
         stats["img"] = img_kept
+        if want_del:
+            stats["del"] = del_lines
+            stats["cut"] = cut_map
+            stats["mark"] = mark_map
     return "\n".join(out) + ("\n" if out else ""), removed
 
 
