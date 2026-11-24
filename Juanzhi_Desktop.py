@@ -429,8 +429,26 @@ TEXTS = {
         "re_close": "关闭",
         "col_chap_title": "章节标题",
         "col_c_book": "书名", "col_c_chaps": "章节",
+        "col_chap_check": "校验",
+        "chap_ck_bad": " · 校验异常 {0} 处",
+        "chap_ck_books": " · 校验异常 {0} 本",
+        "chap_tree": " · 章节树 {0} 级",
+        "chap_ck_lv": "第{0}级",
+        "b_chap_tree": "导出章节树",
+        "tr_book": "书籍：{0}",
+        "tr_src": "源文件：{0}",
+        "tr_split": "切分：{0} 章 · 正文 {1} 字 · 章节树 {2} 级",
+        "tr_check": "校验：{0}",
+        "tree_suffix": "_章节树",
+        "d_export_ok": "导出成功",
+        "d_export_ok_msg": "章节树已导出到：\n{0}",
+        "d_export_fail": "导出失败",
+        "d_tree_outdir": "未设置输出目录",
+        "d_tree_outdir_msg": "请先到「导出分发」页选择输出目录，再导出章节树。",
+        "log_tree_export": "已导出章节树：{0}",
         "chap_res": "点「试分章节」查看结果",
         "chap_all_done": "试分 {0} 本：共 {1} 章，异常 {2} 本（见日志）",
+        "chap_dbl_hint": "　双击任意一行进入该书单本试分",
         "chap_sum": "《{0}》共切出 {1} 章，正文合计 {2} 字",
         "prog_chap": "试分中 {0}/{1}：《{2}》",
         "st_chap_done": "试分完成：{0} 本成功 · 共 {1} 章 · 异常 {2} 本",
@@ -631,8 +649,26 @@ TEXTS = {
         "re_close": "Close",
         "col_chap_title": "Chapter Title",
         "col_c_book": "Book", "col_c_chaps": "Chapters",
+        "col_chap_check": "Check",
+        "chap_ck_bad": " · {0} check issue(s)",
+        "chap_ck_books": " · {0} book(s) with issues",
+        "chap_tree": " · {0}-level chapter tree",
+        "chap_ck_lv": "Level {0}",
+        "b_chap_tree": "Export tree",
+        "tr_book": "Book: {0}",
+        "tr_src": "Source: {0}",
+        "tr_split": "Split: {0} chapters · {1} chars · chapter tree {2} level(s)",
+        "tr_check": "Check: {0}",
+        "tree_suffix": "_chapter_tree",
+        "d_export_ok": "Exported",
+        "d_export_ok_msg": "Chapter tree exported to:\n{0}",
+        "d_export_fail": "Export failed",
+        "d_tree_outdir": "No output folder",
+        "d_tree_outdir_msg": "Please choose an output folder on the \u201cExport\u201d page first.",
+        "log_tree_export": "Chapter tree exported: {0}",
         "chap_res": "Click \u201cTry Split\u201d to preview",
         "chap_all_done": "Tried {0} books: {1} chapters in total, {2} failed (see log)",
+        "chap_dbl_hint": "  double-click a row to open that book",
         "chap_sum": "\u201c{0}\u201d: {1} chapters, {2} chars total",
         "prog_chap": "Splitting {0}/{1}: {2}",
         "st_chap_done": "Split done: {0} books · {1} chapters · {2} failed",
@@ -1443,6 +1479,11 @@ class App:
         self.cb_chap = ttk.Combobox(pick, textvariable=self.chap_pick_text,
                                     state="readonly", width=46)
         self.cb_chap.pack(side="left", padx=px(4))
+        # 把这本书的章节树（含层级、解析出的序号链、校验结果）导出成文本，便于排查
+        self.btn_chap_tree = ttk.Button(pick, text=S["b_chap_tree"],
+                                        style="Soft.TButton",
+                                        command=self.export_chap_tree)
+        self.btn_chap_tree.pack(side="left", padx=(0, px(6)))
         ttk.Label(pick, text=S["chap_pick_hint"], foreground="#666666",
                   font=FONT_S).pack(side="left")
         # 每本书可以有自己的分章正则：留空就用上面的全局正则
@@ -1465,12 +1506,19 @@ class App:
                   foreground="#666666", font=FONT_S).pack(anchor="w", padx=px(8))
         wrap = ttk.Frame(f)
         wrap.pack(fill="both", expand=True, padx=px(8), pady=px(4))
-        self.tv_chap = ttk.Treeview(wrap, columns=("no", "title", "chars"),
+        self.tv_chap = ttk.Treeview(wrap, columns=("no", "title", "chars", "check"),
                                     show="headings", height=8)
-        for c, w, t in (("no", px(60), "#"), ("title", px(520), S["col_chap_title"]),
-                        ("chars", px(100), S["col_chars"])):
+        for c, w, t in (("no", px(60), "#"), ("title", px(420), S["col_chap_title"]),
+                        ("chars", px(100), S["col_chars"]),
+                        ("check", px(240), S["col_chap_check"])):
             self.tv_chap.heading(c, text=t)
-            self.tv_chap.column(c, width=w, anchor="w" if c == "title" else "center")
+            self.tv_chap.column(c, width=w,
+                                anchor="w" if c == "title" else "center")
+        # 校验不过的章整行标红（Treeview 只能按行着色）；正常的行保持默认色
+        self.tv_chap.tag_configure("bad", foreground=RED)
+        # 批量试分的结果行：双击进入这本书的单本试分
+        self._chap_rows = {}
+        self.tv_chap.bind("<Double-1>", self.on_chap_double)
         sb = ttk.Scrollbar(wrap, orient="vertical", command=self.tv_chap.yview)
         self.tv_chap.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
@@ -1784,12 +1832,15 @@ class App:
                     self.add_book(payload)
                 elif kind == "chaprow":
                     # 批量试分逐本回填：先写回书籍章数（①书库同步），再追加③页结果行
-                    n, b, cnt = payload
+                    # 校验栏只放这本书的汇总；正常的书不着色，只有异常的书整行标红
+                    n, b, cnt, ck_txt, ck_bad = payload
                     self._set_book_chaps(b, cnt)
                     if hasattr(self, "tv_chap"):
-                        self.tv_chap.insert("", "end",
-                                            values=(n, b["title"] or os.path.splitext(b["name"])[0],
-                                                    str(cnt)))
+                        iid = self.tv_chap.insert(
+                            "", "end", tags=("bad",) if ck_bad else (),
+                            values=(n, b["title"] or os.path.splitext(b["name"])[0],
+                                    str(cnt), ck_txt))
+                        self._chap_rows[iid] = b     # 双击这一行 → 单本试分这本书
                 elif kind == "prog":
                     cur, total, label = payload
                     self.prog_var.set(0 if not total else cur * 100.0 / total)
@@ -1806,7 +1857,8 @@ class App:
         self.btn_stop.configure(state="normal" if busy else "disabled")
         self.btn_go.configure(state="disabled" if busy else "normal")
         # 分章页按钮同步禁用：批量试分/分章与导出、清洗共用同一套后台任务与「停止」
-        for b in (getattr(self, "btn_chap_try", None), getattr(self, "btn_chap_all", None)):
+        for b in (getattr(self, "btn_chap_try", None), getattr(self, "btn_chap_all", None),
+                  getattr(self, "btn_chap_tree", None)):
             if b is not None:
                 b.configure(state="disabled" if busy else "normal")
 
@@ -2284,12 +2336,14 @@ class App:
             self.log(S["log_clean_done"].format(ok, "{:,}".format(rm_sum))
                      + (S["log_stopped"] if cancelled else ""))
         elif kind == "chap":
-            _s, ok_n, sum_n, bad, cancelled = payload
+            _s, ok_n, sum_n, bad, cancelled, ck_bad = payload
             self.refresh_chap_col()
-            self.chap_var.set(S["chap_all_done"].format(ok_n, sum_n, bad))
+            extra = S["chap_ck_books"].format(ck_bad) if ck_bad else ""
+            self.chap_var.set(S["chap_all_done"].format(ok_n, sum_n, bad) + extra
+                              + S["chap_dbl_hint"])
             st = S["st_chap_done"].format(ok_n, sum_n, bad)
             self.status_var.set(st + (S["log_stopped"] if cancelled else ""))
-            self.log(S["log_chap_done"].format(ok_n, bad, sum_n)
+            self.log(S["log_chap_done"].format(ok_n, bad, sum_n) + extra
                      + (S["log_stopped"] if cancelled else ""))
 
     # ------------------------------------------------------------ 预览
@@ -2728,47 +2782,139 @@ class App:
         elif idx == 0:
             self.refresh_chap_col()
 
-    def preview_chap(self):
+    def _chap_build(self, b):
+        """按当前规则切这本书并校验，返回 (chapters, ck, 生效的章节正则)。"""
+        self.store_book_re()
+        custom = self._re_for(b, self.custom_re.get().strip() or None)
+        text = b.get("_clean")
+        if text is None:
+            text = jzcore.load_text(b["path"])
+            rules = self.active_rules()
+            if rules:
+                text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
+        chapters = jzcore.split_chapters(text, custom)
+        ck = jzcore.check_chapters([t for t, _body in chapters], self.lang)
+        return chapters, ck, custom
+
+    def export_chap_tree(self):
+        """把下拉框选中这本书的章节树导出到书库目录：原名_章节树.txt。"""
         S = self.S
-        self._chap_cols(False)
         b = self.picked_book()
         if not b:
             messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
-        self.store_book_re()
-        custom = self.custom_re.get().strip() or None
-        custom = self._re_for(b, custom)
+        outdir = self.out_var.get().strip()      # 导出到「导出分发」页选的输出目录
+        if not outdir:
+            messagebox.showwarning(S["d_tree_outdir"], S["d_tree_outdir_msg"])
+            return
+        cache = getattr(self, "_chap_cache", None)
         try:
-            text = b.get("_clean")
-            if text is None:
-                text = jzcore.load_text(b["path"])
-                rules = self.active_rules()
-                if rules:
-                    text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
-            chapters = jzcore.split_chapters(text, custom)
+            # 刚用同一本书、同一正则、同一界面语言试分过就直接复用，否则现切一遍
+            if (cache and cache.get("path") == b["path"]
+                    and cache.get("lang") == self.lang
+                    and cache.get("custom") == self._re_for(
+                        b, self.custom_re.get().strip() or None)):
+                chapters, ck = cache["chapters"], cache["ck"]
+            else:
+                chapters, ck, _custom = self._chap_build(b)
+        except ValueError as e:
+            messagebox.showerror(S["d_re_bad"], str(e))
+            return
+        except Exception as e:
+            messagebox.showerror(S["d_export_fail"], str(e))
+            return
+        titles = [t for t, _body in chapters]
+        total = sum(len(x[1]) for x in chapters)
+        head = (S["tr_book"].format(b["title"] or b["name"]),
+                S["tr_src"].format(b["path"]),
+                S["tr_split"].format(len(chapters), "{:,}".format(total), ck["levels"]),
+                S["tr_check"].format(ck["summary"]))
+        body = jzcore.chapter_tree_report(titles, ck, head, lang=self.lang)
+        name = os.path.splitext(b["name"] or os.path.basename(b["path"]))[0]
+        bad = '\\/:*?"<>|'
+        name = "".join("_" if c in bad else c for c in name).strip() or "book"
+        # 统一成同一套分隔符：输出目录可能是 C:/a/b，拼上文件名会变成 C:/a/b\x.txt
+        outdir = os.path.normpath(outdir)
+        out = os.path.normpath(os.path.join(outdir, name + S["tree_suffix"] + ".txt"))
+        try:
+            os.makedirs(outdir, exist_ok=True)      # 输出目录还没建就建出来
+            with open(out, "w", encoding="utf-8", newline="\r\n") as f:
+                f.write(body)
+        except Exception as e:
+            messagebox.showerror(S["d_export_fail"], str(e))
+            return
+        self.log(S["log_tree_export"].format(out))
+        messagebox.showinfo(S["d_export_ok"], S["d_export_ok_msg"].format(out))
+
+    def on_chap_double(self, evt=None):
+        """批量试分列表里双击一行 → 切到这本书的单本试分。"""
+        if not getattr(self, "_chap_batch", False):
+            return
+        iid = ""
+        if evt is not None:
+            iid = self.tv_chap.identify_row(evt.y)
+        if not iid:
+            sel = self.tv_chap.selection()
+            iid = sel[0] if sel else ""
+        b = (getattr(self, "_chap_rows", None) or {}).get(iid)
+        if not b:
+            return
+        # 下拉框同步成这本书，再按单本流程试分（直接传书对象，避免同名书串台）
+        self.chap_pick_text.set(b["title"] or os.path.splitext(b["name"])[0])
+        self.sync_book_re()
+        self.preview_chap(b)
+
+    def preview_chap(self, book=None):
+        S = self.S
+        self._chap_cols(False)
+        b = book or self.picked_book()
+        if not b:
+            messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
+            return
+        try:
+            chapters, ck, custom = self._chap_build(b)
         except ValueError as e:
             messagebox.showerror(S["d_re_bad"], str(e))
             return
         except Exception as e:
             messagebox.showerror(S["d_chap_fail"], str(e))
             return
+        # 缓存：导出章节树时不必重新切一遍（换书/换正则/换语言后自动失效）
+        self._chap_cache = {"path": b["path"], "custom": custom, "lang": self.lang,
+                            "chapters": chapters, "ck": ck}
         for i in self.tv_chap.get_children():
             self.tv_chap.delete(i)
+        # 校验：异常章整行标红并在「校验」栏写原因，正常的照原样显示；
+        # 二级以上（含）的章节树，上级章节（非最里层）在校验栏标出自己处在第几级
+        marks, lvmap = ck["marks"], ck["lv"]
         for i, (t, body) in enumerate(chapters[:2000], 1):
-            self.tv_chap.insert("", "end", values=(i, t, "{:,}".format(len(body))))
+            msg = marks.get(i)
+            lv = lvmap.get(i)
+            # 上级章节连「正常」也带上级别：第1级 正常 / 第1级 第2章缺失/顺序错误
+            text = msg or ck["ok"]
+            if lv:
+                text = S["chap_ck_lv"].format(lv) + " " + text
+            self.tv_chap.insert("", "end", tags=("bad",) if msg else (),
+                                values=(i, t, "{:,}".format(len(body)), text))
         total = sum(len(x[1]) for x in chapters)
-        self.chap_var.set(S["chap_sum"].format(b["title"], len(chapters), "{:,}".format(total)))
+        self.chap_var.set(S["chap_sum"].format(b["title"], len(chapters), "{:,}".format(total))
+                          + (S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else ""))
         self._set_book_chaps(b, len(chapters))      # 写回书籍状态 → ① 书库「章节」列同步
-        self.log("《%s》试分 %d 章" % (b["title"], len(chapters)))
+        # 日志给全本书的章节树概况：多少级、多少章（章数就是切出的章数）
+        self.log("《%s》试分 %d 章%s%s" % (b["title"], len(chapters),
+                                          S["chap_tree"].format(ck["levels"]),
+                                          S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else ""))
 
     def _chap_cols(self, batch):
-        """分章表格列头：False=单本预览(章序/标题/字数)，True=批量试分(序号/书名/章节)。"""
+        """分章表格列头：False=单本预览(章序/标题/字数/校验)，True=批量试分(序号/书名/章节/校验)。"""
         S = self.S
         self.tv_chap.heading("no", text="#")
         self.tv_chap.heading("title", text=S["col_c_book"] if batch else S["col_chap_title"])
         self.tv_chap.heading("chars", text=S["col_c_chaps"] if batch else S["col_chars"])
-        self.tv_chap.column("title", width=px(320) if batch else px(520))
+        self.tv_chap.heading("check", text=S["col_chap_check"])
+        self.tv_chap.column("title", width=px(320) if batch else px(420))
         self.tv_chap.column("chars", width=px(140) if batch else px(100))
+        self.tv_chap.column("check", width=px(170) if batch else px(240))
         self._chap_batch = batch
 
     def preview_chap_all(self):
@@ -2795,6 +2941,7 @@ class App:
         self._chap_cols(True)
         for i in self.tv_chap.get_children():
             self.tv_chap.delete(i)
+        self._chap_rows = {}        # 行 → 书：双击回填单本试分用
         self.set_busy(True)
         self.cancel = False
         self.status_var.set(S["prog_chap"].format(0, len(sel), sel[0]["title"]))
@@ -2805,8 +2952,10 @@ class App:
 
     def chap_worker(self, sel, custom, rules):
         S = self.S
+        # 空串（而不是 None）传给 _re_for：后台线程不许回落到读 tk 变量
+        custom = custom or ""
         total = len(sel)
-        ok_n = sum_n = bad = 0
+        ok_n = sum_n = bad = ck_bad = 0
         for i, b in enumerate(sel, 1):
             if self.cancel:
                 break
@@ -2820,17 +2969,23 @@ class App:
                         text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
                 chapters = jzcore.split_chapters(
                     text, self._re_for(b, custom))   # 本书有自己的规则就用自己的
+                ck = jzcore.check_chapters([t for t, _body in chapters], self.lang)
             except Exception as e:
                 bad += 1
                 self.q.put(("log", S["log_chap_book_fail"].format(i, total, name, e)))
                 continue
             ok_n += 1
             sum_n += len(chapters)
-            self.q.put(("chaprow", (ok_n, b, len(chapters))))   # 主线程写回章数 + 追加结果行
+            if ck["bad"]:
+                ck_bad += 1
+            # 主线程写回章数 + 追加结果行（批量只给汇总，不列每章详情）
+            self.q.put(("chaprow", (ok_n, b, len(chapters), ck["summary"], ck["bad"])))
+            # 日志带本书的章节树概况：多少级、多少章（章数由 {3} 给出）
             self.q.put(("log", S["log_chap_per_book"].format(
-                i, total, name, len(chapters), "{:,}".format(len(text)))))
+                i, total, name, len(chapters), "{:,}".format(len(text)))
+                + S["chap_tree"].format(ck["levels"])))
         self.q.put(("prog", (total, total, S["prog_done"])))
-        self.q.put(("done", ("chap", ok_n, sum_n, bad, self.cancel)))
+        self.q.put(("done", ("chap", ok_n, sum_n, bad, self.cancel, ck_bad)))
 
     # ------------------------------------------------------------ 执行
     def start_run(self):
@@ -2878,6 +3033,7 @@ class App:
                    theme="classic", cover_mode="auto", img_dl=False,
                    want_sum=True, name_fmt=""):
         S = self.S
+        custom = custom or ""       # 同上：后台线程不读 tk 变量
         ok = fail = 0
         # 清洗内容汇总：按书累积清理明细，全部处理完再一次性落盘
         groups = [] if want_sum else None

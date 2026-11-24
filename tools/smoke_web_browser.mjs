@@ -1,6 +1,7 @@
 /* 卷帙 DeShelf Web — 真实浏览器冒烟（Edge headless + CDP，零 npm 依赖）
  * 验证：页面初始化无 JS 报错、双语切换、规则网格、帮助弹窗、
- *       文件入库、清洗预览、分章、导出流程、拖拽函数。
+ *       文件入库、清洗预览、分章、章节树校验栏、导出章节树、
+ *       批量分章汇总与双击回填、导出流程、拖拽函数。
  * 用法: node tools/smoke_web_browser.mjs
  */
 import { execFile, spawn } from "node:child_process";
@@ -218,6 +219,23 @@ try {
   let titles = await evalv(`window._lastTry ? window._lastTry.chs.map(c=>c.t) : []`);
   ok("首章是正文标题而非开篇", titles.val && titles.val[0] === "序章 引子", JSON.stringify(titles.val));
   ok("含序章与第3章", titles.val && titles.val.includes("序章 引子") && titles.val.includes("第3章 终章"), JSON.stringify(titles.val));
+
+  // 7b2. 章节树校验栏：无序号章标红、正常章显示「正常」、底部带异常计数
+  r = await evalv(`(() => {
+    const rows = Array.from(document.querySelectorAll('#chapList .ch'));
+    const cell = n => (rows[n-1] ? rows[n-1].querySelector('.ck') : null);
+    return {n:rows.length,
+      bad:document.querySelectorAll('#chapList .ch.bad').length,
+      first:cell(1) ? cell(1).textContent : '',
+      second:cell(2) ? cell(2).textContent : '',
+      info:document.querySelector('#chapInfo').textContent};
+  })()`);
+  ok("校验栏每行都有结果", r.val && r.val.n === 4 && r.val.second !== '', JSON.stringify(r.err || r.val));
+  ok("无序号章报序号提取失败并标红",
+    r.val && /序号提取失败/.test(r.val.first) && r.val.bad === 1, JSON.stringify(r.val));
+  ok("正常章显示「正常」、底部带异常计数",
+    r.val && r.val.second === '正常' && /校验异常 1/.test(r.val.info), JSON.stringify(r.val));
+
   if (dbg.val && dbg.val.chs > 0) {
     await evalv(`window.applyChapters()`);
   }
@@ -232,6 +250,36 @@ try {
   ok("批量一键分章完成", r.val && /完成/.test(r.val.info), JSON.stringify(r.err || r.val));
   ok("分章结果已保存到书(下拉带章数)", r.val && /\[\d+章\]/.test(r.val.sel), JSON.stringify(r.val));
 
+  // 7c2. 批量结果列表：一行一本书只给校验汇总；双击进入该书单本试分
+  r = await evalv(`(() => {
+    const row = document.querySelector('#chapList .ch.bk');
+    return {n:document.querySelectorAll('#chapList .ch.bk').length,
+      ck:row ? row.querySelector('.ck').textContent : '',
+      bad:document.querySelectorAll('#chapList .ch.bk.bad').length,
+      info:document.querySelector('#chapAllInfo').textContent};
+  })()`);
+  ok("批量列表一行一本书", r.val && r.val.n === 1, JSON.stringify(r.err || r.val));
+  ok("批量行只显示校验汇总（正常 / 共N个异常）",
+    r.val && /^(正常|共\d+个异常)$/.test(r.val.ck) && r.val.bad === 1, JSON.stringify(r.val));
+  ok("批量提示带异常本数与双击提示",
+    r.val && /校验异常 1 本/.test(r.val.info) && /双击/.test(r.val.info), JSON.stringify(r.val));
+
+  r = await evalv(`(async () => {
+    const bk = document.querySelector('#chapList .ch.bk');
+    if (!bk) return {bk:0};
+    bk.dispatchEvent(new MouseEvent('dblclick', {bubbles:true}));
+    await new Promise(r2=>setTimeout(r2,1200));
+    return {bk:document.querySelectorAll('#chapList .ch.bk').length,
+      rows:document.querySelectorAll('#chapList .ch').length,
+      info:document.querySelector('#chapInfo').textContent,
+      sel:document.querySelector('#chapBook').value,
+      head:document.querySelector('#chapList .ch .ck') ? document.querySelector('#chapList .ch .ck').textContent : ''};
+  })()`);
+  ok("双击批量行 → 切到该书单本试分",
+    r.val && r.val.bk === 0 && r.val.rows === 4 && r.val.sel === "0", JSON.stringify(r.err || r.val));
+  ok("双击后回到章节明细（校验列仍在）",
+    r.val && /识别|chapters found/.test(r.val.info) && r.val.head !== '', JSON.stringify(r.val));
+
   // 7d. 截图（分章页：批量按钮 + 日志默认展开）用于 UI 复查
   try {
     await sleep(400);
@@ -241,6 +289,47 @@ try {
       console.log("  分章页截图已存 web/_ui_shot.png");
     }
   } catch (e) { console.error("截图失败:", e.message); }
+
+  // 7e. 导出章节树：文件名后缀与内容随语言走，下载用桩函数接住
+  r = await evalv(`(async () => {
+    const old = window.dlBytes;
+    window.__dl = null;
+    window.dlBytes = (name, data, mime) => { window.__dl = {name:name, data:data, mime:mime}; };
+    const grab = () => window.__dl ? {
+      name: window.__dl.name,
+      head: String(window.__dl.data).split('\\n')[0],
+      hasLevel: /各级章节数：|Chapters per level:/.test(window.__dl.data),
+      hasZero: /\\[0\\] /.test(window.__dl.data),
+      hasRow: /\\n\\[\\d+\\] /.test(window.__dl.data),
+      hasFail: /序号提取失败|number not recognised/.test(window.__dl.data)
+    } : null;
+    await window.tryChapters();
+    await new Promise(r2=>setTimeout(r2,400));
+    document.getElementById('btnChapTree').click();
+    await new Promise(r2=>setTimeout(r2,700));
+    const zh = grab();
+    document.getElementById('btnLang').click();          /* → English */
+    await new Promise(r2=>setTimeout(r2,500));
+    await window.tryChapters();
+    await new Promise(r2=>setTimeout(r2,500));
+    document.getElementById('btnChapTree').click();
+    await new Promise(r2=>setTimeout(r2,700));
+    const en = grab();
+    document.getElementById('btnLang').click();          /* → 中文 */
+    await new Promise(r2=>setTimeout(r2,500));
+    window.dlBytes = old;
+    return {zh:zh, en:en, lang:CUR};
+  })()`);
+  console.log("  · 章节树导出:", JSON.stringify(r.err || r.val));
+  ok("中文导出：文件名 _章节树.txt", r.val && r.val.zh && /_章节树\.txt$/.test(r.val.zh.name), JSON.stringify(r.val && r.val.zh));
+  ok("中文导出：表头与各级统计齐全",
+    r.val && r.val.zh && r.val.zh.head === '章节树导出' && r.val.zh.hasLevel, JSON.stringify(r.val && r.val.zh));
+  ok("中文导出：含章节明细与校验结果",
+    r.val && r.val.zh && r.val.zh.hasRow && r.val.zh.hasFail, JSON.stringify(r.val && r.val.zh));
+  ok("英文导出：文件名 _chapter_tree.txt", r.val && r.val.en && /_chapter_tree\.txt$/.test(r.val.en.name), JSON.stringify(r.val && r.val.en));
+  ok("英文导出：表头与各级统计为英文",
+    r.val && r.val.en && r.val.en.head === 'Chapter tree export' && r.val.en.hasLevel, JSON.stringify(r.val && r.val.en));
+  ok("导出后语言复位为中文", r.val && r.val.lang === 'zh', JSON.stringify(r.val && r.val.lang));
 
   // 8. 导出（EPUB+合并TXT；headless 下载只触发不落盘）
   r = await evalv(`(async () => {

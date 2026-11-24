@@ -2105,6 +2105,708 @@ def split_chapters(text, custom=None):
     return chapters
 
 
+# ---------------------------------------------------------------- 章节序号校验
+# 「智能分章」列表底部的「校验」栏：把每章标题解析成序号，按**本书实际出现的
+# 数字变化**动态分层（不预设「部 > 卷 > 章」的固定层级 —— 每本书写法不同），
+# 再从后往前复核每一层是否连号；缺章/顺序错误就写进校验栏。
+# 番外类章节单独成组计算，不计入正文序列。
+
+# 番外/外传/后记：名字里带这些词的章节单独成数组（可能夹在正文中间，也可能自带序号）
+CHAPTER_EXTRA_RE = re.compile(r"番外|外传|外傳|特别篇|特別篇|后记|後記")
+
+_CK_LABEL = {
+    "zh": {"ok": "正常",
+           "fail": "第{0}章序号提取失败",
+           "gap": "第{0}章缺失/顺序错误",
+           "gap2": "第{0}-{1}章缺失/顺序错误",
+           "dup": "章节重复（第{0}章）",
+           "order": "第{0}章顺序错误",
+           "badnum": "章节号错误（第{0}章）",
+           "sum": "共{0}个异常"},
+    "en": {"ok": "OK",
+           "fail": "Chapter {0}: number not recognised",
+           "gap": "Chapter {0} missing or out of order",
+           "gap2": "Chapters {0}-{1} missing or out of order",
+           "dup": "Duplicate chapter ({0})",
+           "order": "Chapter {0} out of order",
+           "badnum": "Wrong chapter number ({0})",
+           "sum": "{0} issue(s)"},
+}
+
+# split_chapters 造出来的占位标题：不提取序号，也不算 fail
+CHAPTER_HOLD_TITLES = ("开篇", "全文")
+
+_CN_DIGIT = {"〇": 0, "零": 0, "○": 0, "一": 1, "二": 2, "两": 2, "兩": 2,
+             "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+_CN_UNIT = {"十": 10, "百": 100, "千": 1000, "万": 10000, "亿": 100000000}
+# 序号里可能出现的数字字符（阿拉伯、全角、中文）
+_NUM_CHARS = "0-9０-９〇零○一二三四五六七八九十百千万亿两兩"
+# 章节量词（部 篇 集 卷 章 节 節 回 话 話 折）只用来认「这个号属于哪一类」，
+# 不预设层级高低；「第一部分」是段落小标题，不算量词。
+
+
+def cn_to_int(s):
+    """中文 / 全角 / 阿拉伯混写的数字串 → int；认不出返回 None。
+
+    支持 〇零○、两、十百千万亿，以及「十」开头的省略写法（十一 = 11、
+    两百五十一 = 251、一百零三 = 103）。
+    """
+    s = (s or "").strip()
+    if not s:
+        return None
+    t = "".join(chr(ord(c) - 0xFEE0) if 0xFF10 <= ord(c) <= 0xFF19 else c for c in s)
+    if t.isdigit():
+        return int(t)
+    total = section = num = 0
+    seen = False
+    for ch in s:
+        if ch in _CN_DIGIT:
+            num = _CN_DIGIT[ch]
+            seen = True
+        elif ch in _CN_UNIT:
+            u = _CN_UNIT[ch]
+            if u >= 10000:                  # 万 / 亿：先结算当前小节
+                section += num
+                total += (section or 1) * u
+                section = num = 0
+            else:
+                if not num and not seen:
+                    num = 1                 # 「十一」的省略写法
+                section += num * u
+                num = 0
+            seen = True
+        elif "0" <= ch <= "9":
+            num = num * 10 + int(ch)
+            seen = True
+        else:
+            return None
+    if not seen:
+        return None
+    return total + section + num
+
+
+# 番外自带的序号：「番外一」「番外 12」「特别篇 3」「后记一」
+_EXTRA_NO_RE = re.compile(
+    r"(?P<u>番外|外传|外傳|特别篇|特別篇|后记|後記)\s*(?P<n>[0-9０-９]{1,6}"
+    r"|[〇零○一二三四五六七八九十百千]{1,8})")
+# 标题里的序号写法：「第X章」「卷三」「Chapter 12」
+# 「第一部分」是章节内部的段落小标题（常见于作者感言），不是「第一部」，排除掉。
+_CHAP_NO_RE = re.compile(
+    r"第\s*(?P<n1>[%s]{1,12})\s*(?P<u1>部(?!分)|[篇集卷章节節回话話折])"
+    r"|(?P<u2>[部篇集卷])\s*(?P<n2>[%s]{1,12})"
+    r"|(?P<u3>Chapter|CHAPTER|chapter|Chap\.?|CHAP\.?)\s*(?P<n3>[0-9０-９]{1,6})"
+    % (_NUM_CHARS, _NUM_CHARS))
+# 纯数字起行：「12、」「01 」「十二、」
+_LEAD_NO_RE = re.compile(
+    r"^\s*(?P<n>[0-9０-９]{1,6}|[〇零○一二三四五六七八九十百千]{1,8})\s*(?:[、.．,，:：\s]|$)")
+# 「第一部分：xxx」：章节内部的小标题，不是「第一部」，标题以此开头就不校验序号
+_PART_HEAD_RE = re.compile(
+    r"^\s*第\s*[0-9０-９〇零○一二三四五六七八九十百千万两]{1,12}\s*部分")
+# 序号只认「结构位置」上的：标题开头、分隔符之后，或紧接上一个已识别的序号。
+# 「第三十章 他还会有第二部电影吗？」里的「第二部」夹在文字中，不算上级层；
+# 「第三十章 他还会有 第二部」「第二部：传奇之路 第三十章 …」这类才算。
+_SEP_CHARS = set(
+    " \t\r\n\u3000,，.。、：:；;!！?？·|/-\\—–~～#*_+=<>《》【】[]（）()「」『』\"'“”‘’")
+# 「章」类量词：标题开头不留空格也认（「第一章陨落的天才」）。
+# 「卷册」类量词（部/卷/集/篇）必须右侧有分隔符或到标题结尾才算，
+# 否则「第二集的平均收视率涨到了1.81%！」这种正文句子会被当成上级章节。
+_CHAP_LIKE_UNITS = set("章节節回话話折")
+
+
+def parse_chap_numbers(title):
+    """从一个章节标题里取出全部序号，返回 [(值, 单位字)]，按出现顺序。
+
+    一行里可以有多级（「第一部 第二卷 第三十一章」→ 三个号）。抽不到返回 []。
+    单位字只是「这个号属于哪一类」的标识，不参与层级排序 —— 层级由
+    check_chapters 按本书实际的数字变化动态推断。
+    """
+    s = _LITERAL_ESC.sub("", title or "").strip()
+    if not s:
+        return []
+    head = s[:40]                            # 只扫标题前 40 字，别把正文数字当序号
+    m = _EXTRA_NO_RE.search(head)            # 「番外一」「后记一」：自己的号，优先认
+    if m and (m.start() == 0 or head[m.start() - 1] in _SEP_CHARS):
+        v = cn_to_int(m.group("n"))
+        if v is not None:
+            return [(v, m.group("u"))]       # 单位字用标记词本身：番外/后记各成一条
+    cands = []
+    for m in _CHAP_NO_RE.finditer(head):
+        if m.group("u1"):
+            v, u = cn_to_int(m.group("n1")), m.group("u1")
+        elif m.group("u2"):
+            v, u = cn_to_int(m.group("n2")), m.group("u2")
+        else:
+            v, u = cn_to_int(m.group("n3")), "章"
+        if v is not None:
+            cands.append((m.start(), m.end(), v, u))
+    out, last = [], -1
+    for i, (st, en, v, u) in enumerate(cands):
+        # 左边：标题开头、分隔符之后，或紧接上一个序号
+        if not (st == 0 or st == last or head[st - 1] in _SEP_CHARS):
+            continue                         # 夹在文字里，不是序号
+        # 右边：都要以分隔符/结尾收束，或紧接下一个序号，否则
+        # 「第二百四十五章 第二部科幻片」里的“第二部”会被当成上级层。
+        # 只有「章」类量词在标题开头时豁免（「第一章陨落的天才」很常见）。
+        right_ok = (en >= len(head) or head[en] in _SEP_CHARS
+                    or (i + 1 < len(cands) and cands[i + 1][0] == en))
+        if not right_ok and not (st == 0 and u in _CHAP_LIKE_UNITS):
+            continue
+        out.append((v, u))
+        last = en
+    if not out:                              # 「12、」「十二、」这类没有量词的写法
+        m = _LEAD_NO_RE.match(head)
+        if m:
+            v = cn_to_int(m.group("n"))
+            if v is not None:
+                out.append((v, "章"))
+    return out
+
+
+def is_extra_title(title):
+    """番外 / 外传 / 特别篇：单独成组，不参与正文序号校验。"""
+    return bool(CHAPTER_EXTRA_RE.search(title or ""))
+
+
+class _Lv(object):
+    """章节树里的一条「层」。
+
+    层由本书实际出现的数字变化动态建立：单位字只是这一层的名字，
+    parent 指向更外层（可能在建层之后才被回填），last 记这一层最近的号。
+    """
+    __slots__ = ("unit", "parent", "last", "nodes", "inline")
+
+    def __init__(self, unit, parent=None, inline=False):
+        self.unit = unit
+        self.parent = parent
+        self.last = None
+        self.nodes = 0          # 挂在这一层上的章节数（0 = 只是某行的上级，自己没有章节行）
+        self.inline = inline    # 这一层是标题里写出来的（「第一部 第二卷 第三十一章」），不能剪掉
+
+
+def _lv_ctx(lv):
+    """这一章所属上级的「身份」：各级最近的号组成元组。
+
+    换卷/换部后元组就变了 —— 判断「是否跨了上级」靠它，而不是靠父节点是谁：
+    一行三级（第一部 第二卷 第三十一章）的上级根本没有自己的章节行。
+    """
+    keys = []
+    p = lv.parent if lv is not None else None
+    while p is not None and len(keys) < 8:      # 深度封顶：防御任何意外的环
+        keys.append((p.unit, p.last))
+        p = p.parent
+    return tuple(keys)
+
+
+def _lv_has_child(levels, lv):
+    """这一层下面是否已经挂了别的层。"""
+    for x in levels.values():
+        if x is not None and x.parent is lv:
+            return True
+    return False
+
+
+def _add_node(node_list, ch, value, lv, vals=None):
+    """把一章登记进 node_list，返回该节点（方便补充信息）。"""
+    if lv is not None:
+        lv.nodes += 1
+    nd = {"ch": ch, "value": value, "level": lv, "ctx": _lv_ctx(lv),
+          "vals": vals or ([value] if value is not None else [])}
+    node_list.append(nd)
+    return nd
+
+
+def _infer_and_check(items, marks, holes, L, skip=(), expect=None):
+    """对一组章节（正文或番外）推断层级，再从后往前复核，异常写进 marks。
+
+    items: [(章序, [(值, 单位字)])]，按文档顺序；toks 为空表示序号提取失败。
+    marks: {章序: 文案}，只写异常章。
+    holes: 番外占掉的正文号（正文因此出现空洞时不算缺章）。
+    skip: 不参与校验的章序（「开篇」「全文」这类占位标题）。
+    expect: {章序: 推算章号}，组内连上一章都找不到时用它兜底（番外组常用）。
+    返回 (树层级数, {章序: 层级}, 真挂着子章节的章序集合)。
+    """
+    nodes = []          # 每章一个节点：{"ch", "value", "level", "ctx"}
+    levels = {}         # 单位字 -> 层
+    leaf = None         # 最内层（「章」所在层）
+    breaks = []         # [(节点下标, 层, 是否强判)]：推断出来的父层，供空层回退
+    quiet = set(skip)   # 不写 fail、也不参与连号判断的章（占位标题、章内小标题）
+
+    fail_run = 0                            # 连续多少个没有序号的章
+    for idx, (ch, toks) in enumerate(items):
+        if not toks:
+            # 抽不到序号：fail，同时作为序列断点。按上一章推算它「本该是第几章」，
+            # 报错时用这个号（第808条切分记录其实是第766章）而不是切分序号。
+            nd = _add_node(nodes, ch, None, None)
+            if leaf is not None and leaf.last is not None:
+                nd["expect"] = leaf.last + 1 + fail_run
+            fail_run += 1
+            continue
+        fail_run = 0
+        if len(toks) > 1:
+            # 行内自带多级：标题的书写顺序就是由外到内的层级顺序
+            prev_lv = None
+            for v, u in toks:
+                lv = levels.get(u)
+                if lv is None:
+                    lv = _Lv(u, prev_lv, True)      # 标题里写明的层：不许剪枝
+                    levels[u] = lv
+                elif (prev_lv is not None and lv is not prev_lv and lv.parent is None
+                      and lv.nodes and not _lv_has_child(levels, lv)):
+                    # 把已有的层挂到这一行的上级下面。限制：
+                    # 同一行重复同一个量词（标题被并成一行）不能自己当自己的父层；
+                    # 这层得真有自己的章节行、且还没挂过子层，否则几个杂标题就能
+                    # 把层与层首尾相接，把整棵树的层级越推越高（出现 9 级空层）。
+                    lv.parent = prev_lv
+                lv.last = v
+                prev_lv = lv
+            leaf = prev_lv
+            # 只有「写在这一行里、且不是本章自己那层」的上级层才算 inline：
+            # 它们没有自己的章节行，但确实是书里写出来的结构，不能剪枝。
+            for _v, _u in toks[:-1]:
+                lv2 = levels.get(_u)
+                if lv2 is not None and lv2 is not leaf:
+                    lv2.inline = True
+            _add_node(nodes, ch, toks[-1][0], leaf, [v for v, _u in toks])
+            continue
+        v, u = toks[0]
+        if leaf is None:                    # 全文第一处序号：建立最内层
+            leaf = _Lv(u)
+            levels[u] = leaf
+            leaf.last = v
+            _add_node(nodes, ch, v, leaf)
+            continue
+        known = levels.get(u)               # 这个单位字已经有自己的层：先回到那一层
+        if known is not None and known is not leaf:
+            # 例：第一卷 → 第1章 → 第二卷。不能因为 2 == 1+1 就把「卷」当成章
+            known.last = v
+            _add_node(nodes, ch, v, known)
+            continue
+        if leaf.last is not None and v == leaf.last + 1:      # 序号连续
+            leaf.last = v
+            _add_node(nodes, ch, v, leaf)
+            continue
+        if known is not None:               # 同一层里不连续：交给后面的复核报错
+            known.last = v
+            _add_node(nodes, ch, v, known)
+            continue
+        # 新单位字：要么是更内层（从 0/1 重排），要么是更外层（分级）
+        nxt = items[idx + 1][1] if idx + 1 < len(items) else []
+        nxt_v = nxt[0][0] if nxt else None
+        nxt_u = nxt[0][1] if nxt else None
+        if v in (0, 1):
+            # 先看是不是「更外层」：卷/部这类标记常常插在正文中间，且前面已经连了
+            # 一大段章（如「第60章」之后来「第一卷…」）。这时它只能在上层，不能把
+            # 前面 60 章都变成它的子章节 —— 否则会出现「1203 章 / 9 卷」这种倒金字塔。
+            if (leaf.nodes >= 5 and leaf.last is not None
+                    and v <= max(3, leaf.last // 2)):
+                lv = _Lv(u, leaf.parent)
+                leaf.parent = lv
+                levels[u] = lv
+                lv.last = v
+                _add_node(nodes, ch, v, lv)
+                breaks.append((len(nodes) - 1, lv, True))
+                continue
+            # 要成「更内层」，后面得真有内容跟上：同单位接 v+1（第二篇→第三篇），
+            # 或更下一级从 0/1 开始（第一卷→第1章）。都不满足就只是章内小标题
+            # （如「第一篇《问道》…」），按无需校验处理，也不让它长出一层。
+            if nxt_v is None or not ((nxt_u == u and nxt_v == v + 1)
+                                     or (nxt_u != u and nxt_v in (0, 1))):
+                quiet.add(ch)
+                _add_node(nodes, ch, None, None)
+                continue
+            lv = _Lv(u, leaf)
+            levels[u] = lv
+            lv.last = v
+            leaf = lv
+            _add_node(nodes, ch, v, lv)
+            continue
+        if leaf.last is not None and (
+                v <= max(3, leaf.last // 2)                  # 量级骤降：56 → 2
+                or (nxt_v is not None and nxt_v == v + 1)):   # 下一章正好是 v+1
+            lv = _Lv(u, leaf.parent)
+            leaf.parent = lv
+            levels[u] = lv
+            lv.last = v
+            _add_node(nodes, ch, v, lv)
+            breaks.append((len(nodes) - 1, lv, False))
+            continue
+        # 认不出层级：就当最内层的一章，交给后面的复核报缺章/顺序错误
+        leaf.last = v
+        _add_node(nodes, ch, v, leaf)
+
+    # 空层回退：判为「上级」的层要站得住脚，否则按 fail 处理并把这一层摘掉。
+    # 靠「0/1 重排」推断出的层（strict）全书至少得有 2 章挂上来，孤零零一章的
+    # 多半是正文里的杂标题；靠「量级骤降」推断的层只要有章节挂在它下面就算数。
+    for pos, lv, strict in breaks:
+        cnt = 0
+        for nd in nodes:
+            if nd["level"] is lv:
+                cnt += 1
+        if strict:
+            keep = cnt >= 2
+        else:
+            keep = False
+            for nd in nodes[pos + 1:]:
+                p = nd["level"]
+                p = p.parent if p is not None else None
+                hop = 0
+                while p is not None and hop < 8:
+                    if p is lv:
+                        keep = True
+                        break
+                    p = p.parent
+                    hop += 1
+                if keep:
+                    break
+        if keep:
+            continue
+        for nd in nodes:
+            if nd["level"] is lv:
+                for x in nd.get("vals") or ():
+                    holes.add(x)                # 号还在，只是不当层级：别让邻章报缺号
+                nd["value"] = None
+                nd["level"] = None
+        # 从树上摘掉，否则它会白白把下方所有章节的层级顶高
+        for x in levels.values():
+            if x is not None and x.parent is lv:
+                x.parent = lv.parent
+        for u, x in list(levels.items()):
+            if x is lv:
+                levels.pop(u, None)
+
+    # 金字塔兜底：正常的章节树由外向内逐级变多。若某一层比它的上级还少一个数量级
+    # （如「第1级 1203 章 / 第2级 9 章」），说明这层的标题根本不该算子章节 ——
+    # 这些章按 fail 处理，并把这一层从树上摘掉，让父层恢复原状。
+    for _round in range(3):
+        counts = {}
+        for nd in nodes:
+            lv = nd["level"]
+            if lv is not None:
+                counts[lv] = counts.get(lv, 0) + 1
+        bad = [lv for lv, c in counts.items()
+               if lv.parent is not None and counts.get(lv.parent)
+               and c * 10 <= counts[lv.parent]]
+        if not bad:
+            break
+        for lv in bad:
+            for nd in nodes:
+                if nd["level"] is lv:
+                    for x in nd.get("vals") or ():
+                        holes.add(x)            # 号还在，只是不该当子章节
+                    nd["value"] = None
+                    nd["level"] = None
+                    marks.pop(nd["ch"], None)
+            for x in levels.values():
+                if x is not None and x.parent is lv:
+                    x.parent = lv.parent
+            for u, x in list(levels.items()):
+                if x is lv:
+                    levels.pop(u, None)
+
+    # 空层剪枝：没有任何章节挂在上面的层只是「某行的上级」，留着只会把下面
+    # 所有章节的层级白白顶高（导出里就会出现「开头没分级却缩进了两格」）。
+    for _round in range(4):
+        counts = {}
+        for nd in nodes:
+            if nd["level"] is not None:
+                counts[nd["level"]] = counts.get(nd["level"], 0) + 1
+        empties = [lv for lv in levels.values()
+                   if not counts.get(lv) and not lv.inline]
+        if not empties:
+            break
+        for lv in empties:
+            for x in levels.values():
+                if x is not None and x.parent is lv:
+                    x.parent = lv.parent
+            for u, x in list(levels.items()):
+                if x is lv:
+                    levels.pop(u, None)
+
+    # 上级章节必须真挂着子章节：同一层里，下一个同级章节出现之前如果没有
+    # 任何子层章节，说明这个「卷/部」下面是空的 —— 按 fail 处理。
+    kids = {}
+    for lv in levels.values():
+        if lv.parent is not None:
+            kids.setdefault(lv.parent, []).append(lv)
+    waiting = {}                            # 层 -> 还没等到子章节的那个节点
+    for nd in nodes:
+        lv = nd["level"]
+        if lv is None:
+            continue
+        p = lv.parent                      # 这一章是子层章节：清掉所有祖先层的等待
+        hop = 0
+        while p is not None and hop < 8:
+            wp = waiting.pop(p, None)
+            if wp is not None:
+                wp["kids"] = wp.get("kids", 0) + 1      # 记下它确实有子章节
+            p = p.parent
+            hop += 1
+        prev_nd = waiting.pop(lv, None)
+        if prev_nd is not None:            # 同级下一章都来了，它下面还是空的
+            for x in prev_nd.get("vals") or ():
+                holes.add(x)
+            prev_nd["value"] = None
+            prev_nd["level"] = None
+            marks.pop(prev_nd["ch"], None)
+        if kids.get(lv):
+            waiting[lv] = nd
+    for lv, nd in waiting.items():
+        for x in nd.get("vals") or ():
+            holes.add(x)
+        nd["value"] = None
+        nd["level"] = None
+        marks.pop(nd["ch"], None)
+
+    # 从后往前复核：每一层要么连号，要么在跨上级后从 0/1 重新递增
+    by_level = {}
+    for nd in nodes:
+        if nd["level"] is not None:
+            by_level.setdefault(nd["level"], []).append(nd)
+    for lv, seq in by_level.items():
+        # 先挑出「章号写错」的章：号和上一章差得离谱，而下一章又接着上一章往下数。
+        # 例：705、706、707、**8**、709 —— 8 是 708 写错，只报这一章，别连累 709。
+        for i in range(1, len(seq) - 1):
+            cur, prev, nxt = seq[i], seq[i - 1], seq[i + 1]
+            cv, pv, nv = cur["value"], prev["value"], nxt["value"]
+            if cv is None or pv is None or nv is None or cv in (0, 1):
+                continue                    # 从 0/1 重排交给后面的规则
+            if abs(cv - pv - 1) >= 3 and 0 <= nv - pv - 1 <= 3:
+                marks.setdefault(cur["ch"], L["badnum"].format(cv))
+                cur["value"] = None         # 当断点：后面的章不再参考它
+                cur["prev_good"] = pv       # 但下一章还得跟「上一章的好号」比
+        # 再查重号：同一层、同一上级下号只能出现一次，隔多远重复都算章节重复。
+        # 重复的那一章按断点处理，免得后面的章被它连累成「缺章/顺序错误」。
+        seen = {}
+        for nd in seq:
+            v = nd["value"]
+            if v is None or v in (0, 1):
+                continue                    # 0/1 属于「从头上分」，交给下面的顺序错误规则
+            k = (nd["ctx"], v)
+            if k in seen:
+                marks.setdefault(nd["ch"], L["dup"].format(v))
+                nd["value"] = None
+            else:
+                seen[k] = nd["ch"]
+        for i in range(len(seq) - 1, 0, -1):
+            cur, prev = seq[i], seq[i - 1]
+            cv, pv = cur["value"], prev["value"]
+            if pv is None:
+                pv = prev.get("prev_good")  # 上一章号写错：跟它之前的那个好号比
+                if pv is None:
+                    continue                # fail / 重号 是断点，不让前后连坐
+            if cv is None:
+                continue
+            if cv == pv + 1:
+                continue                    # ① 序号连续
+            if cur["ctx"] != prev["ctx"] and cv in (0, 1):
+                continue                    # ② 跨上级后从 0/1 重新递增
+            if cv == pv:
+                marks[cur["ch"]] = L["dup"].format(cv)      # 连着两章同一个号
+                continue
+            if cv in (0, 1):
+                marks[cur["ch"]] = L["order"].format(cv)    # 没分级却从头重排
+                continue
+            if cv > pv + 1:
+                if all(x in holes for x in range(pv + 1, cv)):
+                    continue                # 缺的那些号其实是番外，不算缺章
+                lo, hi = pv + 1, cv - 1
+                marks[cur["ch"]] = (L["gap2"] if hi > lo else L["gap"]).format(lo, hi)
+            else:
+                marks[cur["ch"]] = L["gap"].format(cv)
+
+    for nd in nodes:
+        if nd["value"] is None and nd["ch"] not in marks and nd["ch"] not in quiet:
+            # 报「本该是第几章」：被降级的用它自己的章号，纯 fail 的按上一章 +1，
+            # 组内没有上一章时用全书文档顺序推算的号，都没有才退回切分序号。
+            vals = nd.get("vals") or []
+            n = vals[0] if vals else (nd.get("expect")
+                                      or (expect or {}).get(nd["ch"]))
+            marks[nd["ch"]] = L["fail"].format(nd["ch"] if n is None else n)
+
+    # 每一章在树里的层级（1 = 最外层），供界面标注「第N级」。
+    # 只数「前面真出现过章节」的上级层：上级章节还没出现时，这一章就是顶格，
+    # 不然会出现「开头没有任何分级，却缩进两格」的假层级。
+    levels, depths, seen_lv, parents = 1, {}, {}, set()
+    for nd in nodes:
+        lv = nd["level"]
+        if lv is None:
+            continue
+        d, p, hop = 1, lv.parent, 0
+        while p is not None and hop < 8:
+            if p.inline or p in seen_lv:    # 标题里写出来的上级层也算一级
+                d += 1
+            p = p.parent
+            hop += 1
+        depths[nd["ch"]] = d
+        if nd.get("kids"):
+            parents.add(nd["ch"])           # 真挂着子章节的「卷/部」
+        seen_lv[lv] = nd
+        if d > levels:
+            levels = d
+    return levels, depths, parents
+
+
+def check_chapters(titles, lang="zh"):
+    """校验章节序号，返回 {"total", "marks", "bad", "summary", "ok", "tree",
+    "levels", "lv", "depths"}。
+
+    titles 是 split_chapters 的标题列表（顺序即章序，从 1 开始）。
+    marks: {章序: 异常文案}，只含异常章；没有 key 的章在校验栏显示「正常」。
+    番外类章节单独成组计算，不占正文的章序号；带上序号的番外同样会被校验。
+    levels 是章节树的层级数（1 = 只有「章」一层），tree 是树里的章节数；
+    lv 只收录**非最里层**的章：{章序: 层级}，界面拿它在校验栏标「第N级」；
+    depths 收录全部章节的层级，供「导出章节树」按缩进排版。
+    """
+    L = _CK_LABEL.get(lang) or _CK_LABEL["zh"]
+    titles = list(titles or ())
+    if len(titles) <= 1:                    # 没切出章节（只有「全文」/「开篇」）：无从校验
+        return {"total": len(titles), "marks": {}, "bad": 0, "ok": L["ok"],
+                "summary": L["ok"], "tree": len(titles), "levels": 1,
+                "lv": {}, "depths": {}}
+    main, extra, holes, skip, toks_of = [], [], set(), set(), {}
+    for i, t in enumerate(titles, 1):
+        st = (t or "").strip()
+        if st in CHAPTER_HOLD_TITLES or _PART_HEAD_RE.match(st):
+            # 「开篇」「全文」是分章占位标题、「第一部分：xxx」是章内小标题：
+            # 都不提取序号，也不算 fail，且不影响前后章节的连号判断
+            skip.add(i)
+            main.append((i, []))
+            toks_of[i] = []
+            continue
+        toks = parse_chap_numbers(t)
+        toks_of[i] = toks
+        if is_extra_title(t):
+            extra.append((i, toks))
+            if toks:
+                holes.add(toks[-1][0])      # 番外占掉的号：正文出现空洞时不报缺章
+        else:
+            main.append((i, toks))
+    # 全书文档顺序上的「推算章号」：某章抽不到序号时按前一章 +1 顶上。番外自成
+    # 一组、组内没有上一章，全靠这张表兜底（组内的推算优先，见 _infer_and_check）。
+    expect, last_no, run = {}, None, 0
+    for i in range(1, len(titles) + 1):
+        if i in skip:
+            continue
+        toks = toks_of.get(i) or []
+        if toks:
+            last_no, run = toks[-1][0], 0
+        elif last_no is not None:
+            expect[i] = last_no + 1 + run
+            run += 1
+    marks = {}
+    # 番外/后记里没带号的那几章（「后记终」之类）本来就不在正文序列里，不报 fail
+    extra_skip = {i for i, toks in extra if not toks}
+    lv_main, dep_main, kid_main = _infer_and_check(main, marks, holes, L, skip, expect)
+    lv_extra, dep_extra, kid_extra = _infer_and_check(extra, marks, set(), L,
+                                                      extra_skip, expect)
+    # 最里层不标层级；也只有真挂着子章节的「卷/部」才标，普通章不标
+    lv = {}
+    for ch in kid_main:
+        if dep_main.get(ch, 0) < lv_main:
+            lv[ch] = dep_main[ch]
+    for ch in kid_extra:
+        if dep_extra.get(ch, 0) < lv_extra:
+            lv[ch] = dep_extra[ch]
+    bad = len(marks)
+    depths = dict(dep_main)
+    depths.update(dep_extra)
+    return {"total": len(titles), "marks": marks, "bad": bad,
+            "ok": L["ok"], "summary": L["ok"] if not bad else L["sum"].format(bad),
+            "tree": len(main) + len(extra), "levels": max(lv_main, lv_extra),
+            "lv": lv, "depths": depths}
+
+
+def _report_meta(titles, depths):
+    """导出用的「显示层级」与「序号计数」。
+
+    显示层级取这一行**最外层**序号的层级：「第二卷 绽放的生命！ 第101章 …」这种
+    把卷写在章前面的行，按级首行顶格排，它下面的子章节再缩进一级。
+    序号计数只数解析出序号的章，所以「开篇」这类无序号章记 0，正文从 1 起。
+    """
+    meta, seq = [], 0
+    for i, t in enumerate(titles, 1):
+        toks = parse_chap_numbers(t)
+        d = depths.get(i)
+        if d is None:
+            meta.append((0, 0, toks))
+        else:
+            seq += 1
+            meta.append((max(1, d - max(0, len(toks) - 1)), seq, toks))
+    return meta
+
+
+_RP_LABEL = {
+    "zh": {"title": "章节树导出",
+           "per_level": "各级章节数：",
+           "level": "  第%d级：%d 章",
+           "nolevel": "  无层级（序号提取失败 / 占位标题）：%d 章",
+           "hint": "章节树（缩进 = 层级；[n] 为参与编号的章序，无序号章记 0；"
+                   "← 后为标题里解析出的序号链 | 校验结果）：",
+           "lv": "第%d级",
+           "nochain": "无序号",
+           "ok": "正常"},
+    "en": {"title": "Chapter tree export",
+           "per_level": "Chapters per level:",
+           "level": "  Level %d: %d chapter(s)",
+           "nolevel": "  No level (number not parsed / placeholder): %d chapter(s)",
+           "hint": "Chapter tree (indent = level; [n] = chapter index, 0 = unnumbered; "
+                   "← parsed number chain | check result):",
+           "lv": "Level %d",
+           "nochain": "no number",
+           "ok": "OK"},
+}
+
+
+def chapter_tree_report(titles, ck=None, head=(), indent="    ", lang="zh"):
+    """把章节树摊成可排查的纯文本（「导出章节树」用）。
+
+    head 是调用方给的表头行（书名、源文件…）；正文按层级缩进，每行给
+    [序号]标题 ← 解析出的序号链 | 层级/校验结果，方便顺序号对不上时逐层看。
+    跨层级（换卷/换部）之间空一行，便于肉眼分段。lang 决定表头与标签的语言。
+    """
+    R = _RP_LABEL.get(lang) or _RP_LABEL["zh"]
+    titles = list(titles or ())
+    if ck is None:
+        ck = check_chapters(titles, lang)
+    marks = ck.get("marks") or {}
+    lvmap = ck.get("lv") or {}
+    depths = ck.get("depths") or {}
+    ok = ck.get("ok") or R["ok"]
+    meta = _report_meta(titles, depths)
+    lines = [R["title"]] + ["%s" % h for h in head]
+    lines.append("")
+    counts, nolevel = {}, 0
+    for disp, _num, _toks in meta:
+        if not disp:
+            nolevel += 1
+        else:
+            counts[disp] = counts.get(disp, 0) + 1
+    lines.append(R["per_level"])
+    for d in sorted(counts):
+        lines.append(R["level"] % (d, counts[d]))
+    if nolevel:
+        lines.append(R["nolevel"] % nolevel)
+    lines.append("")
+    lines.append(R["hint"])
+    prev = None
+    for i, (disp, num, toks) in enumerate(meta, 1):
+        if prev is not None and disp < prev:
+            lines.append("")                    # 层级回退 = 换卷 / 换部：空一行分段
+        prev = disp
+        chain = " / ".join("%d%s" % (v, u) for v, u in toks) or R["nochain"]
+        msg = marks.get(i)
+        if msg:
+            state = ((R["lv"] % lvmap[i]) + " " if i in lvmap else "") + msg
+        elif i in lvmap:
+            state = "%s %s" % (R["lv"] % lvmap[i], ok)
+        else:
+            state = ok
+        lines.append("%s[%d] %s  ← %s | %s"
+                     % (indent * (disp - 1) if disp else "", num,
+                        (titles[i - 1] or "").strip(), chain, state))
+    return "\n".join(lines) + "\n"
+
+
 # ---------------------------------------------------------------- 导出
 
 # 「文件名」下拉框：预设项与自定义格式共用同一套占位符解析（book=书名、author=作者名）。

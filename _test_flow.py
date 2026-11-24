@@ -17,7 +17,20 @@ import jzcore
 
 os.startfile = lambda p: None  # 防止测试时弹出资源管理器
 
-from Juanzhi_Desktop import App
+import Juanzhi_Desktop as _D
+from Juanzhi_Desktop import App, TEXTS
+
+# 导出章节树会弹提示框：测试里改成记录，别卡住
+_errors = []
+
+
+def _stub_showinfo(*a, **k):
+    return None
+
+
+_D.messagebox.showinfo = _stub_showinfo
+_D.messagebox.showwarning = _stub_showinfo
+_D.messagebox.showerror = lambda *a, **k: _errors.append(a)
 
 BASE = os.path.join(HERE, "_flow")
 if os.path.isdir(BASE):
@@ -185,8 +198,130 @@ print("  输出目录：", got)
 check("只产出一个 EPUB 与汇总", got, [jzcore.SUMMARY_NAME, "诡秘之主.epub"])
 check("未生成整理后 TXT", os.path.exists(os.path.join(OUT2, "诡秘之主.txt")), False)
 
+print("\n== 场景4：章节树（校验栏 + 导出章节树）==")
+# 造一本两级结构的书：第二卷缺第2章；番外/后记单独成组，不占正文序号
+TREE_BOOK = """章节树样本
+作者：测试
+第一卷 起
+正文。
+
+第1章 甲
+正文一。
+
+第2章 乙
+正文二。
+
+第3章 丙
+正文三。
+
+第二卷 承
+正文四。
+
+第1章 丁
+正文五。
+
+第3章 戊
+正文六。
+
+番外一 甲
+正文七。
+
+后记一 乙
+正文八。
+"""
+f5 = w(SRC, "章节树样本.txt", TREE_BOOK, "utf-8")
+tree_info = jzcore.scan_file(f5)
+tree_info["rel"] = os.path.basename(f5)
+app.books = [tree_info]
+app._fill_chap_pick()
+app.chap_pick_text.set(tree_info["title"])
+TREE_OUT = os.path.join(BASE, "out_章节树")
+app.out_var.set(TREE_OUT)
+app.preview_chap()
+root.update()
+
+rows = app.tv_chap.get_children()
+vals = [app.tv_chap.item(i, "values") for i in rows]
+print("  校验栏：")
+for v in vals:
+    print("    %-3s %-18s %-6s %s" % (v[0], v[1], v[2], v[3]))
+check("章节数（含开篇、番外、后记）", len(rows), 10)
+check("开篇不校验", vals[0][3], "正常")
+check("卷行标出层级", vals[1][3], "第1级 正常")
+check("普通章不标层级", vals[2][3], "正常")
+check("缺章文案", vals[7][3], "第2章缺失/顺序错误")
+check("缺章整行标红", app.tv_chap.item(rows[7], "tags"), ("bad",))
+check("正常行不着色", len(app.tv_chap.item(rows[2], "tags")), 0)
+
+app.export_chap_tree()
+root.update()
+tree_txt = os.path.join(TREE_OUT, os.path.splitext(tree_info["name"])[0] + "_章节树.txt")
+check("导出文件已生成", os.path.exists(tree_txt), True)
+body_tree = open(tree_txt, encoding="utf-8").read()
+check("导出标题行", body_tree.splitlines()[0], "章节树导出")
+check("导出含各级统计", "各级章节数：" in body_tree, True)
+check("导出无序号章记 0", "[0] 开篇" in body_tree, True)
+check("导出卷行顶格", "\n[1] 第一卷 起" in body_tree, True)
+check("导出子章节缩进", "\n    [2] 第1章 甲" in body_tree, True)
+check("导出带校验结果", "第2章缺失/顺序错误" in body_tree, True)
+
+# 英文模式下：文件名后缀与内容都要变英文
+app.lang = "en"
+app.S = TEXTS["en"]
+app.preview_chap()
+root.update()
+app.export_chap_tree()
+root.update()
+tree_en = os.path.join(TREE_OUT, os.path.splitext(tree_info["name"])[0] + "_chapter_tree.txt")
+check("英文后缀文件名", os.path.exists(tree_en), True)
+body_en = open(tree_en, encoding="utf-8").read()
+check("英文导出标题", body_en.splitlines()[0], "Chapter tree export")
+check("英文各级统计", "Chapters per level:" in body_en, True)
+check("英文无序号标记", "[0] 开篇  ← no number | OK" in body_en, True)
+check("英文校验文案", "missing or out of order" in body_en, True)
+check("导出过程没有报错", _errors, [])
+app.lang = "zh"
+app.S = TEXTS["zh"]
+
+print("\n== 场景5：批量试分 + 双击进入单本 ==")
+app.books = [tree_info, books[2]]
+app._fill_chap_pick()
+app._chap_cols(True)
+for i in app.tv_chap.get_children():
+    app.tv_chap.delete(i)
+app._chap_rows = {}
+app.chap_worker(app.books, "", app.active_rules())      # 同步跑一遍后台逻辑
+app.poll()
+rows = app.tv_chap.get_children()
+vals = [app.tv_chap.item(i, "values") for i in rows]
+for v in vals:
+    print("    %-3s %-12s %-5s %s" % (v[0], v[1], v[2], v[3]))
+check("批量行数", len(rows), 2)
+check("异常书显示汇总", vals[0][3], "共1个异常")
+check("异常书整行标红", app.tv_chap.item(rows[0], "tags"), ("bad",))
+check("正常书显示正常", vals[1][3], "正常")
+check("正常书不着色", len(app.tv_chap.item(rows[1], "tags")), 0)
+check("行与书的映射", len(app._chap_rows), 2)
+
+
+class _Ev(object):
+    def __init__(self, y):
+        self.y = y
+
+
+app.tv_chap.see(rows[0])
+root.update()
+box = app.tv_chap.bbox(rows[0])
+app.on_chap_double(_Ev((box[1] if box else 1) + 2))
+root.update()
+check("双击后回到单本模式", app._chap_batch, False)
+check("双击后下拉框切到该书", app.chap_pick_text.get(), tree_info["title"])
+check("双击后列表变成章节明细", len(app.tv_chap.get_children()), 10)
+check("双击后表头恢复章节标题", app.tv_chap.heading("title", "text"), TEXTS["zh"]["col_chap_title"])
+
 print("\n失败项：%d" % len(fails))
 for f in fails:
     print("  -", f)
+print("弹窗报错：%d" % len(_errors))
 root.destroy()
-sys.exit(1 if fails else 0)
+sys.exit(1 if fails or _errors else 0)

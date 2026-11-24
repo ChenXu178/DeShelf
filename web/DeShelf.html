@@ -116,11 +116,21 @@ label.lab{font-size:13px;color:var(--muted)}
 .check input{accent-color:var(--blue)}
 
 /* ---------- chapter list ---------- */
-.chlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px;
-  max-height:300px;overflow:auto;border:1px solid var(--line2);border-radius:var(--r);padding:8px;background:#fff}
-.chlist .ch{font-size:12px;color:var(--muted);padding:2px 6px;border-radius:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chlist{display:flex;flex-direction:column;gap:2px;
+  max-height:320px;overflow:auto;border:1px solid var(--line2);border-radius:var(--r);padding:8px;background:#fff}
+.chlist .ch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
+  padding:2px 6px;border-radius:4px;white-space:nowrap}
 .chlist .ch:nth-child(odd){background:#f6f7f8}
-.chlist .ch:first-child{color:var(--blue);font-weight:600}
+.chlist .ch .no{width:44px;flex:none;text-align:right;color:var(--muted)}
+.chlist .ch .ti{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#333}
+.chlist .ch .ct{width:64px;flex:none;text-align:right;color:var(--muted)}
+.chlist .ch .ck{width:190px;flex:none;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.chlist .ch.bk{cursor:pointer}
+.chlist .ch.bad{color:#c62828}
+.chlist .ch.bad .ti{color:#c62828}
+.chlist .ch.bad .ck{color:#c62828;font-weight:600}
+.chlist .ch.lv .ck{color:var(--blue)}
+.chlist .ch.bad.lv .ck{color:#c62828}
 
 /* ---------- dropzone ---------- */
 .dz{border:2px dashed var(--line);border-radius:var(--r);background:var(--card);
@@ -238,6 +248,7 @@ b.dark{color:var(--ink)}
       <select class="select" id="chapBook" style="min-width:260px"></select>
       <button class="btn b1" id="btnChapTry" data-k="btnChapTry">试分章节</button>
       <button class="btn b2" id="btnChapApply" data-k="btnChapApply">应用分章到该书</button>
+      <button class="btn b2" id="btnChapTree" data-k="btnChapTree">导出章节树</button>
       <span class="hint" id="chapInfo"></span>
     </div>
     <fieldset>
@@ -348,6 +359,11 @@ const Z = {
   bookRePh:"只对这一本书生效，比如它的章节是「卷一 第X回」这种写法",
   bookReOn:"✔ 已设置本书专用规则",
   btnChapAll:"⚡ 全部书籍一键分章", chAllEmpty:"书库为空，请先扫描或拖入 TXT", chAllDoing:"正在分章 {i}/{n}：{name}", chAllDone:"批量分章完成：{n} 本 · 共 {m} 章",
+  btnChapTree:"导出章节树", treeSuffix:"_章节树",
+  trBook:"书籍：{0}", trSplit:"切分：{n} 章 · 正文 {c} 字 · 章节树 {l} 级",
+  trCheck:"校验：{0}", chkLv:"第{0}级", chkBad:"校验异常 {n} 处", chkBooks:"校验异常 {n} 本",
+  chkNoBook:"请先在「选择一本书试分」里选一本书", chkDl:"章节树已下载：{name}",
+  chDblHint:"（双击某一行进入该书单本试分）",
   outTitle:"④ 导出分发", btnRun:"▶ 开始处理所选书籍", btnSaveDir:"保存到所选文件夹…",
   optSkipDup:"跳过已经处理过的文件",
   savAs:"保存方式：", savSuf:"另存时加后缀",
@@ -491,6 +507,11 @@ const E = {
   bookRePh:"Applies to this book alone, e.g. its chapters read \"Part X, Chapter Y\"",
   bookReOn:"✔ Own rule set for this book",
   btnChapAll:"⚡ Chapter all books", chAllEmpty:"Library is empty — scan or drop TXT files first", chAllDoing:"Splitting {i}/{n}: {name}", chAllDone:"Done: {n} books · {m} chapters in total",
+  btnChapTree:"Export tree", treeSuffix:"_chapter_tree",
+  trBook:"Book: {0}", trSplit:"Split: {n} chapters · {c} chars · chapter tree {l} level(s)",
+  trCheck:"Check: {0}", chkLv:"Level {0}", chkBad:"{n} check issue(s)", chkBooks:"{n} book(s) with issues",
+  chkNoBook:"Pick a book above first", chkDl:"Chapter tree downloaded: {name}",
+  chDblHint:"  (double-click a row to open that book)",
   outTitle:"④ Export", btnRun:"▶ Process selected books", btnSaveDir:"Save to chosen folder…",
   optSkipDup:"Skip files already processed",
   savAs:"Save as:", savSuf:"Suffix",
@@ -2465,10 +2486,421 @@ const Core = (() => {
     return buildZip(entries);
   }
 
+  /* ---------- 章节树校验（对齐桌面版 jzcore 的序号解析 / 分层 / 复核） ---------- */
+  const CK_LABEL={
+    zh:{ok:"正常",fail:"第{0}章序号提取失败",gap:"第{0}章缺失/顺序错误",
+        gap2:"第{0}-{1}章缺失/顺序错误",dup:"章节重复（第{0}章）",
+        order:"第{0}章顺序错误",badnum:"章节号错误（第{0}章）",sum:"共{0}个异常"},
+    en:{ok:"OK",fail:"Chapter {0}: number not recognised",
+        gap:"Chapter {0} missing or out of order",
+        gap2:"Chapters {0}-{1} missing or out of order",
+        dup:"Duplicate chapter ({0})",order:"Chapter {0} out of order",
+        badnum:"Wrong chapter number ({0})",sum:"{0} issue(s)"}
+  };
+  const RP_LABEL={
+    zh:{title:"章节树导出",perLevel:"各级章节数：",level:"  第{0}级：{1} 章",
+        nolevel:"  无层级（序号提取失败 / 占位标题）：{0} 章",
+        hint:"章节树（缩进 = 层级；[n] 为参与编号的章序，无序号章记 0；"
+            +"← 后为标题里解析出的序号链 | 校验结果）：",
+        lv:"第{0}级",nochain:"无序号",ok:"正常"},
+    en:{title:"Chapter tree export",perLevel:"Chapters per level:",
+        level:"  Level {0}: {1} chapter(s)",
+        nolevel:"  No level (number not parsed / placeholder): {0} chapter(s)",
+        hint:"Chapter tree (indent = level; [n] = chapter index, 0 = unnumbered; "
+            +"← parsed number chain | check result):",
+        lv:"Level {0}",nochain:"no number",ok:"OK"}
+  };
+  const CN_DIGIT={"〇":0,"零":0,"○":0,"一":1,"二":2,"两":2,"兩":2,
+    "三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9};
+  const CN_UNIT={"十":10,"百":100,"千":1000,"万":10000,"亿":100000000};
+  const NUM_CHARS="0-9０-９〇零○一二三四五六七八九十百千万亿两兩";
+  const SEP_CHARS=new Set(" \t\r\n\u3000,，.。、：:；;!！?？·|/-\\—–~～#*_+=<>《》【】[]（）()「」『』\"'“”‘’");
+  const CHAP_LIKE=new Set("章节節回话話折");
+  const CHAP_NO_RE=new RegExp(
+    "第\\s*(["+NUM_CHARS+"]{1,12})\\s*(部(?!分)|[篇集卷章节節回话話折])"
+    +"|([部篇集卷])\\s*(["+NUM_CHARS+"]{1,12})"
+    +"|(Chapter|CHAPTER|chapter|Chap\\.?|CHAP\\.?)\\s*([0-9０-９]{1,6})","g");
+  const LEAD_NO_RE=/^\s*([0-9０-９]{1,6}|[〇零○一二三四五六七八九十百千]{1,8})\s*(?:[、.．,，:：\s]|$)/;
+  const EXTRA_NO_RE=new RegExp("(番外|外传|外傳|特别篇|特別篇|后记|後記)\\s*"
+    +"([0-9０-９]{1,6}|[〇零○一二三四五六七八九十百千]{1,8})");
+  const CHAPTER_EXTRA_RE=/番外|外传|外傳|特别篇|特別篇|后记|後記/;
+  const PART_HEAD_RE=/^\s*第\s*[0-9０-９〇零○一二三四五六七八九十百千万两]{1,12}\s*部分/;
+  const HOLD_TITLES=new Set(["开篇","全文"]);
+
+  function cnToInt(s){
+    s=String(s==null?"":s).trim();
+    if(!s)return null;
+    const half=s.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+    if(/^[0-9]+$/.test(half))return parseInt(half,10);
+    let total=0,section=0,num=0,seen=false;
+    for(const ch of s){
+      if(Object.prototype.hasOwnProperty.call(CN_DIGIT,ch)){num=CN_DIGIT[ch];seen=true;}
+      else if(Object.prototype.hasOwnProperty.call(CN_UNIT,ch)){
+        const u=CN_UNIT[ch];
+        if(u>=10000){section+=num;total+=(section||1)*u;section=0;num=0;}
+        else{if(!num&&!seen)num=1;section+=num*u;num=0;}
+        seen=true;
+      }else if(ch>="0"&&ch<="9"){num=num*10+parseInt(ch,10);seen=true;}
+      else return null;
+    }
+    if(!seen)return null;
+    return total+section+num;
+  }
+  /* 序号只认结构位置上的：标题开头、分隔符之后、或紧接上一个序号；
+     「卷册」类量词（部/卷/集/篇）右侧还必须是分隔符或结尾，否则整句正文会被当上级 */
+  function parseChapNumbers(title){
+    const s=String(title||"").replace(LITERAL_ESC,"").trim();
+    if(!s)return [];
+    const head=s.slice(0,40);
+    const em=head.match(EXTRA_NO_RE);
+    if(em&&(em.index===0||SEP_CHARS.has(head[em.index-1]))){
+      const v=cnToInt(em[2]);
+      if(v!==null)return [[v,em[1]]];
+    }
+    const cands=[];
+    CHAP_NO_RE.lastIndex=0;
+    let m;
+    while((m=CHAP_NO_RE.exec(head))!==null){
+      let v,u;
+      if(m[2]){v=cnToInt(m[1]);u=m[2];}
+      else if(m[4]){v=cnToInt(m[3]);u=m[4];}
+      else{v=cnToInt(m[6]);u="章";}
+      if(v!==null)cands.push([m.index,m.index+m[0].length,v,u]);
+      if(m[0].length===0)CHAP_NO_RE.lastIndex++;
+    }
+    const out=[];let last=-1;
+    for(let i=0;i<cands.length;i++){
+      const st=cands[i][0],en=cands[i][1],v=cands[i][2],u=cands[i][3];
+      if(!(st===0||st===last||SEP_CHARS.has(head[st-1])))continue;
+      const rightOk=(en>=head.length||SEP_CHARS.has(head[en])
+        ||(i+1<cands.length&&cands[i+1][0]===en));
+      if(!rightOk&&!(st===0&&CHAP_LIKE.has(u)))continue;
+      out.push([v,u]);last=en;
+    }
+    if(!out.length){
+      const lm=head.match(LEAD_NO_RE);
+      if(lm){const v=cnToInt(lm[1]);if(v!==null)out.push([v,"章"]);}
+    }
+    return out;
+  }
+  function isExtraTitle(title){return CHAPTER_EXTRA_RE.test(String(title||""));}
+
+  function newLv(unit,parent,inline){
+    return {unit:unit,parent:parent||null,last:null,nodes:0,inline:!!inline};
+  }
+  function lvCtx(lv){
+    const keys=[];let p=lv?lv.parent:null;
+    while(p&&keys.length<8){keys.push(p.unit+"#"+p.last);p=p.parent;}
+    return keys.join("|");
+  }
+  function lvHasChild(levels,lv){
+    for(const x of levels.values())if(x&&x.parent===lv)return true;
+    return false;
+  }
+  function inferAndCheck(items,marks,holes,L,skip,expect){
+    const nodes=[];const levels=new Map();let leaf=null;
+    const breaks=[];const quiet=new Set(skip||[]);
+    const add=function(ch,value,lv,vals){
+      if(lv)lv.nodes++;
+      const nd={ch:ch,value:value,level:lv,ctx:lvCtx(lv),
+        vals:(vals||(value===null||value===undefined?[]:[value]))};
+      nodes.push(nd);return nd;
+    };
+    let failRun=0;
+    for(let idx=0;idx<items.length;idx++){
+      const ch=items[idx][0],toks=items[idx][1];
+      if(!toks.length){
+        const nd=add(ch,null,null);
+        if(leaf&&leaf.last!==null)nd.expect=leaf.last+1+failRun;
+        failRun++;continue;
+      }
+      failRun=0;
+      if(toks.length>1){
+        let prevLv=null;
+        for(const tk of toks){
+          const v=tk[0],u=tk[1];
+          let lv=levels.get(u);
+          if(!lv){lv=newLv(u,prevLv,false);levels.set(u,lv);}
+          else if(prevLv&&lv!==prevLv&&!lv.parent&&lv.nodes&&!lvHasChild(levels,lv))lv.parent=prevLv;
+          lv.last=v;prevLv=lv;
+        }
+        leaf=prevLv;
+        for(let k=0;k<toks.length-1;k++){
+          const lv2=levels.get(toks[k][1]);
+          if(lv2&&lv2!==leaf)lv2.inline=true;
+        }
+        add(ch,toks[toks.length-1][0],leaf,toks.map(t=>t[0]));
+        continue;
+      }
+      const v=toks[0][0],u=toks[0][1];
+      if(!leaf){leaf=newLv(u,null,false);levels.set(u,leaf);leaf.last=v;add(ch,v,leaf);continue;}
+      let known=levels.get(u);
+      if(known&&known!==leaf){known.last=v;add(ch,v,known);continue;}
+      if(leaf.last!==null&&v===leaf.last+1){leaf.last=v;add(ch,v,leaf);continue;}
+      if(known){known.last=v;add(ch,v,known);continue;}
+      const nxt=items[idx+1]?items[idx+1][1]:[];
+      const nxtV=nxt.length?nxt[0][0]:null;
+      const nxtU=nxt.length?nxt[0][1]:null;
+      if(v===0||v===1){
+        if(leaf.nodes>=5&&leaf.last!==null&&v<=Math.max(3,Math.floor(leaf.last/2))){
+          const lv=newLv(u,leaf.parent,false);leaf.parent=lv;levels.set(u,lv);lv.last=v;
+          add(ch,v,lv);breaks.push([nodes.length-1,lv,true]);continue;
+        }
+        const okNext=(nxtV!==null)&&((nxtU===u&&nxtV===v+1)||(nxtU!==u&&(nxtV===0||nxtV===1)));
+        if(!okNext){quiet.add(ch);add(ch,null,null);continue;}
+        const lv=newLv(u,leaf,false);levels.set(u,lv);lv.last=v;leaf=lv;add(ch,v,lv);continue;
+      }
+      if(leaf.last!==null&&(v<=Math.max(3,Math.floor(leaf.last/2))
+          ||(nxtV!==null&&nxtV===v+1))){
+        const lv=newLv(u,leaf.parent,false);leaf.parent=lv;levels.set(u,lv);lv.last=v;
+        add(ch,v,lv);breaks.push([nodes.length-1,lv,false]);continue;
+      }
+      leaf.last=v;add(ch,v,leaf);
+    }
+    /* 空层回退：判为「上级」的层要站得住脚，否则按 fail 处理并把这一层摘掉 */
+    const dropLevel=function(lv){
+      for(const nd of nodes){
+        if(nd.level===lv){
+          for(const x of (nd.vals||[]))holes.add(x);
+          nd.value=null;nd.level=null;marks[nd.ch]=null;delete marks[nd.ch];
+        }
+      }
+      for(const x of levels.values())if(x&&x.parent===lv)x.parent=lv.parent;
+      for(const kv of Array.from(levels.entries()))if(kv[1]===lv)levels.delete(kv[0]);
+    };
+    for(const br of breaks){
+      const pos=br[0],lv=br[1],strict=br[2];
+      let cnt=0;
+      for(const nd of nodes)if(nd.level===lv)cnt++;
+      let keep;
+      if(strict)keep=cnt>=2;
+      else{
+        keep=false;
+        for(let i=pos+1;i<nodes.length;i++){
+          let p=nodes[i].level?nodes[i].level.parent:null,hop=0;
+          while(p&&hop<8){if(p===lv){keep=true;break;}p=p.parent;hop++;}
+          if(keep)break;
+        }
+      }
+      if(!keep)dropLevel(lv);
+    }
+    /* 金字塔兜底：某层比上级还少一个数量级 → 这些「子章节」判 fail 并摘层 */
+    for(let round=0;round<3;round++){
+      const counts=new Map();
+      for(const nd of nodes)if(nd.level)counts.set(nd.level,(counts.get(nd.level)||0)+1);
+      const badLv=[];
+      for(const kv of counts.entries()){
+        const lv=kv[0],c=kv[1];
+        if(lv.parent&&counts.get(lv.parent)&&c*10<=counts.get(lv.parent))badLv.push(lv);
+      }
+      if(!badLv.length)break;
+      for(const lv of badLv)dropLevel(lv);
+    }
+    /* 空层剪枝：没有任何章节挂着的层（标题里写明的除外） */
+    for(let round=0;round<4;round++){
+      const counts=new Map();
+      for(const nd of nodes)if(nd.level)counts.set(nd.level,(counts.get(nd.level)||0)+1);
+      const empt=[];
+      for(const lv of levels.values())if(!counts.get(lv)&&!lv.inline)empt.push(lv);
+      if(!empt.length)break;
+      for(const lv of empt){
+        for(const x of levels.values())if(x&&x.parent===lv)x.parent=lv.parent;
+        for(const kv of Array.from(levels.entries()))if(kv[1]===lv)levels.delete(kv[0]);
+      }
+    }
+    /* 上级章节必须真挂着子章节 */
+    const kidLevels=new Map();
+    for(const lv of levels.values()){
+      if(lv.parent){
+        if(!kidLevels.has(lv.parent))kidLevels.set(lv.parent,[]);
+        kidLevels.get(lv.parent).push(lv);
+      }
+    }
+    const waiting=new Map();
+    for(const nd of nodes){
+      const lv=nd.level;
+      if(!lv)continue;
+      let p=lv.parent,hop=0;
+      while(p&&hop<8){
+        const wp=waiting.get(p);
+        if(wp){wp.kids=(wp.kids||0)+1;waiting.delete(p);}
+        p=p.parent;hop++;
+      }
+      const prevNd=waiting.get(lv);
+      if(prevNd){
+        waiting.delete(lv);
+        for(const x of (prevNd.vals||[]))holes.add(x);
+        prevNd.value=null;prevNd.level=null;delete marks[prevNd.ch];
+      }
+      if(kidLevels.get(lv))waiting.set(lv,nd);
+    }
+    for(const nd of waiting.values()){
+      for(const x of (nd.vals||[]))holes.add(x);
+      nd.value=null;nd.level=null;delete marks[nd.ch];
+    }
+    /* 逐层复核 */
+    const byLevel=new Map();
+    for(const nd of nodes)if(nd.level){
+      if(!byLevel.has(nd.level))byLevel.set(nd.level,[]);
+      byLevel.get(nd.level).push(nd);
+    }
+    for(const seq of byLevel.values()){
+      /* 章号写错：差得离谱、且下一章接着上一章往下数 */
+      for(let i=1;i<seq.length-1;i++){
+        const cur=seq[i],prev=seq[i-1],nxt=seq[i+1];
+        const cv=cur.value,pv=prev.value,nv=nxt.value;
+        if(cv===null||pv===null||nv===null||cv===0||cv===1)continue;
+        if(Math.abs(cv-pv-1)>=3&&nv-pv-1>=0&&nv-pv-1<=3){
+          if(!(cur.ch in marks))marks[cur.ch]=fill(L.badnum,{0:cv});
+          cur.value=null;cur.prevGood=pv;
+        }
+      }
+      /* 重号：同层同上级下号只能出现一次（0/1 交给顺序错误规则） */
+      const seen=new Map();
+      for(const nd of seq){
+        const v=nd.value;
+        if(v===null||v===0||v===1)continue;
+        const k=nd.ctx+"#"+v;
+        if(seen.has(k)){
+          if(!(nd.ch in marks))marks[nd.ch]=fill(L.dup,{0:v});
+          nd.value=null;
+        }else seen.set(k,nd.ch);
+      }
+      for(let i=seq.length-1;i>0;i--){
+        const cur=seq[i],prev=seq[i-1];
+        const cv=cur.value;let pv=prev.value;
+        if(pv===null){
+          pv=(prev.prevGood===undefined?null:prev.prevGood);
+          if(pv===null)continue;
+        }
+        if(cv===null)continue;
+        if(cv===pv+1)continue;
+        if(cur.ctx!==prev.ctx&&(cv===0||cv===1))continue;
+        if(cv===pv){marks[cur.ch]=fill(L.dup,{0:cv});continue;}
+        if(cv===0||cv===1){marks[cur.ch]=fill(L.order,{0:cv});continue;}
+        if(cv>pv+1){
+          let allHole=true;
+          for(let x=pv+1;x<cv;x++)if(!holes.has(x)){allHole=false;break;}
+          if(allHole)continue;
+          const lo=pv+1,hi=cv-1;
+          marks[cur.ch]=(hi>lo)?fill(L.gap2,{0:lo,1:hi}):fill(L.gap,{0:lo});
+        }else marks[cur.ch]=fill(L.gap,{0:cv});
+      }
+    }
+    /* 仍没号的章：报「本该是第几章」 */
+    for(const nd of nodes){
+      if(nd.value!==null)continue;
+      if(nd.ch in marks)continue;
+      if(quiet.has(nd.ch))continue;
+      const vals=nd.vals||[];
+      let n=vals.length?vals[0]:(nd.expect!==undefined?nd.expect:(expect?expect[nd.ch]:undefined));
+      if(n===undefined)n=null;
+      marks[nd.ch]=fill(L.fail,{0:(n===null?nd.ch:n)});
+    }
+    /* 层级：只数前面真出现过的上级层，标题里写明的也算一级 */
+    let levelsN=1;const depths={},seenLv=new Map(),parents=new Set();
+    for(const nd of nodes){
+      const lv=nd.level;
+      if(!lv)continue;
+      let d=1,p=lv.parent,hop=0;
+      while(p&&hop<8){if(p.inline||seenLv.has(p))d++;p=p.parent;hop++;}
+      depths[nd.ch]=d;
+      if(nd.kids)parents.add(nd.ch);
+      seenLv.set(lv,nd);
+      if(d>levelsN)levelsN=d;
+    }
+    return {levels:levelsN,depths:depths,parents:parents};
+  }
+  function checkChapters(titles,lang){
+    const L=CK_LABEL[lang]||CK_LABEL.zh;
+    titles=Array.from(titles||[]);
+    if(titles.length<=1)
+      return {total:titles.length,marks:{},bad:0,ok:L.ok,summary:L.ok,
+              tree:titles.length,levels:1,lv:{},depths:{}};
+    const main=[],extra=[],holes=new Set(),skip=new Set(),toksOf={};
+    for(let i=1;i<=titles.length;i++){
+      const raw=titles[i-1],st=String(raw||"").trim();
+      if(HOLD_TITLES.has(st)||PART_HEAD_RE.test(st)){
+        skip.add(i);main.push([i,[]]);toksOf[i]=[];continue;
+      }
+      const toks=parseChapNumbers(raw);
+      toksOf[i]=toks;
+      if(isExtraTitle(raw)){
+        extra.push([i,toks]);
+        if(toks.length)holes.add(toks[toks.length-1][0]);
+      }else main.push([i,toks]);
+    }
+    const expect={};let lastNo=null,run=0;
+    for(let i=1;i<=titles.length;i++){
+      if(skip.has(i))continue;
+      const toks=toksOf[i]||[];
+      if(toks.length){lastNo=toks[toks.length-1][0];run=0;}
+      else if(lastNo!==null){expect[i]=lastNo+1+run;run++;}
+    }
+    const marks={};
+    const extraSkip=new Set(extra.filter(it=>!it[1].length).map(it=>it[0]));
+    const r1=inferAndCheck(main,marks,holes,L,skip,expect);
+    const r2=inferAndCheck(extra,marks,new Set(),L,extraSkip,expect);
+    const lv={};
+    for(const ch of r1.parents)if((r1.depths[ch]||0)<r1.levels)lv[ch]=r1.depths[ch];
+    for(const ch of r2.parents)if((r2.depths[ch]||0)<r2.levels)lv[ch]=r2.depths[ch];
+    const depths=Object.assign({},r1.depths,r2.depths);
+    const bad=Object.keys(marks).length;
+    return {total:titles.length,marks:marks,bad:bad,ok:L.ok,
+      summary:bad?fill(L.sum,{0:bad}):L.ok,
+      tree:main.length+extra.length,levels:Math.max(r1.levels,r2.levels),
+      lv:lv,depths:depths};
+  }
+  function chapterTreeReport(titles,ck,head,lang){
+    const R=RP_LABEL[lang]||RP_LABEL.zh;
+    titles=Array.from(titles||[]);
+    if(!ck)ck=checkChapters(titles,lang);
+    const marks=ck.marks||{},lvmap=ck.lv||{},depths=ck.depths||{};
+    const okText=ck.ok||R.ok;
+    const meta=[];
+    let seq=0;
+    for(let i=1;i<=titles.length;i++){
+      const toks=parseChapNumbers(titles[i-1]);
+      const d=depths[i];
+      if(d===undefined)meta.push([0,0,toks]);
+      else{seq++;meta.push([Math.max(1,d-Math.max(0,toks.length-1)),seq,toks]);}
+    }
+    const lines=[R.title];
+    for(const h of (head||[]))lines.push(String(h));
+    lines.push("");
+    const counts={};let nolevel=0;
+    for(const it of meta){
+      if(!it[0])nolevel++;
+      else counts[it[0]]=(counts[it[0]]||0)+1;
+    }
+    lines.push(R.perLevel);
+    Object.keys(counts).map(Number).sort((a,b)=>a-b)
+      .forEach(d=>lines.push(fill(R.level,{0:d,1:counts[d]})));
+    if(nolevel)lines.push(fill(R.nolevel,{0:nolevel}));
+    lines.push("");
+    lines.push(R.hint);
+    let prev=null;
+    for(let i=1;i<=meta.length;i++){
+      const disp=meta[i-1][0],num=meta[i-1][1],toks=meta[i-1][2];
+      if(prev!==null&&disp<prev)lines.push("");
+      prev=disp;
+      const chain=toks.length?toks.map(t=>t[0]+t[1]).join(" / "):R.nochain;
+      const msg=marks[i];
+      let state;
+      if(msg)state=((i in lvmap)?fill(R.lv,{0:lvmap[i]})+" ":"")+msg;
+      else if(i in lvmap)state=fill(R.lv,{0:lvmap[i]})+" "+okText;
+      else state=okText;
+      lines.push("    ".repeat(Math.max(0,disp-1))+"["+num+"] "
+        +String(titles[i-1]||"").trim()+"  ← "+chain+" | "+state);
+    }
+    return lines.join("\n")+"\n";
+  }
+
   return {detectEnc,decodeBytes,countChars,humanSize,guessMeta,cleanName,
     RULES,DEFAULT_ON,cleanText,cleanTextAsync,verifyImageLinks,findImageLinks,
     imageLinksInText,fetchImages,imagesForEpub,
     toHalfwidth,splitChapters,scanParaIssues,
+    cnToInt,parseChapNumbers,isExtraTitle,checkChapters,chapterTreeReport,
     buildZip,deflateRawBytes,buildEpub,buildMergedTxt,buildSplitZip,safeFileName,
     applyNameFormat,hasBookToken,nameFmtBadChars,
     buildCleanSummary,lineCount,nowStamp,SUM_KINDS,SUM_TEXT,
@@ -3237,6 +3669,19 @@ function refreshChapMsg(){
   if(b._chap)t+=" · "+b._chap.length+" "+T("chHead").replace(/\{n\}/,b._chap.length).split("·")[0].trim();
   $("chapInfo").textContent=t;
 }
+/* 取一本书的试分结果（切章 + 章节树校验），试分与导出章节树共用 */
+async function chapDataFor(b,custom){
+  let raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
+  /* 与 EXE 版及导出逻辑一致：未应用清洗时按当前规则临时清洗一份再分章
+     （不写入 b._clean，避免影响清洗页的统计与“应用清洗”流程） */
+  if(b._clean===undefined){
+    const rules=activeRuleIds();
+    if(rules.length) raw=(await Core.cleanTextAsync(raw,rules,false,St.customRules)).text;
+  }
+  const chs=Core.splitChapters(raw,custom);
+  const ck=Core.checkChapters(chs.map(c=>c.t),CUR);
+  return {chs:chs,ck:ck,raw:raw};
+}
 async function tryChapters(){
   const b=chapBookObj();
   if(!b){setMsgHint($("chapInfo"),T("chApplyNeed"));return;}
@@ -3245,30 +3690,87 @@ async function tryChapters(){
   let reOk=true;
   if(custom){try{new RegExp(custom);}catch(e){reOk=false;}}
   if(!reOk){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
-  let raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
-  /* 与 EXE 版及导出逻辑一致：未应用清洗时按当前规则临时清洗一份再分章
-     （不写入 b._clean，避免影响清洗页的统计与“应用清洗”流程） */
-  if(b._clean===undefined){
-    const rules=activeRuleIds();
-    if(rules.length) raw=(await Core.cleanTextAsync(raw,rules,false,St.customRules)).text;
-  }
-  let chs;
-  try{chs=Core.splitChapters(raw,custom);}catch(e){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
-  window._lastTry={chs,b};
-  renderChapList(chs);
-  $("chapInfo").textContent=fill(T("chTryDone"),{n:chs.length,c:fmtNum(Core.countChars(raw))});
-  log(fill(T("logChapped"),{name:b.title||b.name,n:chs.length})+"（试分）");
+  let data;
+  try{data=await chapDataFor(b,custom);}catch(e){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
+  window._lastTry={chs:data.chs,b:b,ck:data.ck,custom:custom};
+  renderChapList(data.chs,data.ck);
+  let info=fill(T("chTryDone"),{n:data.chs.length,c:fmtNum(Core.countChars(data.raw))});
+  if(data.ck.bad)info+=" · "+fill(T("chkBad"),{n:data.ck.bad});
+  $("chapInfo").textContent=info;
+  log(fill(T("logChapped"),{name:b.title||b.name,n:data.chs.length})+"（试分）");
 }
-function renderChapList(chs){
+/* 章节列表：序号 / 标题 / 字数 / 校验；上级章节带「第N级」，异常整行标红 */
+function renderChapList(chs,ck){
   const box=$("chapList");box.innerHTML="";
   if(!chs||!chs.length){box.innerHTML='<div class="hint">'+esc(T("chEmpty"))+'</div>';return;}
+  if(!ck)ck=Core.checkChapters(chs.map(c=>c.t),CUR);
   chs.slice(0,400).forEach((c,i)=>{
-    const d=document.createElement("div");d.className="ch";
-    d.textContent=(i+1)+". "+c.t+"（"+fmtNum(Core.countChars(c.b))+"字）";
-    d.title=c.t;box.appendChild(d);
+    const no=i+1;
+    const msg=ck.marks[no];
+    const lv=ck.lv[no];
+    let state=msg||ck.ok;
+    if(lv)state=fill(T("chkLv"),{0:lv})+" "+state;
+    const d=document.createElement("div");
+    d.className="ch"+(msg?" bad":"")+(lv?" lv":"");
+    d.innerHTML='<span class="no">'+no+'</span>'
+      +'<span class="ti">'+esc(c.t)+'</span>'
+      +'<span class="ct">'+fmtNum(Core.countChars(c.b))+'</span>'
+      +'<span class="ck">'+esc(state)+'</span>';
+    d.title=c.t+(state?"  |  "+state:"");
+    box.appendChild(d);
   });
   if(chs.length>400){const d=document.createElement("div");d.className="hint";
     d.textContent="… 共 "+chs.length+" 章，仅展示前 400";box.appendChild(d);}
+}
+/* 批量分章结果：一行一本书，只给汇总；双击进入该书单本试分 */
+function renderChapBatch(rows){
+  const box=$("chapList");box.innerHTML="";
+  if(!rows||!rows.length){box.innerHTML='<div class="hint">'+esc(T("chEmpty"))+'</div>';return;}
+  rows.forEach((r,i)=>{
+    const d=document.createElement("div");
+    d.className="ch bk"+(r.ck.bad?" bad":"");
+    d.innerHTML='<span class="no">'+(i+1)+'</span>'
+      +'<span class="ti">'+esc(r.b.title||r.b.name)+'</span>'
+      +'<span class="ct">'+r.n+'</span>'
+      +'<span class="ck">'+esc(r.ck.summary)+'</span>';
+    d.title=(r.b.title||r.b.name)+"  |  "+r.ck.summary+"  "+T("chDblHint");
+    d.addEventListener("dblclick",async()=>{
+      const idx=St.books.indexOf(r.b);
+      if(idx<0)return;
+      $("chapBook").value=String(idx);
+      syncBookRegex();
+      await tryChapters();
+    });
+    box.appendChild(d);
+  });
+}
+/* 导出章节树：下载 <书名>_章节树.txt（英文界面为 _chapter_tree.txt） */
+async function exportChapTree(){
+  const b=chapBookObj();
+  if(!b){setMsgHint($("chapInfo"),T("chkNoBook"));return;}
+  storeBookRegex();
+  const custom=(b.chapRe||$("chapRegex").value).trim();
+  let reOk=true;
+  if(custom){try{new RegExp(custom);}catch(e){reOk=false;}}
+  if(!reOk){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
+  let data=window._lastTry;
+  if(!(data&&data.b===b&&data.custom===custom)){
+    try{data=await chapDataFor(b,custom);}catch(e){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
+  }
+  const titles=data.chs.map(c=>c.t);
+  const ck=data.ck;
+  let total=0;
+  for(const c of data.chs)total+=Core.countChars(c.b);
+  const head=[
+    fill(T("trBook"),{0:b.title||b.name}),
+    fill(T("trSplit"),{n:titles.length,c:fmtNum(total),l:ck.levels}),
+    fill(T("trCheck"),{0:ck.summary})
+  ];
+  const body=Core.chapterTreeReport(titles,ck,head,CUR);
+  const name=Core.safeFileName(b.title||b.name,60,"book")+T("treeSuffix")+".txt";
+  dlBytes(name,body,"text/plain;charset=utf-8",false);
+  log(fill(T("chkDl"),{name:name}));
+  setMsgHint($("chapInfo"),fill(T("chkDl"),{name:name}));
 }
 function applyChapters(){
   const t=window._lastTry;
@@ -3286,7 +3788,7 @@ async function chapAll(){
   const custom=$("chapRegex").value.trim();
   if(custom){try{new RegExp(custom);}catch(e){$("chapInfo").textContent=T("chBadRegex");return;}}
   btn.disabled=true;info.textContent="";
-  const n=St.books.length;let done=0,sum=0;
+  const n=St.books.length;let done=0,sum=0,ckBad=0;const rows=[];
   for(let i=0;i<n;i++){
     const b=St.books[i];
     info.textContent=fill(T("chAllDoing"),{i:i+1,n,name:(b.title||b.name).slice(0,24)});
@@ -3301,12 +3803,18 @@ async function chapAll(){
       if(own){try{new RegExp(own);}catch(e){own=undefined;}}
       const chs=Core.splitChapters(raw,own);
       b._chap=chs;b.chapters=chs.length;sum+=chs.length;done++;
+      const ck=Core.checkChapters(chs.map(c=>c.t),CUR);
+      if(ck.bad)ckBad++;
+      rows.push({b:b,n:chs.length,ck:ck});
     }catch(e){log("分章失败："+b.name+" "+e.message);}
     if(i%5===4||i===n-1){renderLib();fillChapBook();}
   }
   renderLib();fillChapBook();
   btn.disabled=false;
-  const msg=fill(T("chAllDone"),{n:done,m:sum});
+  renderChapBatch(rows);          // 一行一本书：只给校验汇总，双击进入单本
+  let msg=fill(T("chAllDone"),{n:done,m:sum});
+  if(ckBad)msg+=" · "+fill(T("chkBooks"),{n:ckBad});
+  msg+=T("chDblHint");
   info.textContent=msg;
   log(msg);
 }
@@ -3736,6 +4244,7 @@ function bindSteps(){
   $("btnChapTry").onclick=tryChapters;
   $("btnChapApply").onclick=applyChapters;
   $("btnChapAll").onclick=chapAll;
+  $("btnChapTree").onclick=exportChapTree;
   const cbChap=$("chapBook"),inBook=$("bookRegex");
   if(cbChap) cbChap.onchange=()=>{syncBookRegex();refreshChapMsg();};
   if(inBook) inBook.oninput=()=>{storeBookRegex();
