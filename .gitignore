@@ -17,3 +17,5 @@ web/_ui_shot.png
 # 打补丁时的临时备份
 *.bak_*
 *.bak_v1*
+
+.idea/
