@@ -267,6 +267,8 @@ b.dark{color:var(--ink)}
       <label><input type="checkbox" id="fmtEpub" checked> EPUB（带目录 · 推荐电纸书）</label>
       <label><input type="checkbox" id="fmtTxt"> 合并 TXT</label>
       <label><input type="checkbox" id="fmtSplit"> 分章 TXT（每章一个文件）</label>
+      <span class="lab" data-k="fileName">文件名</span>
+      <select id="selNameFmt" class="select" style="width:196px"></select>
     </div>
     <div class="check" style="margin-top:-2px">
       <span class="hint" data-k="outTheme"></span>
@@ -351,6 +353,19 @@ const Z = {
   savAs:"保存方式：", savSuf:"另存时加后缀",
   outTheme:"版面主题：", outCover:"封面：",
   coverAuto:"自动（优先同名图片）", coverDefault:"生成默认封面", coverNone:"不加封面",
+  /* 「文件名」：保持原样以外的选项都换算成 book/author 模板，与自定义格式共用同一套解析 */
+  fileName:"文件名",
+  nameKeep:"保持原样", nameAuthorTitle:"作者名 - 书名", nameBracket:"[作者名] 书名",
+  nameBookAuthor:"《书名》作者：作者名", nameCustom:"自定义格式",
+  namePatBookAuthor:"《book》作者：author",
+  nameCustomTitle:"自定义文件名格式",
+  nameCustomHint:"用 book 代表书名、author 代表作者名，例如：《book》author。格式必须包含 book 占位符，且不能出现 \\ / : * ? \" < > | 这些文件名非法字符。",
+  nameFmtLabel:"格式模板",
+  nameCustomBad:"格式里必须包含 book 占位符。",
+  nameCustomBadChar:"文件名里不能使用这些字符：{c}",
+  namePreview:"预览：{n}",
+  namePreviewTitle:"示例书名", namePreviewAuthor:"示例作者",
+  nameCustomDemo:"《book》author",
   optImgDl:"下载插图链接",
   optImgDlTip:"网页版受浏览器跨域（CORS）限制：站点没发跨域许可的图片，浏览器读不到图片字节，只能跳过。这类图请用桌面版（exe）下载，桌面端不受此限制。",
   optInplace:"原地覆盖原文件（先备份 .bak）",
@@ -481,6 +496,18 @@ const E = {
   savAs:"Save as:", savSuf:"Suffix",
   outTheme:"Layout:", outCover:"Cover:",
   coverAuto:"Auto (same-name image first)", coverDefault:"Generate default cover", coverNone:"No cover",
+  fileName:"File name",
+  nameKeep:"Keep as is", nameAuthorTitle:"Author - Title", nameBracket:"[Author] Title",
+  nameBookAuthor:"《Title》by Author", nameCustom:"Custom format",
+  namePatBookAuthor:"《book》by author",
+  nameCustomTitle:"Custom File Name Format",
+  nameCustomHint:"Use book for the title and author for the author, e.g. 《book》by author. The format must contain the book placeholder and must not use \\ / : * ? \" < > | these illegal file-name characters.",
+  nameFmtLabel:"Format template",
+  nameCustomBad:"The format must contain the book placeholder.",
+  nameCustomBadChar:"These characters cannot be used in a file name: {c}",
+  namePreview:"Preview: {n}",
+  namePreviewTitle:"Sample Title", namePreviewAuthor:"Sample Author",
+  nameCustomDemo:"《book》by author",
   optImgDl:"Download illustrations",
   optImgDlTip:"Browser CORS limit: images from sites that send no CORS header cannot be read here and are skipped. Use the desktop app for those — it is not subject to CORS.",
   optInplace:"Overwrite originals (backup .bak)",
@@ -604,6 +631,7 @@ Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<li><b>清洗</b>：勾选规则（网址行 / 站点宣传 / 翻页残留 / 乱码行 / 空行压缩等），先「预览」看前后对比，再「应用到所选书籍」。勾上「含网址的行」后会多出「保留插图链接」「插图链接校验」：前者按后缀留下配图链接，后者还会逐条请求校验（只读响应头，会联网），图链落在站点宣传行里仍随那一行删除。</li>'
  +'<li><b>分章</b>：选中一本书点「试分章节」看章节目录；标题写法特殊就用面板右上角「常用写法」；「应用分章」后章节目录会随书保存。</li>'
  +'<li><b>导出</b>：勾选格式（EPUB 带目录 / 合并 TXT / 分章 TXT）。单本直接下载；多本自动逐一下载，或先「保存到所选文件夹」把全部结果一次写入你授权的目录。</li>'
++'<li><b>文件名</b>：「分章 TXT」右边的下拉框决定导出文件（EPUB / 合并 TXT / 分章 ZIP）叫什么：保持原样（默认，用书名）/ 作者名 - 书名 / [作者名] 书名 / 《书名》作者：作者名 / 自定义格式。自定义格式用 book 表示书名、author 表示作者名，必须含 book，且不能出现 \\ / : * ? " < > | 等文件名非法字符。</li>'
  +'<li><b>清洗内容汇总</b>（默认勾选）：处理完会多出一份「清洗内容汇总.txt」，按书籍分类列出被清洗掉的每一段文字、它在原文件里的行号，以及命中的规则（自定义规则写明规则名或正则）；空格与空行不逐条列出，只统计数量。用来回查有没有把正文当广告误删。</li></ol>'
  +'<p><b>自定义章节正则</b>（内置认不出的写法才需要）</p><ul>'
  +'<li>内置只认「第X章/节/回」「卷X」「序章/楔子/尾声/番外」。书里写成「第一折」「01」「卷一 第3回」，整本会被当成一章。</li>'
@@ -622,6 +650,7 @@ E.helpBody = '<p><b>The four steps</b></p><ol>'
  +'<li><b>Clean</b>: tick rules (URL lines / site promos / page-nav leftovers / mojibake / blank compression…), hit “Preview”, then “Apply to selected books”. Ticking “Lines with URLs” reveals “Keep illustration links” and “Verify illustration links” — the latter requests each link (headers only, uses the network) and keeps just real images; a link on a site-promo line is still deleted with it.</li>'
  +'<li><b>Chapters</b>: pick a book and press “Try splitting” to see the TOC; a custom regex is supported; “Apply” keeps the split with the book.</li>'
  +'<li><b>Export</b>: tick formats (EPUB with TOC / merged TXT / per-chapter TXT). A single book downloads directly; multiple books download one by one, or pick “Save to chosen folder” once and write everything there.</li>'
++'<li><b>File name</b>: the dropdown right after “per-chapter TXT” names the exported files (EPUB / merged TXT / split ZIP): keep as is (the title) / Author - Title / [Author] Title / 《Title》by Author / custom format. A custom format uses book for the title and author for the author, must contain book, and must not use \\ / : * ? " < > | .</li>'
  +'<li><b>Cleanup summary</b> (on by default): after processing you also get “清洗内容汇总.txt” — per book, every removed piece of text, its line number in the original file, and the rule that removed it (custom rules show their name or pattern). Blank lines are only counted. Use it to check that no real paragraph was deleted as an ad.</li></ol>'
  +'<p><b>Custom chapter regex</b> (only when the built-ins miss)</p><ul>'
  +'<li>Built-ins know 第X章/节/回, 卷X and 序章/楔子/尾声/番外 only. A book using 第一折 / 01 / 卷一 第3回 becomes one single chapter.</li>'
@@ -2374,6 +2403,57 @@ const Core = (() => {
     const x=String(s||"").replace(/[\\/:*?"<>|]/g,"_").slice(0,maxlen||60).trim();
     return x||fallback;
   }
+
+  /* ---------- 导出文件名格式（对齐 python apply_name_format） ----------
+     book=书名、author=作者名：预设项与自定义格式共用同一套占位符解析。
+     占位符两侧不能紧贴 ASCII 字母数字（notebook 里的 book 不算），中文/标点/空白都算分隔；
+     用户写的连续空格原样保留，只有占位符取值为空时才把它的装饰一起摘掉。 */
+  const NAME_WORD=/[A-Za-z0-9_]/;
+  const NAME_ILLEGAL='\\/:*?"<>|';
+  const NAME_EDGE="[\\s\\-—_·|,，.。:：]";
+  /* 扫描出真正生效的 book / author 占位符（不用 lookbehind，老浏览器也能跑） */
+  function nameTokens(fmt){
+    const s=String(fmt||"");const out=[];const re=/book|author/g;let m;
+    while((m=re.exec(s))){
+      const i=m.index,tok=m[0];
+      if(i>0&&NAME_WORD.test(s[i-1])) continue;
+      if(i+tok.length<s.length&&NAME_WORD.test(s[i+tok.length])) continue;
+      out.push({start:i,end:i+tok.length,tok:tok});
+    }
+    return out;
+  }
+  function hasBookToken(fmt){
+    return nameTokens(fmt).some(t=>t.tok==="book");
+  }
+  function nameFmtBadChars(fmt){
+    const out=[];
+    for(const c of String(fmt||"")) if(NAME_ILLEGAL.indexOf(c)>=0&&out.indexOf(c)<0) out.push(c);
+    return out;
+  }
+  /* 取值为空时，占位符连同紧贴它的括号、「作者：」标签与分隔符整体删掉，
+     只删这一小段——不能在全文里压缩空白，否则用户写的多个空格会丢 */
+  function dropEmptyToken(fmt,token){
+    const pat=new RegExp("(^|[^A-Za-z0-9_])"+NAME_EDGE+"*(?:作者|著者|著|by)?"+NAME_EDGE+"*"+
+      "[\\[【《(（]?"+NAME_EDGE+"*"+token+"(?![A-Za-z0-9_])"+NAME_EDGE+"*"+
+      "[\\]】》）)]?"+NAME_EDGE+"*","gi");
+    return String(fmt||"").replace(pat,"$1");
+  }
+  function applyNameFormat(fmt,title,author,fallback){
+    const t=String(title||"").trim(),a=String(author||"").trim();
+    let f=String(fmt||"");
+    if(!a) f=dropEmptyToken(f,"author");
+    if(!t) f=dropEmptyToken(f,"book");
+    let out=f;
+    const toks=nameTokens(f);
+    for(let k=toks.length-1;k>=0;k--){
+      const sp=toks[k];
+      out=out.slice(0,sp.start)+(sp.tok==="book"?t:a)+out.slice(sp.end);
+    }
+    out=out.replace(/\[\s*\]|【\s*】|《\s*》|\(\s*\)|（\s*）/g,"");   /* 兜底：残留空括号 */
+    out=out.trim();                                                 /* 首尾空白在文件名里非法 */
+    out=out.replace(/^[\s\-—_·:：|/\\、,，.。]+|[\s\-—_·:：|/\\、,，.。]+$/g,"").trim();
+    return out||t||fallback||"";
+  }
   function buildSplitZip(baseName,chapters){
     const width=Math.max(4,String(chapters.length).length);
     const entries=chapters.map((ch,i)=>{
@@ -2390,6 +2470,7 @@ const Core = (() => {
     imageLinksInText,fetchImages,imagesForEpub,
     toHalfwidth,splitChapters,scanParaIssues,
     buildZip,deflateRawBytes,buildEpub,buildMergedTxt,buildSplitZip,safeFileName,
+    applyNameFormat,hasBookToken,nameFmtBadChars,
     buildCleanSummary,lineCount,nowStamp,SUM_KINDS,SUM_TEXT,
     THEMES,themeCss,themeById,makeCover,prepareCoverFile,
     exportRulesPack,parseRulesPack,customToText,textToCustom,
@@ -2664,8 +2745,96 @@ function dlBytes(name,data,mime,bom){
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
+/* ================= 导出文件名格式 ================= */
+/* 下拉项与模板一一对应：空串=保持原样，null=自定义（用下面存着的模板） */
+function namePats(){
+  return ["", "author - book", "[author] book", T("namePatBookAuthor"), null];
+}
+let _nameFmt = cfgKey("nameFmt")||"";    // 当前生效的模板
+let _nameIdx = 0;                        // 上一次有效选项：自定义弹窗取消时退回
+function refreshNameSelect(){
+  const el=$("selNameFmt"); if(!el) return;
+  const custom=cfgKey("nameFmtCustom")||"";
+  const labels=[T("nameKeep"),T("nameAuthorTitle"),T("nameBracket"),T("nameBookAuthor"),
+                custom||T("nameCustom")];
+  el.innerHTML=labels.map((t,i)=>'<option value="'+i+'">'+esc(t)+'</option>').join("");
+  const pats=namePats();
+  let idx=0;
+  if(_nameFmt){
+    const i=pats.indexOf(_nameFmt);
+    idx = i<0 ? labels.length-1 : i;     // 认不出是预设 = 自定义
+  }
+  el.selectedIndex=idx; _nameIdx=idx;
+}
+function onNameFmtChange(){
+  const el=$("selNameFmt"); if(!el) return;
+  const i=el.selectedIndex,pats=namePats();
+  if(i<0||i>=pats.length) return;
+  if(pats[i]===null){
+    askNameFmt(fmt=>{
+      if(fmt===null){ el.selectedIndex=_nameIdx; return; }   // 取消：退回上一次的选择
+      _nameFmt=fmt; cfgSet("nameFmt",fmt); cfgSet("nameFmtCustom",fmt);
+      refreshNameSelect();                                   // 下拉框里直接显示用户填的模板
+    });
+    return;
+  }
+  _nameFmt=pats[i]||"";
+  cfgSet("nameFmt",_nameFmt);
+  _nameIdx=i;
+}
+/* 自定义格式弹窗：不能有非法文件名（/ 等），必须含 book 占位符；取消回 null */
+function askNameFmt(cb){
+  const id=openModal(T("nameCustomTitle"),
+    '<p class="hint" style="margin:0 0 8px">'+esc(T("nameCustomHint"))+'</p>'
+    +'<label class="lab" style="display:block;margin-bottom:4px">'+esc(T("nameFmtLabel"))+'</label>'
+    +'<input class="inp" id="nameFmtInp" spellcheck="false" autocomplete="off">'
+    +'<div class="hint" id="nameFmtMsg" style="min-height:18px"></div>',
+    '<button class="btn ghost" data-c="1">'+esc(T("dCancel"))+'</button>'
+    +'<button class="btn b2" data-ok="1">'+esc(T("dOk"))+'</button>');
+  const d=document.getElementById(id);
+  const inp=document.getElementById("nameFmtInp");
+  const msg=document.getElementById("nameFmtMsg");
+  inp.value=cfgKey("nameFmtCustom")||T("nameCustomDemo");
+  let done=false;
+  function errOf(v){
+    const bad=Core.nameFmtBadChars(v);
+    if(bad.length) return fill(T("nameCustomBadChar"),{c:bad.join(" ")});
+    if(!Core.hasBookToken(v)) return T("nameCustomBad");
+    return "";
+  }
+  function refresh(){
+    const v=inp.value.trim(),e=errOf(v);
+    if(e){ msg.style.color="var(--red)"; msg.textContent=e; }
+    else if(!v){ msg.style.color=""; msg.textContent=""; }
+    else{
+      msg.style.color="var(--green)";
+      msg.textContent=fill(T("namePreview"),
+        {n:Core.applyNameFormat(v,T("namePreviewTitle"),T("namePreviewAuthor"),"")});
+    }
+  }
+  function ok(){
+    const v=inp.value.trim(),e=errOf(v);
+    if(e){ msg.style.color="var(--red)"; msg.textContent=e; inp.focus(); return; }
+    done=true; closeModal(id); cb(v);
+  }
+  d.addEventListener("click",ev=>{
+    if(ev.target.dataset.ok) ok();
+    else if(ev.target.dataset.c){ done=true; closeModal(id); cb(null); }
+  });
+  inp.addEventListener("input",refresh);
+  inp.addEventListener("keydown",ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); ok(); } });
+  /* ✕ / 点遮罩关窗也算取消：把下拉框退回上一次的选择 */
+  const obs=new MutationObserver(()=>{
+    if(document.getElementById(id)) return;
+    obs.disconnect(); if(!done) cb(null);
+  });
+  obs.observe($("modalRoot"),{childList:true});
+  refresh(); inp.focus(); inp.select();
+}
 function fileNameBase(book){
-  const stem=Core.safeFileName(book.title||book.name.replace(/\.(txt|text)$/i,""),70,T("kNone"));
+  const title=book.title||book.name.replace(/\.(txt|text)$/i,"");
+  const stem0=_nameFmt?Core.applyNameFormat(_nameFmt,title,book.author||"",T("kNone")):title;
+  const stem=Core.safeFileName(stem0,_nameFmt?80:70,T("kNone"));
   const sufEl=$("savSuffix");
   const suf=Core.safeFileName((sufEl?sufEl.value:"").trim().replace(/^\.+/,""),12,"");
   return stem+suf;
@@ -3548,7 +3717,7 @@ async function saveDirFlow(){
 }
 
 /* ================= 语言 / 模态 ================= */
-function setLang(l){CUR=l;cfgSet("lang",l);applyStatic();buildRules();renderLib();refreshChapMsg();refreshThemeSelect();refreshCoverSelect();}
+function setLang(l){CUR=l;cfgSet("lang",l);applyStatic();buildRules();renderLib();refreshChapMsg();refreshThemeSelect();refreshCoverSelect();refreshNameSelect();}
 function bindTop(){
   $("btnLang").onclick=()=>setLang(CUR==="zh"?"en":"zh");
   $("btnAbout").onclick=()=>openModal(T("aboutTitle"),TX().aboutBody);
@@ -3582,6 +3751,8 @@ function bindSteps(){
   const thEl=$("selTheme"),cvEl=$("selCover");
   if(thEl) thEl.onchange=()=>cfgSet("theme",thEl.value);
   if(cvEl) cvEl.onchange=()=>cfgSet("cover",cvEl.value);
+  const nfEl=$("selNameFmt");
+  if(nfEl) nfEl.onchange=onNameFmtChange;
   const sumEl=$("optSum");
   if(sumEl) sumEl.onchange=()=>cfgSet("sum",sumEl.checked?"1":"0");
 }
@@ -3594,7 +3765,7 @@ async function boot(){
   if(cfgKey("savSuffix")!==null&&$("savSuffix")) $("savSuffix").value=cfgKey("savSuffix");
   if(cfgKey("inplace")==="1"&&$("optInplace")) $("optInplace").checked=true;
   if(cfgKey("sum")==="0"&&$("optSum")) $("optSum").checked=false;
-  refreshThemeSelect();refreshCoverSelect();
+  refreshThemeSelect();refreshCoverSelect();refreshNameSelect();
   try{
     const cr=cfgKey("customRules");
     if(cr){const arr=JSON.parse(cr);if(Array.isArray(arr))St.customRules=arr;}

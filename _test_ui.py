@@ -94,6 +94,45 @@ app.nb.select(app.tab_out)
 root.update()
 check("开始处理按钮", app.btn_go, 60, 18)
 check("进度条", app.pb, 200, 10)
+check("文件名下拉框", app.cb_name, 80, 18)
+pats = app.name_pats()
+want_pats = ["", "author - book", "[author] book", app.S["name_pat_book_author"], None]
+ok = pats == want_pats
+print(("  [OK]  " if ok else "  [FAIL]") + " 文件名预设映射 %r" % (pats,))
+if not ok:
+    fails.append("文件名预设映射")
+app.cfg["name_fmt"] = "author - book"
+app._restore_name_opt()
+ok = app.cb_name.current() == 1 and app.name_format() == "author - book"
+print(("  [OK]  " if ok else "  [FAIL]") + " 文件名预设可恢复")
+if not ok:
+    fails.append("文件名预设恢复")
+app.cfg["name_fmt"] = "《book》·author"
+app._restore_name_opt()
+ok = app.cb_name.current() == len(app.name_labels) - 1 and \
+    app.name_format() == "《book》·author"
+print(("  [OK]  " if ok else "  [FAIL]") + " 自定义格式可恢复")
+if not ok:
+    fails.append("自定义格式恢复")
+app.cfg["name_fmt"] = ""
+app._restore_name_opt()
+ok = app.cb_name.current() == 0 and app.name_format() == ""
+print(("  [OK]  " if ok else "  [FAIL]") + " 保持原样时为书名")
+if not ok:
+    fails.append("保持原样")
+got = safe_name(jzcore.apply_name_format("book/author", "斗破/苍穹", "天蚕土豆"), maxlen=80)
+ok = got == "斗破苍穹天蚕土豆"
+print(("  [OK]  " if ok else "  [FAIL]") + " 文件名非法字符已清掉 -> %r" % got)
+if not ok:
+    fails.append("文件名非法字符")
+# 自定义格式确认后要显示在下拉框里（最后一项换成用户填的模板）
+app._custom_fmt = "《book》·author"
+app._refresh_name_box()
+app.cb_name.set(app.name_labels[-1])
+ok = app.cb_name.get() == "《book》·author" and app.name_labels[-1] == "《book》·author"
+print(("  [OK]  " if ok else "  [FAIL]") + " 自定义格式显示在下拉框 -> %r" % app.cb_name.get())
+if not ok:
+    fails.append("自定义格式显示")
 
 print("\n== 工具函数 ==")
 cases = [("第1章/楔子", "第1章楔子"), ("", "未命名"), ("  a/b:c*d?e  ", "abcde")]

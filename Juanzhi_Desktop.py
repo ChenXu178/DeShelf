@@ -12,7 +12,7 @@ import threading
 import time
 import traceback
 from collections import Counter
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 import tkinter as tk
 
 try:
@@ -99,6 +99,10 @@ HELP_ZH = """卷帙 DeShelf 使用说明
     原地覆盖 — 先备份为 .bak 再写回，省空间但有风险
     仅导出 — 不落盘整理后的 TXT，只生成导出文件
   导出格式可多选：EPUB（兼容绝大多数阅读器）、合并 TXT、分章 TXT。
+  文件名决定导出文件（EPUB、合并 TXT、分章 TXT 目录）叫什么：
+  保持原样（默认，用书名）/ 作者名 - 书名 / [作者名] 书名 / 《书名》作者：作者名 /
+  自定义格式。自定义格式用 book 表示书名、author 表示作者名，必须含 book，
+  例如《book》 author；生成的名称会自动去掉 \\ / : * ? " < > | 等非法字符。
   「下载插图链接」需先在批量清洗里勾「保留插图链接」，否则一直置灰：
   勾上后正文里的插图会下载到「输出目录/插图/书名」，按 001、002… 顺序命名
   （webp/gif/bmp 会转成 jpg 再存，阅读器支持面更宽）；
@@ -167,6 +171,11 @@ HELP_EN = """DeShelf User Guide
     Export only — keep no cleaned TXT, just generated files
   Formats (multi-select): EPUB (TOC, most readers), merged TXT,
   per-chapter TXT.
+  “File name” names the exported files
+  (EPUB, merged TXT, per-chapter folder): keep as is (default, the title) /
+  Author - Title / [Author] Title / 《Title》by Author / custom format.
+  A custom format uses book for the title and author for the author and must
+  contain book, e.g. 《book》 author; \\ / : * ? " < > | are stripped.
   “Download illustration links” stays greyed out until “Keep illustration
   links” is ticked on the cleaning page. Once ticked, illustrations are saved
   to “output folder/插图/book title” as 001, 002… (webp/gif/bmp are converted
@@ -434,6 +443,25 @@ TEXTS = {
         "f_epub": "EPUB（带目录，推荐）",
         "f_merge": "合并 TXT（整本一个文件）",
         "f_split": "分章 TXT（一章一个文件）",
+        # 「文件名」下拉框：除「保持原样」外，选项都映射成一个 book/author 模板
+        "f_name": "文件名",
+        "name_keep": "保持原样",
+        "name_author_title": "作者名 - 书名",
+        "name_bracket": "[作者名] 书名",
+        "name_book_author": "《书名》作者：作者名",
+        "name_custom": "自定义格式",
+        "name_pat_book_author": "《book》作者：author",
+        "name_custom_title": "自定义文件名格式",
+        "name_custom_hint": "用 book 代表书名、author 代表作者名，例如：《book》author\n"
+                            "格式必须包含 book 占位符，且不能出现 \\ / : * ? \" < > |\n"
+                            "这些文件名非法字符。",
+        "name_custom_bad": "格式里必须包含 book 占位符。",
+        "name_custom_bad_char": "文件名里不能使用这些字符：{0}",
+        "name_custom_demo": "《book》author",
+        "name_fmt_label": "格式模板",
+        "name_preview": "预览：{0}",
+        "name_preview_title": "示例书名",
+        "name_preview_author": "示例作者",
         "f_theme": "版面主题", "f_cover": "封面",
         "cov_auto": "自动：优先同名图片", "cov_default": "生成默认封面",
         "cov_none": "不加封面",
@@ -623,6 +651,25 @@ TEXTS = {
         "f_epub": "EPUB (with TOC, recommended)",
         "f_merge": "Merged TXT (one file per book)",
         "f_split": "Per-chapter TXT (one file per chapter)",
+        "f_name": "File name",
+        "name_keep": "Keep as is",
+        "name_author_title": "Author - Title",
+        "name_bracket": "[Author] Title",
+        "name_book_author": "《Title》by Author",
+        "name_custom": "Custom format",
+        "name_pat_book_author": "《book》by author",
+        "name_custom_title": "Custom File Name Format",
+        "name_custom_hint": "Use book for the title and author for the author, "
+                            "e.g. 《book》by author\nThe format must contain the book "
+                            "placeholder and must not use \\ / : * ? \" < > |\n"
+                            "these illegal file-name characters.",
+        "name_custom_bad": "The format must contain the book placeholder.",
+        "name_custom_bad_char": "These characters cannot be used in a file name: {0}",
+        "name_custom_demo": "《book》by author",
+        "name_fmt_label": "Format template",
+        "name_preview": "Preview: {0}",
+        "name_preview_title": "Sample Title",
+        "name_preview_author": "Sample Author",
         "f_theme": "Layout", "f_cover": "Cover",
         "cov_auto": "Auto: same-name image first", "cov_default": "Generate default cover",
         "cov_none": "No cover",
@@ -1450,6 +1497,15 @@ class App:
                         variable=self.fmt_vars["merge"]).pack(side="left", padx=(0, px(16)))
         ttk.Checkbutton(row, text=S["f_split"],
                         variable=self.fmt_vars["split"]).pack(side="left")
+        # 「文件名」：保持原样以外的选项都换算成 book/author 模板，与自定义格式同一套解析
+        ttk.Label(row, text=S["f_name"]).pack(side="left", padx=(px(12), 0))
+        self._custom_fmt = self.cfg.get("name_fmt_custom") or ""
+        self._name_idx = 0
+        self.cb_name = ttk.Combobox(row, state="readonly")
+        self.cb_name.pack(side="left", padx=(px(4), 0))
+        self._refresh_name_box()        # 填选项 + 按最长一项算宽度
+        self._restore_name_opt()
+        self.cb_name.bind("<<ComboboxSelected>>", self._on_name_sel)
         # EPUB 排版主题与封面：只影响导出的 epub，不改正文
         row2 = ttk.Frame(g2)
         row2.pack(fill="x", padx=px(10), pady=(0, px(6)))
@@ -1535,6 +1591,159 @@ class App:
     def _save_sum_opt(self):
         self.cfg["summary"] = bool(self.sum_var.get())
         jzcore.save_config(self.cfg)
+
+    # ------------------------------------------------------------ 文件名格式
+    def name_pats(self):
+        """「文件名」每项对应的模板：空串=保持原样，None=自定义格式。"""
+        return ["", "author - book", "[author] book",
+                self.S["name_pat_book_author"], None]
+
+    def _refresh_name_box(self):
+        """重填下拉项：自定义格式那一项显示用户填的模板，宽度按最长一项算。
+
+        字符宽固定写死会把中文「《书名》作者：作者名」截断，所以按字体实测像素换算；
+        自定义模板可能很长，宽度封顶 24 字，免得把整行撑破。
+        """
+        S = self.S
+        self.name_labels = [S["name_keep"], S["name_author_title"], S["name_bracket"],
+                            S["name_book_author"], self._custom_fmt or S["name_custom"]]
+        self.cb_name.configure(values=self.name_labels)
+        fnt = tkfont.Font(font=ttk.Style().lookup("TCombobox", "font") or "TkTextFont")
+        unit = max(fnt.measure("0"), 1)
+        widest = max(fnt.measure(t) for t in self.name_labels)
+        self.cb_name.configure(width=min(int(widest / unit) + 1, 24))
+
+    def _restore_name_opt(self):
+        """恢复上次的文件名格式：认得出是预设就选预设，否则落到「自定义格式」。"""
+        fmt = self.cfg.get("name_fmt") or ""
+        idx = 0
+        if fmt:
+            try:
+                idx = self.name_pats().index(fmt)
+            except ValueError:
+                idx = len(self.name_labels) - 1
+                self._custom_fmt = fmt
+                self._refresh_name_box()    # 老配置只存了模板，补进下拉项再选中
+        self._name_idx = idx
+        try:
+            self.cb_name.current(idx)
+        except Exception:
+            pass
+
+    def _on_name_sel(self, _e=None):
+        """选中「自定义格式」时弹窗取模板；取消则退回上一次的选择。"""
+        try:
+            idx = self.cb_name.current()
+        except Exception:
+            idx = 0
+        if idx < 0:
+            return
+        fmt = self.name_pats()[idx]
+        if fmt is None:
+            fmt = self.ask_name_fmt()
+            if fmt is None:
+                try:
+                    self.cb_name.current(self._name_idx)
+                except Exception:
+                    pass
+                return
+            self._custom_fmt = fmt
+            self._refresh_name_box()        # 下拉框里直接显示用户填的格式
+        self._name_idx = idx
+        try:
+            self.cb_name.set(self.name_labels[idx])
+        except Exception:
+            pass
+        self.cfg["name_fmt"] = fmt
+        self.cfg["name_fmt_custom"] = self._custom_fmt
+        jzcore.save_config(self.cfg)
+
+    def ask_name_fmt(self):
+        """自定义文件名格式输入框：必须含 book 占位符、不含非法字符，确认返回模板，取消返回 None。"""
+        S = self.S
+        win_w = 560
+        w = tk.Toplevel(self.root)
+        w.title(S["name_custom_title"])
+        w.transient(self.root)
+        w.configure(bg=BG)
+        w.resizable(False, False)
+        # 底栏先占位，正文再往上排；提示卡 fill="x" 才会铺满，不然文字挤在左边一条
+        bar = ttk.Frame(w)
+        bar.pack(side="bottom", fill="x", padx=px(12), pady=px(10))
+        ttk.Button(bar, text=S["d_ok"], style="Accent.TButton",
+                   command=lambda: _ok()).pack(side="right")
+        ttk.Button(bar, text=S["d_cancel"], style="Soft.TButton",
+                   command=w.destroy).pack(side="right", padx=px(6))
+
+        tip = tk.Label(w, text=S["name_custom_hint"], bg=CARD, fg=MUTED, font=FONT_S,
+                       justify="left", anchor="w", wraplength=px(win_w - 54),
+                       highlightthickness=1, highlightbackground=LINE,
+                       padx=px(10), pady=px(8))
+        tip.pack(fill="x", padx=px(12), pady=(px(12), px(8)))
+
+        ttk.Label(w, text=S["name_fmt_label"]).pack(anchor="w", padx=px(12))
+        var = tk.StringVar(value=self._custom_fmt or S["name_custom_demo"])
+        e = ttk.Entry(w, textvariable=var, font=FONT)
+        e.pack(fill="x", padx=px(12), pady=(px(2), 0))
+        # 输入合法时这里给一句预览，出错时同一行变红字，窗口不会忽高忽低
+        status = tk.Label(w, bg=BG, fg=MUTED, font=FONT_S, anchor="w", justify="left",
+                          wraplength=px(win_w - 24))
+        status.pack(fill="x", padx=px(14), pady=(px(6), 0))
+        got = {"fmt": None}
+
+        def _err(val):
+            bad = jzcore.name_fmt_bad_chars(val)
+            if bad:
+                return S["name_custom_bad_char"].format(" ".join(bad))
+            if not jzcore.has_book_token(val):
+                return S["name_custom_bad"]
+            return ""
+
+        def _refresh(*_a):
+            val = var.get().strip()
+            msg = _err(val)
+            if msg:
+                status.configure(fg=RED, text=msg)
+            elif not val:
+                status.configure(fg=MUTED, text="")
+            else:
+                status.configure(fg=GREEN, text=S["name_preview"].format(
+                    jzcore.apply_name_format(val, S["name_preview_title"],
+                                             S["name_preview_author"], "")))
+
+        def _ok(_e=None):
+            val = var.get().strip()
+            msg = _err(val)                     # 非法：留在窗里改，不丢用户输入
+            if msg:
+                status.configure(fg=RED, text=msg)
+                e.focus_set()
+                return
+            got["fmt"] = val
+            w.destroy()
+
+        var.trace_add("write", _refresh)
+        _refresh()
+        e.bind("<Return>", _ok)
+        w.bind("<Escape>", lambda _e: w.destroy())
+        e.focus_set()
+        e.select_range(0, "end")
+        # 高度按内容实测：中英文提示行数不同，写死高度不是留白就是挤压
+        w.update_idletasks()
+        _center_win(w, win_w, int(round(w.winfo_reqheight() / max(_SCALE, 0.01))))
+        w.grab_set()
+        self.root.wait_window(w)
+        return got["fmt"]
+
+    def name_format(self):
+        """主线程取当前文件名模板：空串=保持原样，可直接传给后台线程。"""
+        try:
+            idx = self.cb_name.current()
+        except Exception:
+            return ""
+        pats = self.name_pats()
+        if not (0 <= idx < len(pats)):
+            return ""
+        return self._custom_fmt if pats[idx] is None else (pats[idx] or "")
 
     def _log(self, root):
         S = self.S
@@ -2659,14 +2868,15 @@ class App:
         self._save_epub_opts()
         img_dl = self.img_download()
         want_sum = bool(self.sum_var.get())
+        name_fmt = self.name_format()
         threading.Thread(target=self.run_worker,
                          args=(sel, fmts, mode, outdir, rules, custom,
-                               theme, cover_mode, img_dl, want_sum),
+                               theme, cover_mode, img_dl, want_sum, name_fmt),
                          daemon=True).start()
 
     def run_worker(self, sel, fmts, mode, outdir, rules, custom,
                    theme="classic", cover_mode="auto", img_dl=False,
-                   want_sum=True):
+                   want_sum=True, name_fmt=""):
         S = self.S
         ok = fail = 0
         # 清洗内容汇总：按书累积清理明细，全部处理完再一次性落盘
@@ -2724,7 +2934,14 @@ class App:
                 chapters = jzcore.split_chapters(text, self._re_for(b, custom))
                 b["chapters"] = len(chapters)       # 实际切分结果回写，供①书库展示
                 title = b["title"] or os.path.splitext(b["name"])[0]
-                base = safe_name(title, fallback=S["unnamed"])
+                if name_fmt:
+                    # 「文件名」选的是预设或自定义模板：book/author 换成书名/作者名
+                    base = safe_name(
+                        jzcore.apply_name_format(name_fmt, title, b.get("author") or "",
+                                                 S["unnamed"]),
+                        maxlen=80, fallback=S["unnamed"])
+                else:
+                    base = safe_name(title, fallback=S["unnamed"])
                 # 插图先落到「输出目录/插图/书名」，epub 再照这份映射打包
                 images = (self.fetch_images(text, outdir, base, prefetch, notes)
                           if (img_dl and outdir) else None)
@@ -2756,7 +2973,10 @@ class App:
                     if "merge" in fmts and mode != "new":
                         jzcore.save_txt(chapters, self.uniq(outdir, base + ".txt"), merge=True)
                     if "split" in fmts:
-                        jzcore.save_txt(chapters, self.uniq(outdir, base + ".txt"), merge=False)
+                        # 分章落的是同名目录，重名判定要连目录一起看，否则两本书会写进同一格
+                        jzcore.save_txt(chapters,
+                                        self.uniq(outdir, base + ".txt", also_dir=True),
+                                        merge=False)
                 self.q.put(("log", S["log_per_book"].format(i, total, title, len(chapters), removed)))
                 for m in notes:
                     self.q.put(("log", m))
@@ -2846,15 +3066,16 @@ class App:
             notes.extend(msgs)
         return got or None
 
-    def uniq(self, outdir, filename):
-        p = os.path.join(outdir, filename)
-        if not os.path.exists(p):
-            return p
+    def uniq(self, outdir, filename, also_dir=False):
+        """取一个不撞名的文件名；also_dir=True 时连同同名目录一起检查（分章 TXT）。"""
         stem, ext = os.path.splitext(filename)
-        n = 1
+        n = 0
         while True:
-            p = os.path.join(outdir, "%s (%d)%s" % (stem, n, ext))
-            if not os.path.exists(p):
+            name = filename if n == 0 else "%s (%d)%s" % (stem, n, ext)
+            p = os.path.join(outdir, name)
+            taken = os.path.exists(p) or (
+                also_dir and os.path.exists(os.path.join(outdir, os.path.splitext(name)[0])))
+            if not taken:
                 return p
             n += 1
 

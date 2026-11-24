@@ -2107,6 +2107,67 @@ def split_chapters(text, custom=None):
 
 # ---------------------------------------------------------------- 导出
 
+# 「文件名」下拉框：预设项与自定义格式共用同一套占位符解析（book=书名、author=作者名）。
+# 占位符两侧不能紧贴 ASCII 字母数字，免得 notebook 里的 book 被替换；
+# 中文、标点、空白一律算分隔，方便写「《book》作者：author」这类中式格式。
+_NAME_TOKEN = re.compile(r"(?<![A-Za-z0-9_])(book|author)(?![A-Za-z0-9_])")
+
+
+def has_book_token(fmt):
+    """格式里是否含 book 占位符（自定义格式必须含，否则命名里没有书名）。"""
+    return any(m.group(1) == "book" for m in _NAME_TOKEN.finditer(fmt or ""))
+
+
+# Windows 文件名里不能出现的半角字符。全角「：」「＜」等是合法的，别误伤。
+NAME_ILLEGAL = '\\/:*?"<>|'
+
+
+def name_fmt_bad_chars(fmt):
+    """格式里出现的非法文件名字符（去重、按出现顺序），空列表表示没问题。"""
+    bad = []
+    for c in fmt or "":
+        if c in NAME_ILLEGAL and c not in bad:
+            bad.append(c)
+    return bad
+
+
+# 占位符周围的分隔符（空白、连接符、括号、作者标签），取值缺失时跟着一起摘掉
+_NAME_EDGE = r"[\s\-—_·|,，.。:：]"
+_NAME_LABEL = r"(?:作者|著者|著|by)?"
+
+
+def _drop_empty_token(fmt, token):
+    """把取值为空的占位符连同它的装饰整体删掉，不留「[ ] 书名」「- 书名」「《书名》作者」。
+
+    只删占位符自己那一小段：用户写的多个空格是格式的一部分，不能在全文里压缩。
+    """
+    pat = (r"%(e)s*%(lab)s%(e)s*[\[【《(（]?%(e)s*"
+           r"(?<![A-Za-z0-9_])%(tok)s(?![A-Za-z0-9_])"
+           r"%(e)s*[\]】》）)]?%(e)s*"
+           % {"e": _NAME_EDGE, "lab": _NAME_LABEL, "tok": token})
+    return re.sub(pat, "", fmt, flags=re.I)
+
+
+def apply_name_format(fmt, title, author, fallback="未命名"):
+    """把 book/author 换成书名/作者名，返回可直接当文件（夹）名的字符串。
+
+    用户写的空格原样保留（连续空格也得留着）；只有占位符取值为空时，才把它周围的
+    空括号、「作者：」标签与分隔符摘掉，免得出现「[ ] 书名」「- 书名」这种半句。
+    """
+    t = (title or "").strip()
+    a = (author or "").strip()
+    fmt = fmt or ""
+    if not a:
+        fmt = _drop_empty_token(fmt, "author")
+    if not t:
+        fmt = _drop_empty_token(fmt, "book")
+    out = _NAME_TOKEN.sub(lambda m: t if m.group(1) == "book" else a, fmt)
+    out = re.sub(r"\[\s*\]|【\s*】|《\s*》|\(\s*\)|（\s*）", "", out)   # 兜底：残留空括号
+    out = out.strip()                                   # 首尾空白在 Windows 文件名里非法
+    out = out.strip(" -—_·:：|/\\、,，.。").strip()
+    return out or t or fallback
+
+
 def save_txt(chapters, path, merge=True):
     if merge:
         parts = []

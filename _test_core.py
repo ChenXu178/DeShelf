@@ -158,6 +158,39 @@ check("同内容 md5 一致", jzcore.scan_file(p1)["md5"], jzcore.scan_file(p_du
 check("不同内容 md5 不同",
       jzcore.scan_file(p1)["md5"] != jzcore.scan_file(p2)["md5"], True)
 
+print("== 9. 导出文件名格式 ==")
+# 预设与自定义共用一套 book/author 占位符解析
+check("作者名 - 书名", jzcore.apply_name_format("author - book", "斗破苍穹", "天蚕土豆"),
+      "天蚕土豆 - 斗破苍穹")
+check("[作者名] 书名", jzcore.apply_name_format("[author] book", "斗破苍穹", "天蚕土豆"),
+      "[天蚕土豆] 斗破苍穹")
+check("《书名》作者：作者名",
+      jzcore.apply_name_format("《book》作者：author", "斗破苍穹", "天蚕土豆"),
+      "《斗破苍穹》作者：天蚕土豆")
+check("作者为空时不留空括号", jzcore.apply_name_format("[author] book", "斗破苍穹", ""),
+      "斗破苍穹")
+check("连续空格原样保留",
+      jzcore.apply_name_format("[author]  book", "斗破苍穹", "天蚕土豆"),
+      "[天蚕土豆]  斗破苍穹")
+check("书名后连续空格也保留",
+      jzcore.apply_name_format("《book》   author", "斗破苍穹", "天蚕土豆"),
+      "《斗破苍穹》   天蚕土豆")
+check("首尾空格不进入文件名",
+      jzcore.apply_name_format("  book  ", "斗破苍穹", "天蚕土豆"), "斗破苍穹")
+check("作者为空时连分隔符一起摘掉",
+      jzcore.apply_name_format("[author]  book", "斗破苍穹", ""), "斗破苍穹")
+check("作者为空时摘掉「作者：」标签",
+      jzcore.apply_name_format("《book》作者：author", "斗破苍穹", ""), "《斗破苍穹》")
+check("作者为空时摘掉尾部连字符",
+      jzcore.apply_name_format("book - author", "斗破苍穹", ""), "斗破苍穹")
+check("必须含 book 占位符", jzcore.has_book_token("author only"), False)
+check("book 紧贴中文也能识别", jzcore.has_book_token("书名book"), True)
+check("book 在英文单词里不算", jzcore.has_book_token("notebook"), False)
+check("斜杠属非法文件名字符", jzcore.name_fmt_bad_chars("《book》 /author"), ["/"])
+check("多个非法字符按序去重", jzcore.name_fmt_bad_chars("book:a*b?a"), [":", "*", "?"])
+check("全角冒号竖线号合法", jzcore.name_fmt_bad_chars("《book》：author｜1"), [])
+check("正常模板没有非法字符", jzcore.name_fmt_bad_chars("《book》·author"), [])
+
 print()
 print("失败项：%d" % len(fails))
 for f in fails:

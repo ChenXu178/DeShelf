@@ -9,6 +9,8 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+# 下面的断言比对的是中文汇总文案：固定界面语言，免得用户把界面切成英文后误报失败
+os.environ["JUANZHI_LANG"] = "zh"
 import tkinter as tk
 
 import jzcore
