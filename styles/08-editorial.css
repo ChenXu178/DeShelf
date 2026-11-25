@@ -1,0 +1,72 @@
+@charset "utf-8";
+/*!
+* @theme-name: 报刊排印 Editorial
+* @theme-version: 1.0
+* @description: 左对齐刊头式章名，上细下粗两道压线；首段不缩进作导语，图注左对齐并压一道细线。
+*/
+
+html {
+  background: #ffffff;
+}
+
+body {
+  margin: 1.85em 1.45em;
+  color: #22262b;
+  line-height: 1.88;
+  text-align: justify;
+  background: #ffffff;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2em 0 1.7em;
+  padding: 0.7em 0 0.75em;
+  text-align: left;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  color: #15181c;
+  border-top: 1px solid #22262b;
+  border-bottom: 3px solid #22262b;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.88;
+}
+
+/* 标题后的首段不缩进，作导语处理 */
+h2 + p {
+  text-indent: 0;
+  color: #2e343b;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 0;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.7em 0 0;
+  padding-top: 0.5em;
+  text-indent: 0;
+  text-align: left;
+  color: #8a8f95;
+  letter-spacing: 0.03em;
+  line-height: 1.6;
+  border-top: 1px solid #e8e8e8;
+}

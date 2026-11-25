@@ -1,0 +1,76 @@
+@charset "utf-8";
+/*!
+* @theme-name: 朱印素纸 Cinnabar Seal
+* @theme-version: 1.0
+* @description: 白底只用一种朱砂红，章名两侧各一枚方印，插图细边，图注偏红褐，如藏书印般克制。
+*/
+
+html {
+  background: #ffffff;
+}
+
+body {
+  margin: 1.9em 1.45em;
+  color: #241f1c;
+  line-height: 1.9;
+  text-align: justify;
+  background: #ffffff;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.3em 0 1.8em;
+  padding: 0 0 0.85em;
+  text-align: center;
+  letter-spacing: 0.15em;
+  line-height: 1.62;
+  color: #1f1a17;
+  border-bottom: 1px solid #ecdcd9;
+}
+
+h2::before,
+h2::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 0.7em;
+  vertical-align: 0.25em;
+  background: #b23a35;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.9;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 9px;
+  background: #fffdfd;
+  border: 1px solid #f0e1df;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.78em 0 0;
+  text-indent: 0;
+  text-align: center;
+  color: #a2726d;
+  letter-spacing: 0.07em;
+  line-height: 1.6;
+}

@@ -407,6 +407,79 @@ try {
     r.val && r.val.hasHead && r.val.hasCol && r.val.hasRule && r.val.hasStat && r.val.hasBlank,
     JSON.stringify(r.val));
 
+  // 8d. 版面主题：卡片列表 + 大图预览 + 视口尺寸 + 确定后生效
+  r = await evalv(`(async () => {
+    document.getElementById('btnTheme').click();
+    await new Promise(r2=>setTimeout(r2,500));
+    const cards=[...document.querySelectorAll('.tp-card')];
+    const fr=cards[0]&&cards[0].querySelector('iframe');
+    return {cards:cards.length,n:Core.THEMES.length,
+      cssOk:!!(fr&&fr.srcdoc&&fr.srcdoc.indexOf(Core.THEME_CSS[Core.THEMES[0].id])>=0),
+      big:!!document.getElementById('tpFrame'),
+      split:!!document.getElementById('tpSplit'),
+      imp:!!document.querySelector('.dlg [data-imp]'),
+      title:(document.querySelector('.dlg .dh')||{textContent:''}).textContent};
+  })()`);
+  ok("主题选择器：卡片数与内嵌主题一致", r.val && r.val.ok !== false
+    && r.val.cards === r.val.n && r.val.n >= 10, JSON.stringify(r.err || r.val));
+  ok("主题选择器：卡片内嵌主题 CSS", r.val && r.val.cssOk, JSON.stringify(r.val));
+  ok("主题选择器：大图预览 + 分隔条 + 导入按钮",
+    r.val && r.val.big && r.val.split && r.val.imp, JSON.stringify(r.val));
+
+  r = await evalv(`(async () => {
+    const cards=[...document.querySelectorAll('.tp-card')];
+    const pick=Core.THEMES[2];
+    cards[2].click();
+    await new Promise(r2=>setTimeout(r2,300));
+    const on=document.querySelector('.tp-card.on');
+    const big=document.getElementById('tpFrame');
+    const nameOk=(document.querySelector('.dlg .dh')||{textContent:''}).textContent.indexOf(Core.themeTitle(pick,CUR==='en'))>=0;
+    document.getElementById('tpW').value='360';
+    document.getElementById('tpH').value='640';
+    document.getElementById('tpApply').click();
+    await new Promise(r2=>setTimeout(r2,300));
+    return {sel:on&&on.dataset.id, want:pick.id, nameOk,
+      bigCss:!!(big&&big.srcdoc&&big.srcdoc.indexOf(pick.css)>=0),
+      w:big&&big.style.width, h:big&&big.style.height};
+  })()`);
+  ok("主题选择器：点击卡片即切换并更新标题", r.val && r.val.sel === r.val.want && r.val.nameOk,
+    JSON.stringify(r.err || r.val));
+  ok("主题选择器：大图按所选主题重渲", r.val && r.val.bigCss, JSON.stringify(r.val));
+  ok("主题选择器：视口尺寸生效", r.val && r.val.w === '360px' && r.val.h === '640px',
+    JSON.stringify(r.val));
+
+  r = await evalv(`(async () => {
+    document.querySelector('.dlg [data-ok]').click();
+    await new Promise(r2=>setTimeout(r2,300));
+    const want=Core.THEMES[2];
+    const btn=document.getElementById('btnTheme').textContent;
+    return {btn, saved:cfgKey('theme'), want:want.id,
+      nameOk:btn===Core.themeTitle(want,CUR==='en'),
+      closed:!document.querySelector('.dlg'),
+      css:Core.themeCss(themeId())===want.css};
+  })()`);
+  ok("主题选择器：确定后写回配置并更新按钮",
+    r.val && r.val.saved === r.val.want && r.val.closed && r.val.css && r.val.nameOk,
+    JSON.stringify(r.err || r.val));
+
+  // 8e. 没勾「导出 EPUB」时，版面主题 / 封面整组置灰
+  r = await evalv(`(async () => {
+    const ep=document.getElementById('fmtEpub');
+    const st=()=>[document.getElementById('btnTheme').disabled,
+                  document.getElementById('selCover').disabled];
+    ep.checked=false;ep.dispatchEvent(new Event('change'));
+    const off=st();
+    ep.checked=true;ep.dispatchEvent(new Event('change'));
+    return {off,on:st()};
+  })()`);
+  ok("未勾 EPUB 时版面主题/封面置灰",
+    r.val && r.val.off[0] === true && r.val.off[1] === true, JSON.stringify(r.err || r.val));
+  ok("勾回 EPUB 后恢复可编辑",
+    r.val && r.val.on[0] === false && r.val.on[1] === false, JSON.stringify(r.val));
+
+  // 收尾：恢复默认主题，避免影响后续人工使用
+  await evalv("St.theme=Core.DEFAULT_THEME;cfgSet('theme',Core.DEFAULT_THEME);refreshThemeBtn();");
+
   // 9. 全部捕获的 JS 错误汇总
   ok("全程无 JS 运行时错误", errors.length === 0, errors.join(" | "));
 

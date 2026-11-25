@@ -5,9 +5,14 @@
 界面语言：默认跟随系统；菜单「语言 / Language」可即时切换（窗口内重建）并记忆。
 """
 
+import base64
+import hashlib
+import io
 import os
 import queue
+import re
 import subprocess
+import tempfile
 import threading
 import time
 import traceback
@@ -19,6 +24,11 @@ try:
     import ctypes
 except ImportError:              # 非 Windows / 精简解释器：全部 DPI 调用自动降级
     ctypes = None
+
+try:                             # 主题缩略图要平滑缩放；没有 Pillow 也能跑（整数抽样）
+    from PIL import Image as _PILImage
+except Exception:
+    _PILImage = None
 
 import jzcore
 
@@ -481,6 +491,28 @@ TEXTS = {
         "name_preview_title": "示例书名",
         "name_preview_author": "示例作者",
         "f_theme": "版面主题", "f_cover": "封面",
+        "theme_pick": "选择版面主题",
+        "theme_pick_hint": "点击右侧缩略图切换左侧预览；"
+                           "确定后用于导出 EPUB。",
+        "theme_rendering": "正在渲染预览…",
+        "theme_fail": "无法渲染预览：{0}",
+        "theme_no_img": "无预览图",
+        "theme_img_bad": "预览图打不开",
+        "theme_stale": "预览图待更新",
+        "theme_vp_w": "宽", "theme_vp_h": "高", "theme_vp_apply": "应用",
+        "theme_import": "导入自定义CSS", "theme_custom": "自定义CSS",
+        "theme_custom_pick": "选择自定义 CSS 文件",
+        "theme_custom_bad": "这个 CSS 读不出来：{0}",
+        "theme_all_files": "所有文件",
+        "theme_need_browser": "预览需要浏览器\n请安装 Chrome 或 Edge 后重试",
+        "theme_no_browser_title": "缺少可用的浏览器",
+        "theme_no_browser": "渲染主题预览需要本机安装 Chrome / Edge 等 "
+                            "Chromium 内核的浏览器。\n\n"
+                            "请安装其中一个后重新打开这个窗口。\n"
+                            "若浏览器装在别处，可设置环境变量\n"
+                            "HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP=1\n"
+                            "HTML2IMAGE_CHROME_EXE=<浏览器完整路径>",
+        "theme_none": "没有在 styles 下找到任何 .css 主题文件。",
         "cov_auto": "自动：优先同名图片", "cov_default": "生成默认封面",
         "cov_none": "不加封面",
         "f_imgdl": "下载插图链接",
@@ -707,6 +739,28 @@ TEXTS = {
         "name_preview_title": "Sample Title",
         "name_preview_author": "Sample Author",
         "f_theme": "Layout", "f_cover": "Cover",
+        "theme_pick": "Choose Layout Theme",
+        "theme_pick_hint": "Click a thumbnail to preview it on the left; "
+                           "the choice is used for EPUB export.",
+        "theme_rendering": "Rendering preview…",
+        "theme_fail": "Cannot render the preview: {0}",
+        "theme_no_img": "No preview image",
+        "theme_img_bad": "Preview image unreadable",
+        "theme_stale": "preview out of date",
+        "theme_vp_w": "W", "theme_vp_h": "H", "theme_vp_apply": "Apply",
+        "theme_import": "Import custom CSS", "theme_custom": "Custom CSS",
+        "theme_custom_pick": "Choose a custom CSS file",
+        "theme_custom_bad": "This CSS can't be read: {0}",
+        "theme_all_files": "All files",
+        "theme_need_browser": "Preview needs a browser\n"
+                              "install Chrome or Edge and retry",
+        "theme_no_browser_title": "No browser found",
+        "theme_no_browser": "Rendering theme previews needs a Chromium-based "
+                            "browser (Chrome / Edge).\n\nInstall one and reopen "
+                            "this window.\nIf it lives elsewhere, set\n"
+                            "HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP=1\n"
+                            "HTML2IMAGE_CHROME_EXE=<full path to the browser>",
+        "theme_none": "No .css theme files found under styles.",
         "cov_auto": "Auto: same-name image first", "cov_default": "Generate default cover",
         "cov_none": "No cover",
         "f_imgdl": "Download illustration links",
@@ -931,6 +985,787 @@ def _center_win(win, w, h):
     y = ay + (ah - H) // 2
     win.geometry("%dx%d+%d+%d" % (W, H, x, y))
     return W, H
+
+
+# ============================================================ 版面主题选择
+#
+# 主题就是 styles 目录下的 .css。列表里的缩略图是现成的同名 .png，
+# 打开窗口即出图、不用等浏览器；左侧大图才在选中时现渲，渲过就缓存，
+# 再点同一套主题瞬间出图。
+
+# 预览图比例：540:880，与同名预览图的默认尺寸一致
+THEME_IMG_RATIO = 880.0 / 540.0
+# 左栏（大图预览）占窗口宽度的比例，夹在下面两个值之间
+THEME_LEFT_RATIO = 0.36
+THEME_LEFT_MIN, THEME_LEFT_MAX = 280, 620
+# 右栏固定两列：窗口拉宽时列宽（也就是缩略图）直接变大，不再分新列
+THEME_COLS = 2
+THEME_CARD_PAD = 10          # 卡片内部：图与卡片边框的留白（单边）
+THEME_CARD_GAP = 8           # 网格单元格的最小间距（实际间距由 GRID_MARGIN 决定）
+THEME_GRID_MARGIN = 14       # 列表与窗口边缘的留白（卡片之间是它的两倍）
+THEME_PREVIEW_W, THEME_PREVIEW_H = 372, 478      # 左栏大图的初始尺寸
+
+
+def _to_int(s):
+    """宽松地把输入框里的文字转成正整数，转不了返回 0。"""
+    try:
+        return int(str(s).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def theme_label(t, lang):
+    """@theme-name 是「中文 English」两段，按界面语言取对应的一半。"""
+    if not t:
+        return ""
+    name = (t.get("name") or t.get("id") or "").strip()
+    m = re.match(r"^([^\x00-\x7f]+)\s+([\x20-\x7e].*)$", name)
+    if m:
+        return m.group(2) if lang == EN else m.group(1)
+    return name
+
+
+def theme_title(t, S, lang):
+    """界面上给用户看的主题名：自定义 CSS 没写 @theme-name 就用通用名。"""
+    if not t:
+        return S["theme_custom"]
+    if t.get("custom") and not t.get("named"):
+        return S["theme_custom"]
+    return theme_label(t, lang) or S["theme_custom"]
+
+
+def _load_source(path):
+    """把预览图读成「可反复缩放」的源：Pillow 有就用它，没有就退回 tk 图。"""
+    if not path:
+        return None
+    if _PILImage is not None:
+        try:
+            im = _PILImage.open(path)
+            im.load()
+            return ("pil", im.convert("RGB"))
+        except Exception:
+            pass
+    try:
+        return ("tk", tk.PhotoImage(file=path))
+    except Exception:
+        return None
+
+
+def _scaled_photo(src, w, h, fast=False):
+    """按 (w, h) 出一张 tk 图：Pillow 平滑缩放，没装就只能整数抽样。
+
+    fast=True 时改用双线性（拖分隔条时每帧都要重算，没空做 LANCZOS）。
+    """
+    if src is None:
+        return None
+    kind, obj = src
+    w, h = max(1, int(w)), max(1, int(h))
+    if kind == "pil":
+        filt = (getattr(_PILImage, "BILINEAR", 2) if fast
+                else getattr(_PILImage, "LANCZOS", 1))
+        try:
+            im = obj.resize((w, h), filt)
+            try:                        # ImageTk 最快；被裁掉时退回 PNG 数据
+                from PIL import ImageTk
+                return ImageTk.PhotoImage(im)
+            except Exception:
+                buf = io.BytesIO()
+                im.save(buf, format="PNG", compress_level=1)
+                return tk.PhotoImage(
+                    data=base64.b64encode(buf.getvalue()).decode("ascii"))
+        except Exception:
+            return None
+    k = max(1, -(-obj.width() // w), -(-obj.height() // h))      # 向上取整
+    return obj.subsample(k, k) if k > 1 else obj
+
+
+def _cache_dir():
+    """截图缓存放系统临时目录：同一套 CSS 只渲一次，再开窗口瞬间出图。"""
+    d = os.path.join(tempfile.gettempdir(), "deshelf-theme-cache")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
+    return d
+
+
+def _cache_path(html, size):
+    """缓存名 = 预览页 HTML + 尺寸的摘要：模板或 CSS 一变，旧图自动失效。"""
+    key = "%dx%d|%s" % (size[0], size[1], html)
+    name = hashlib.md5(key.encode("utf-8")).hexdigest()
+    return os.path.join(_cache_dir(), name + ".png")
+
+
+def _prune_cache(limit=160):
+    """缓存无限长下去会占空间：文件太多就整体清空，重渲一次也不贵。"""
+    d = _cache_dir()
+    try:
+        files = [os.path.join(d, n) for n in os.listdir(d) if n.endswith(".png")]
+    except OSError:
+        return
+    if len(files) <= limit:
+        return
+    for p in files:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+
+class ThemePicker:
+    """主题选择窗口：左侧大图预览，右侧网格列出全部主题的缩略图。
+
+    右侧读同名的 .png（tools/gen_theme_previews.py 生成），窗口一开就是成品；
+    固定两列、尺寸不写死：窗口拉宽，缩略图跟着变宽，左栏大图按可用空间等比放大。
+    左侧大图才在选中时交给后台线程现渲（渲过就缓存），所以点开不假死，
+    快速连点也只保留最后一次的结果。
+    """
+
+    def __init__(self, parent, themes, current, lang, S):
+        self.themes = list(themes)      # 复制一份：导入自定义 CSS 会往里加
+        self.lang = lang
+        self.S = S
+        self.result = None
+        self.cur = current
+        self._by_id = {t["id"]: t for t in themes}
+        self._cards = {}
+        self._src = {}             # id -> 可反复缩放的源图
+        self._ph = {}              # id -> ((w, h), tk 图)，按当前尺寸缓存
+        self._pv_path = ""         # 左侧大图的渲染结果
+        self._pv_shown = None      # ((w, h), tk 图)
+        self._pv_src = None        # 大图的解码缓存（拖动时反复缩放用）
+        self._pv_src_path = ""
+        self._pv_size = (px(THEME_PREVIEW_W), px(THEME_PREVIEW_H))
+        self._grid_key = None
+        self._img_key = None       # 缩略图当前是按哪个尺寸 + 画质贴的
+        self._layout_job = None
+        self._busy = False
+        self._left_user_w = 0      # 用户拖过分隔条后左栏的宽度（0=按比例自动）
+        self._drag = None          # 拖分隔条时的起点 (x_root, 左栏宽)
+        self._grid_job = None      # 拖动停顿后跟右栏尺寸的定时器
+        self._warned = False       # 没装浏览器的提示只弹一次
+        self._jobs = queue.Queue()
+        self._done = queue.Queue()
+        self._seq = 0
+        self._dead = False
+        _prune_cache()
+        self._build(parent)                 # 缩略图在这一步直接读 .png，不等渲染
+        # 配置里存的是自定义 CSS：把它也放进列表，方便直接沿用
+        if jzcore.is_custom_theme(current):
+            t = jzcore.load_theme(current)
+            if t is not None:
+                self._add_card(t)
+        threading.Thread(target=self._worker, daemon=True).start()
+        self._select(current)
+
+    # -------------------------------------------------------- 界面
+    def _build(self, parent):
+        S = self.S
+        win = self._win = tk.Toplevel(parent)
+        win.title(S["theme_pick"])
+        win.transient(parent)
+        win.configure(bg=BG)
+        win.resizable(True, True)
+        win.minsize(px(760), px(520))
+        win.protocol("WM_DELETE_WINDOW", self._cancel)
+        win.bind("<Escape>", lambda _e: self._cancel())
+        _center_win(win, 980, 720)
+
+        bar = ttk.Frame(win)
+        bar.pack(side="bottom", fill="x", padx=px(12), pady=px(10))
+        ttk.Button(bar, text=S["d_ok"], style="Accent.TButton",
+                   command=self._ok).pack(side="right")
+        ttk.Button(bar, text=S["d_cancel"], style="Soft.TButton",
+                   command=self._cancel).pack(side="right", padx=px(6))
+        # 导入自定义 CSS：放在「取消」左边（side=right 是从右往左堆）
+        ttk.Button(bar, text=S["theme_import"], style="Soft.TButton",
+                   command=self.import_css).pack(side="right", padx=(px(6), px(14)))
+        ttk.Label(bar, text=S["theme_pick_hint"], foreground=MUTED,
+                  font=FONT_S).pack(side="left")
+
+        body = ttk.Frame(win)
+        body.pack(side="top", fill="both", expand=True)
+
+        # ---- 左：选中主题的大图预览（宽高在 _layout_left 里按窗口算）----
+        left = self._left = ttk.Frame(body)
+        left.pack(side="left", fill="y", padx=(px(12), px(8)), pady=px(8))
+        left.pack_propagate(False)
+        left.configure(width=px(THEME_PREVIEW_W + 20))
+        box = self._pv_box = tk.Frame(left, width=px(THEME_PREVIEW_W),
+                                      height=px(THEME_PREVIEW_H),
+                                      bg="#FFFFFF", highlightthickness=1,
+                                      highlightbackground=LINE, bd=0)
+        box.pack_propagate(False)
+        box.pack()
+        self.pv_hint = tk.Label(box, text=S["theme_rendering"], bg="#FFFFFF",
+                                fg=MUTED, font=FONT_S, justify="center")
+        self.pv_hint.place(relx=.5, rely=.5, anchor="center")
+        self.pv_img = tk.Label(box, bd=0, bg="#FFFFFF")
+
+        # 预览视口：改宽高就换一种设备的排版结果（手机 / Kindle / 桌面…）
+        self.vp_w_var = tk.StringVar()
+        self.vp_h_var = tk.StringVar()
+        self._vp = tuple(jzcore.THEME_PREVIEW_SIZE)
+        self._vp_text()
+        row = self._vp_row = ttk.Frame(left)
+        row.pack(pady=(px(10), 0))       # 默认居中，跟上面的预览图对齐
+        ttk.Label(row, text=S["theme_vp_w"], foreground=MUTED,
+                  font=FONT_S).pack(side="left")
+        ew = ttk.Entry(row, textvariable=self.vp_w_var, width=5,
+                       justify="center")
+        ew.pack(side="left", padx=(px(4), px(2)))
+        ttk.Label(row, text="×", foreground=MUTED,
+                  font=FONT_S).pack(side="left")
+        eh = ttk.Entry(row, textvariable=self.vp_h_var, width=5,
+                       justify="center")
+        eh.pack(side="left", padx=(px(2), px(2)))
+        ttk.Label(row, text="px", foreground=MUTED,
+                  font=FONT_S).pack(side="left")
+        ttk.Button(row, text=S["theme_vp_apply"], style="Soft.TButton",
+                   command=self._apply_viewport).pack(side="left", padx=(px(6), 0))
+        for e in (ew, eh):
+            e.bind("<Return>", lambda _e: self._apply_viewport())
+
+        # ---- 分隔条：可左右拖动，实时调整左右两栏的宽度比例 ----
+        sp = self._split = tk.Frame(body, width=px(9), bg=BG,
+                                    cursor="sb_h_double_arrow")
+        sp.pack(side="left", fill="y")
+        sp.pack_propagate(False)
+        line = self._split_line = tk.Frame(sp, bg=LINE, cursor="sb_h_double_arrow")
+        line.place(relx=.5, rely=.5, anchor="center", width=px(3),
+                   relheight=0.96)
+        for w in (sp, line):
+            w.bind("<Button-1>", self._split_press)
+            w.bind("<B1-Motion>", self._split_move)
+            w.bind("<ButtonRelease-1>", self._split_release)
+            w.bind("<Double-Button-1>", self._split_reset)
+            w.bind("<Enter>", lambda _e: self._split_line.configure(bg=BLUE))
+            w.bind("<Leave>", self._split_leave)
+
+        # ---- 右：全部主题的缩略图网格（可滚动）----
+        wrap = ttk.Frame(body)
+        wrap.pack(side="left", fill="both", expand=True, padx=(px(8), px(12)),
+                  pady=px(8))
+        vsb = ttk.Scrollbar(wrap, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        cv = self._cv = tk.Canvas(wrap, bg=BG, highlightthickness=0, bd=0,
+                                  yscrollincrement=px(18))
+        vsb.configure(command=cv.yview)
+        cv.pack(side="left", fill="both", expand=True)
+        inner = ttk.Frame(cv)
+        self._cv_win = cv.create_window((0, 0), window=inner, anchor="nw")
+        cv.configure(yscrollcommand=vsb.set)
+        cv.bind("<Configure>", self._on_cv_resize)
+        cv.bind("<MouseWheel>", self._wheel)
+        # 两列等宽：卡片在其中居中，左右留白自然对称
+        for c in range(THEME_COLS):
+            inner.grid_columnconfigure(c, weight=1, uniform="theme")
+        # 卡片之间的缝隙也要能滚：缝隙归属 inner，单独绑一次
+        inner.bind("<MouseWheel>", self._wheel)
+        inner.bind("<Configure>",
+                   lambda _e: cv.configure(scrollregion=cv.bbox("all")))
+
+        self._inner = inner
+        for t in self.themes:
+            self._cards[t["id"]] = self._make_card(inner, t)
+
+        win.bind("<Configure>", self._schedule_layout)
+        self._schedule_layout()
+
+    def _add_card(self, t):
+        """往列表里补一张卡（导入自定义 CSS 用）。"""
+        if t["id"] not in self._by_id:
+            self.themes.append(t)
+            self._by_id[t["id"]] = t
+        self._cards[t["id"]] = self._make_card(self._inner, t)
+        self._grid_key = None
+        self._img_key = None
+        self._layout_now(False)
+
+    def _make_card(self, inner, t):
+        """一张主题卡：缩略图 + 名称 + 说明（尺寸稍后由 _relayout 统一设）。"""
+        gap, pad = px(THEME_CARD_GAP), px(THEME_CARD_PAD)
+        card = tk.Frame(inner, bg=CARD, highlightthickness=2,
+                        highlightbackground=LINE, bd=0)
+        # padx 只是下限（实际由列宽居中决定），pady 决定行距与上下留白
+        card.grid(row=0, column=0, padx=gap, pady=px(THEME_GRID_MARGIN),
+                  sticky="n")
+        box = tk.Frame(card, bg="#FFFFFF", highlightthickness=1,
+                       highlightbackground=LINE, bd=0,
+                       width=px(160), height=px(260))
+        box.pack_propagate(False)       # 尺寸由布局定，图片只往里缩/放
+        box.pack(padx=pad, pady=(px(8), px(4)))
+        img = tk.Label(box, bd=0, bg="#FFFFFF")
+        hint = tk.Label(box, bg="#FFFFFF", fg=MUTED, font=FONT_S,
+                        justify="center", wraplength=px(140))
+        hint.place(relx=.5, rely=.5, anchor="center")
+        name = tk.Label(card, text=theme_title(t, self.S, self.lang), bg=CARD,
+                        fg=INK, font=FONT_B, anchor="w", justify="left",
+                        wraplength=px(160))
+        name.pack(fill="x", padx=pad)
+        desc_lb = tk.Label(card, text=self._card_desc(t), bg=CARD, fg=MUTED,
+                           font=FONT_S, anchor="w", justify="left",
+                           wraplength=px(160))
+        desc_lb.pack(fill="x", padx=pad, pady=(0, px(8)))
+        self._bind_card(card, t["id"])
+        return {"frame": card, "box": box, "img": img, "hint": hint,
+                "name": name, "desc": desc_lb, "photo": None}
+
+    def _card_desc(self, t):
+        desc = t.get("desc") or ""
+        if t.get("stale"):
+            desc = (desc + "  ·  " if desc else "") + self.S["theme_stale"]
+        if t.get("custom") and not desc:      # 自定义 CSS 没写说明：退一步显示文件名
+            desc = os.path.basename(t.get("path") or "")
+        return desc
+
+    def _bind_card(self, w, tid):
+        """卡片整块可点（连同里面的图片和文字），滚轮也照常滚。"""
+        w.bind("<Button-1>", lambda _e, t=tid: self._select(t))
+        w.bind("<MouseWheel>", self._wheel)
+        try:
+            for c in w.winfo_children():
+                self._bind_card(c, tid)
+        except tk.TclError:
+            pass
+
+    def _wheel(self, e):
+        """滚轮：一格滚 3 个单位（触控板的小 delta 会按 1 个走）。"""
+        try:
+            first, last = self._cv.yview()
+        except Exception:
+            return
+        if first <= 0.0 and last >= 1.0:       # 内容不满一屏：不拦滚轮
+            return
+        delta = getattr(e, "delta", 0) or 0
+        step = max(1, int(abs(delta) / 40))
+        self._cv.yview_scroll(-step if delta > 0 else step, "units")
+
+    # -------------------------------------------------------- 随窗口重排
+    def _on_cv_resize(self, e):
+        self._cv.itemconfigure(self._cv_win, width=e.width)
+        self._schedule_layout()
+
+    def _schedule_layout(self, _e=None):
+        """窗口拖动时 Configure 会连发很多次：等它停下来再算一次。"""
+        if self._layout_job is not None:
+            try:
+                self._win.after_cancel(self._layout_job)
+            except Exception:
+                pass
+            self._layout_job = None
+        try:
+            self._layout_job = self._win.after(120, self._relayout)
+        except tk.TclError:
+            pass
+
+    def _relayout(self):
+        self._layout_job = None
+        if self._drag:                  # 拖动期间由 _split_move 一帧帧负责
+            return
+        self._layout_now(False)
+
+    def _layout_now(self, fast, images=True):
+        """立刻重排一次。
+
+        fast=True 用于拖分隔条：不等几何落定（差一帧的量测无所谓），图片走
+        双线性、且由调用方抽帧；images=False 时连图都不重算，只挪框。
+        """
+        if self._busy or not self._alive():
+            return
+        self._busy = True
+        try:
+            self._layout_left()
+            if not fast:
+                self._win.update_idletasks()   # 几何落定后再量右栏宽度
+            self._layout_grid(fast, images)
+        except tk.TclError:
+            pass
+        finally:
+            self._busy = False
+
+    # -------------------------------------------------------- 分隔条拖动
+    def _split_press(self, e):
+        self._drag = (e.x_root, self._left.winfo_width())
+        self._split_line.configure(bg=BLUE)
+
+    def _split_move(self, e):
+        """拖动中只挪分隔条和左栏大图：这一步很轻，能跟住鼠标。
+
+        右侧十张卡片的尺寸留到「停一下」或松手时再跟——每帧重排十张大图
+        会把拖动拖成幻灯片。
+        """
+        if not self._drag:
+            return
+        x0, w0 = self._drag
+        self._left_user_w = max(px(200), w0 + (e.x_root - x0))
+        if not self._busy:
+            self._busy = True
+            try:
+                self._layout_left(True)
+            except tk.TclError:
+                pass
+            finally:
+                self._busy = False
+        self._later_grid(160)
+
+    def _later_grid(self, ms):
+        """拖动停顿 ms 毫秒后把右栏跟上（连续拖动时会不断被推迟）。"""
+        if self._grid_job:
+            try:
+                self._win.after_cancel(self._grid_job)
+            except Exception:
+                pass
+            self._grid_job = None
+        try:
+            self._grid_job = self._win.after(ms, self._drag_grid)
+        except tk.TclError:
+            pass
+
+    def _drag_grid(self):
+        self._grid_job = None
+        if self._drag:
+            self._layout_now(True, True)
+
+    def _split_release(self, _e=None):
+        if not self._drag:
+            return
+        self._drag = None
+        if self._grid_job:
+            try:
+                self._win.after_cancel(self._grid_job)
+            except Exception:
+                pass
+            self._grid_job = None
+        self._split_line.configure(bg=LINE)
+        # 松手后按最终宽度重算一遍：大图、缩略图都回到 LANCZOS 画质
+        self._pv_shown = None
+        self._layout_now(False)
+
+    def _split_reset(self, _e=None):
+        """双击分隔条：回到按窗口比例自动分配的宽度。"""
+        self._drag = None
+        self._left_user_w = 0
+        self._layout_now(False)
+
+    def _split_leave(self, e):
+        if self._drag:
+            return
+        # 指针进到中间那条线也会收到 Leave，此时不算真的离开
+        try:
+            x = self._win.winfo_pointerx() - self._split.winfo_rootx()
+        except tk.TclError:
+            x = -1
+        if 0 <= x <= self._split.winfo_width():
+            return
+        self._split_line.configure(bg=LINE)
+
+    def _layout_left(self, fast=False):
+        """左栏宽度：拖过分隔条就用手动值，否则按窗口比例；大图按视口比例填充。"""
+        win = self._win
+        lo = px(200)
+        hi = max(lo + px(120), win.winfo_width() - px(340))
+        if self._left_user_w:
+            lw = max(lo, min(hi, int(self._left_user_w)))
+            self._left_user_w = lw
+        else:
+            lw = int(max(px(300), win.winfo_width()) * THEME_LEFT_RATIO)
+            lw = max(px(THEME_LEFT_MIN), min(px(THEME_LEFT_MAX), lw))
+        lh = self._left.winfo_height()
+        if lh < px(160):                        # 还没完成布局，先按窗口估
+            lh = max(px(300), win.winfo_height() - px(120))
+        row_h = self._vp_row.winfo_reqheight()
+        avail_h = max(px(150), lh - row_h - px(16))   # 视口输入框 + 间距
+        vw, vh = self._vp
+        ratio = float(vh) / float(vw)
+        pv_h = avail_h
+        pv_w = int(pv_h / ratio)
+        max_w = max(px(100), lw - px(8))
+        if pv_w > max_w:                        # 高度够了但宽度到顶，改由宽度定
+            pv_w = max_w
+            pv_h = int(pv_w * ratio)
+        lw = max(lw, pv_w + px(10), self._vp_row.winfo_reqwidth())
+        self._left.configure(width=lw)
+        if (pv_w, pv_h) != self._pv_size:
+            self._pv_size = (pv_w, pv_h)
+            self._pv_box.configure(width=pv_w, height=pv_h)
+        self._show_preview(fast)
+
+    def _layout_grid(self, fast=False, images=True):
+        """右栏固定两列：可用宽度变了，列宽（和缩略图）跟着一起变。"""
+        cols = THEME_COLS
+        # 两列等宽居中：两侧各留 m，两张卡中间自然就是 2m
+        m = px(THEME_GRID_MARGIN)
+        avail = self._cv.winfo_width() - 4 * m
+        if avail < px(200):
+            return
+        card_w = avail // cols
+        thumb_w = max(px(80), card_w - px(2 * THEME_CARD_PAD) - px(6))
+        thumb_h = int(thumb_w * THEME_IMG_RATIO)
+        key = (cols, thumb_w, thumb_h)
+        if key != self._grid_key:
+            self._grid_key = key
+            for i, t in enumerate(self.themes):
+                card = self._cards[t["id"]]
+                card["frame"].grid_configure(row=i // cols, column=i % cols)
+                card["box"].configure(width=thumb_w, height=thumb_h)
+                card["name"].configure(wraplength=thumb_w)
+                card["desc"].configure(wraplength=thumb_w)
+        if not images:
+            return
+        if self._img_key == (key, fast):    # 这批尺寸 + 这个画质已经贴过了
+            return
+        self._img_key = (key, fast)
+        self._fill_thumbs(fast)
+
+    def _fill_thumbs(self, fast=False):
+        """按当前尺寸把每张缩略图贴/换上去；读不到图就在框里写提示。"""
+        _cols, w, h = self._grid_key
+        for t in self.themes:
+            card = self._cards[t["id"]]
+            photo = self._photo(t, w, h, fast)
+            if photo is not None:
+                card["photo"] = photo
+                card["hint"].place_forget()
+                card["img"].configure(image=photo)
+                card["img"].place(relx=.5, rely=.5, anchor="center")
+            else:
+                card["img"].place_forget()
+                card["hint"].configure(
+                    text=(self.S["theme_no_img"] if not t.get("preview")
+                          else self.S["theme_img_bad"]))
+                card["hint"].place(relx=.5, rely=.5, anchor="center")
+
+    def _photo(self, t, w, h, fast=False):
+        """按目标像素取缩略图；同一尺寸 + 同一画质只缩一次。"""
+        got = self._ph.get(t["id"])
+        if got and got[0] == (w, h, fast):
+            return got[1]
+        photo = _scaled_photo(self._source(t), w, h, fast)
+        self._ph[t["id"]] = ((w, h, fast), photo)
+        return photo
+
+    def _source(self, t):
+        """源图只解码一次，之后反复缩放都很快。"""
+        tid = t["id"]
+        if tid not in self._src:
+            self._src[tid] = _load_source(t.get("preview") or "")
+        return self._src[tid]
+
+    # -------------------------------------------------------- 视口尺寸
+    def _vp_text(self):
+        """把当前视口写回输入框（也用于输错后回滚）。"""
+        self.vp_w_var.set(str(self._vp[0]))
+        self.vp_h_var.set(str(self._vp[1]))
+
+    def _apply_viewport(self):
+        """按输入框的宽高重新排版预览：换设备（手机 / Kindle / 桌面）就看一眼。"""
+        w = _to_int(self.vp_w_var.get())
+        h = _to_int(self.vp_h_var.get())
+        if not w or not h:
+            self._vp_text()                     # 输错了就恢复成上一次的值
+            return
+        w = max(200, min(3000, w))
+        h = max(200, min(3000, h))
+        if (w, h) == self._vp:
+            self._vp_text()
+            return
+        self._vp = (w, h)
+        self._vp_text()
+        self._schedule_layout()                 # 比例变了，左栏也要重排
+        self._select(self.cur)                  # 按新视口重渲一张（有缓存就秒出）
+
+    # -------------------------------------------------------- 导入自定义 CSS
+    def import_css(self):
+        """选一个外部 CSS 当主题：读到什么就用什么，渲完预览立刻生效。"""
+        S = self.S
+        path = filedialog.askopenfilename(
+            parent=self._win, title=S["theme_custom_pick"],
+            filetypes=[("CSS", "*.css"), (S["theme_all_files"], "*.*")])
+        if not path:
+            return
+        css = jzcore.read_css(path)
+        if css is None:
+            messagebox.showerror(S["d_warn"], S["theme_custom_bad"].format(path),
+                                 parent=self._win)
+            return
+        tid = jzcore.custom_theme_id(path)
+        t = self._by_id.get(tid)
+        if t is None:
+            t = jzcore.parse_theme(css, tid)
+            t["path"] = os.path.abspath(path)
+            t["preview"] = ""
+            t["stale"] = False
+            t["custom"] = True
+            self._add_card(t)
+        else:                                   # 同一个文件又导了一次：按新内容刷新
+            new = jzcore.parse_theme(css, tid)
+            t["css"] = css
+            t["name"] = new["name"]
+            t["named"] = new["named"]
+            t["desc"] = new["desc"]
+            card = self._cards[tid]
+            card["name"].configure(text=theme_title(t, S, self.lang))
+            card["desc"].configure(text=self._card_desc(t))
+            self._img_key = None
+            self._ph.pop(tid, None)
+            self._src.pop(tid, None)
+        self._select(tid)
+
+    # -------------------------------------------------------- 选择与渲染
+    def _select(self, tid):
+        if tid not in self._by_id:
+            return
+        t = self._by_id[tid]
+        self.cur = tid
+        self._seq += 1
+        for k, card in self._cards.items():
+            card["frame"].configure(highlightbackground=BLUE if k == tid else LINE)
+        try:                                    # 标题跟着所选主题走
+            self._win.title(theme_title(t, self.S, self.lang))
+        except tk.TclError:
+            pass
+        self.pv_img.place_forget()
+        self._pv_path = ""
+        self._pv_shown = None
+        self.pv_hint.configure(text=self.S["theme_rendering"])
+        self.pv_hint.place(relx=.5, rely=.5, anchor="center")
+        # 按当前视口现渲一张，显示时再缩放到左栏大小
+        self._jobs.put((tid, t["css"], tuple(self._vp), self._seq))
+
+    def _worker(self):
+        """后台渲染线程：渲左侧大图；同一套 CSS 渲过就命中缓存，不启浏览器。"""
+        hti = None
+        while True:
+            item = self._jobs.get()
+            if item is None:                    # 窗口已关
+                break
+            tid, css, size, seq = item
+            if seq != self._seq:
+                continue                        # 已被后续选择顶替，别再浪费一次启动
+            # 左侧大图用长正文：视口有多高都能填满，看得出版面节奏
+            html = jzcore.theme_preview_html(css, size[0], full=True)
+            path, err, nobrowser = None, "", False
+            cached = _cache_path(html, size)
+            try:
+                if os.path.isfile(cached) and os.path.getsize(cached) > 0:
+                    path = cached
+                else:
+                    if hti is None:
+                        hti = jzcore.make_renderer(os.path.dirname(cached))
+                    path = hti.screenshot(html_str=html,
+                                          save_as=os.path.basename(cached),
+                                          size=size)[0]
+            except jzcore.NoBrowser:
+                nobrowser = True                 # 交给界面弹窗提示，不抛异常
+            except Exception as e:
+                err = str(e)
+            self._done.put((tid, seq, path, err, nobrowser))
+
+    def _pump(self):
+        """主线程取渲染结果贴图；tk 控件只在这一侧碰。"""
+        if not self._alive():
+            return
+        try:
+            while True:
+                tid, seq, path, err, nobrowser = self._done.get_nowait()
+                if nobrowser:
+                    self._warn_no_browser()
+                # seq 也要对上：改视口时旧视口的图可能晚到，别把新的顶掉
+                if tid == self.cur and seq == self._seq:
+                    self._set_preview(path, err, nobrowser)
+        except queue.Empty:
+            pass
+        try:
+            self._win.after(80, self._pump)
+        except tk.TclError:
+            pass
+
+    def _warn_no_browser(self):
+        """只在第一次弹窗：没装浏览器时别每次点主题都弹一遍。"""
+        if self._warned:
+            return
+        self._warned = True
+        try:
+            messagebox.showwarning(self.S["theme_no_browser_title"],
+                                   self.S["theme_no_browser"],
+                                   parent=self._win)
+        except tk.TclError:
+            pass
+
+    def _set_preview(self, path, err, nobrowser=False):
+        if not path:
+            self.pv_hint.configure(
+                text=(self.S["theme_need_browser"] if nobrowser
+                      else self.S["theme_fail"].format(err or "")))
+            return
+        self._pv_path = path
+        t = self._by_id.get(self.cur)
+        if t is not None and t.get("custom") and t.get("preview") != path:
+            # 自定义 CSS 没有预生成图：直接拿这张渲染结果当卡片缩略图
+            t["preview"] = path
+            self._src.pop(t["id"], None)
+            self._ph.pop(t["id"], None)
+            self._img_key = None
+            self._layout_grid(False, True)
+        self._pv_shown = None
+        self._show_preview()
+
+    def _show_preview(self, fast=False):
+        """把渲染结果按左栏当前尺寸缩放后贴上去（尺寸没变就不重算）。"""
+        if not self._pv_path:
+            return
+        size = self._pv_size
+        if self._pv_shown and self._pv_shown[0] == size:
+            return
+        if self._pv_src_path != self._pv_path:   # 源图只解码一次，拖动时不必反复读盘
+            self._pv_src = _load_source(self._pv_path)
+            self._pv_src_path = self._pv_path
+        photo = _scaled_photo(self._pv_src, size[0], size[1], fast)
+        if photo is None:
+            self.pv_hint.configure(text=self.S["theme_fail"].format(""))
+            return
+        self._pv_shown = (size, photo)
+        self.pv_hint.place_forget()
+        self.pv_img.configure(image=photo)
+        self.pv_img.place(relx=.5, rely=.5, anchor="center")
+
+    def _alive(self):
+        if self._dead:
+            return False
+        try:
+            return bool(self._win.winfo_exists())
+        except tk.TclError:
+            return False
+
+    # -------------------------------------------------------- 结果
+    def _ok(self):
+        self.result = self.cur
+        self._close()
+
+    def _cancel(self):
+        self.result = None
+        self._close()
+
+    def _close(self):
+        self._dead = True
+        self._jobs.put(None)          # 渲染线程干完手上那张就退出
+        try:
+            self._win.destroy()
+        except tk.TclError:
+            pass
+
+    def show(self):
+        try:
+            self._win.after(80, self._pump)
+            self._win.grab_set()
+            self._win.wait_window()
+        except tk.TclError:
+            pass
+        finally:
+            self._dead = True
+            self._jobs.put(None)
+        return self.result
 
 
 class App:
@@ -1539,8 +2374,9 @@ class App:
         g2.pack(fill="x", padx=px(8), pady=px(6))
         row = ttk.Frame(g2)
         row.pack(fill="x", padx=px(10), pady=px(4))
-        ttk.Checkbutton(row, text=S["f_epub"],
-                        variable=self.fmt_vars["epub"]).pack(side="left", padx=(0, px(16)))
+        ttk.Checkbutton(row, text=S["f_epub"], variable=self.fmt_vars["epub"],
+                        command=self.refresh_epub_opts_state
+                        ).pack(side="left", padx=(0, px(16)))
         ttk.Checkbutton(row, text=S["f_merge"],
                         variable=self.fmt_vars["merge"]).pack(side="left", padx=(0, px(16)))
         ttk.Checkbutton(row, text=S["f_split"],
@@ -1557,13 +2393,18 @@ class App:
         # EPUB 排版主题与封面：只影响导出的 epub，不改正文
         row2 = ttk.Frame(g2)
         row2.pack(fill="x", padx=px(10), pady=(0, px(6)))
-        en = self.lang == EN
-        ttk.Label(row2, text=S["f_theme"]).pack(side="left")
-        self.theme_names = [(t["name_en"] if en else t["name"]) for t in jzcore.THEMES]
-        self.cb_theme = ttk.Combobox(row2, state="readonly", width=13,
-                                     values=self.theme_names)
-        self.cb_theme.pack(side="left", padx=(px(4), 0))
-        ttk.Label(row2, text=S["f_cover"]).pack(side="left", padx=(px(16), 0))
+        # 主题来自 styles 目录：按钮点开选图窗口，这里只显示当前主题名
+        self.lb_theme = ttk.Label(row2, text=S["f_theme"])
+        self.lb_theme.pack(side="left")
+        self.themes = jzcore.list_themes()
+        self.theme_by_id = {t["id"]: t for t in self.themes}
+        self.theme_id = jzcore.DEFAULT_THEME
+        self.btn_theme = ttk.Button(row2, text="", width=18,
+                                    style="Soft.TButton",
+                                    command=self.choose_theme)
+        self.btn_theme.pack(side="left", padx=(px(4), 0))
+        self.lb_cover = ttk.Label(row2, text=S["f_cover"])
+        self.lb_cover.pack(side="left", padx=(px(16), 0))
         self.cover_names = [S["cov_auto"], S["cov_default"], S["cov_none"]]
         self.cb_cover = ttk.Combobox(row2, state="readonly", width=20,
                                      values=self.cover_names)
@@ -1574,7 +2415,7 @@ class App:
         self.cb_imgdl.pack(side="left", padx=(px(16), 0))
         self.refresh_imgdl_state()
         self._restore_epub_opts()
-        self.cb_theme.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
+        self.refresh_epub_opts_state()
         self.cb_cover.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
 
         g3 = ttk.LabelFrame(f, text=S["grp_out"], style="Card.TLabelframe")
@@ -1601,14 +2442,9 @@ class App:
             self._cardify(g)
 
     def _restore_epub_opts(self):
-        """按配置恢复主题/封面选择（配置里存 id，界面上显示名字）。"""
-        tid = self.cfg.get("theme") or "classic"
-        idx = [t["id"] for t in jzcore.THEMES].index(tid) \
-            if tid in [t["id"] for t in jzcore.THEMES] else 0
-        try:
-            self.cb_theme.current(idx)
-        except Exception:
-            pass
+        """按配置恢复主题/封面选择（主题存的是 CSS 文件名）。"""
+        self.theme_id = self._valid_theme(self.cfg.get("theme"))
+        self._refresh_theme_btn()
         cm = self.cfg.get("cover") or "auto"
         key = {"auto": 0, "default": 1, "none": 2}.get(cm, 0)
         try:
@@ -1616,13 +2452,47 @@ class App:
         except Exception:
             pass
 
+    def _valid_theme(self, tid):
+        """配置里的主题可能已被删除/移走：自定义 CSS 看文件还在不在，内置看列表。"""
+        if jzcore.is_custom_theme(tid):
+            return tid if jzcore.load_theme(tid) else jzcore.DEFAULT_THEME
+        ids = [t["id"] for t in self.themes]
+        if tid in ids:
+            return tid
+        if jzcore.DEFAULT_THEME in ids:
+            return jzcore.DEFAULT_THEME
+        return ids[0] if ids else jzcore.DEFAULT_THEME
+
+    def _refresh_theme_btn(self):
+        t = self.theme_by_id.get(self.theme_id)
+        if t is None:                    # 自定义 CSS 不在内置列表里
+            t = jzcore.load_theme(self.theme_id)
+        try:
+            self.btn_theme.configure(
+                text=theme_title(t, self.S, self.lang) if t
+                else self.S["f_theme"])
+        except Exception:
+            pass
+
+    def choose_theme(self):
+        """弹出主题选择窗口：左侧预览、右侧缩略图网格，确定后写进配置。"""
+        S = self.S
+        # 每次打开都重扫一遍：用户往 styles 里丢一个新 CSS 不必重启程序
+        self.themes = jzcore.list_themes() or self.themes
+        self.theme_by_id = {t["id"]: t for t in self.themes}
+        if not self.themes and not jzcore.is_custom_theme(self.theme_id):
+            messagebox.showwarning(S["d_warn"], S["theme_none"])
+            return
+        got = ThemePicker(self.root, self.themes, self.theme_id,
+                          self.lang, S).show()
+        if got:
+            self.theme_id = got
+            self._refresh_theme_btn()
+            self._save_epub_opts()
+
     def epub_opts(self):
         """主线程取当前选择，返回 (theme_id, cover_mode)，可直接传给后台线程。"""
-        try:
-            ti = self.cb_theme.current()
-            theme = jzcore.THEMES[ti]["id"] if 0 <= ti < len(jzcore.THEMES) else "classic"
-        except Exception:
-            theme = "classic"
+        theme = self._valid_theme(self.theme_id)
         try:
             ci = self.cb_cover.current()
         except Exception:
@@ -2430,6 +3300,17 @@ class App:
         """主线程取当前选择：清洗规则没开「保留插图链接」时一律按不下载处理。"""
         return bool(self.img_dl_var.get()) and bool(self.rule_vars["imgkeep"].get())
 
+    def refresh_epub_opts_state(self):
+        """版面主题 / 封面只作用于 EPUB：没勾「导出 EPUB」时整组置灰。
+
+        值本身留着（取消勾选再勾回来不用重选），只是不让改。
+        """
+        on = bool(self.fmt_vars["epub"].get())
+        for w in (getattr(self, "lb_theme", None), getattr(self, "lb_cover", None),
+                  getattr(self, "btn_theme", None), getattr(self, "cb_cover", None)):
+            if self._alive(w):
+                w.state(["!disabled"] if on else ["disabled"])
+
     def set_rules(self, val):
         for r in jzcore.RULES:
             v = self.rule_vars[r["id"]]
@@ -3030,7 +3911,7 @@ class App:
                          daemon=True).start()
 
     def run_worker(self, sel, fmts, mode, outdir, rules, custom,
-                   theme="classic", cover_mode="auto", img_dl=False,
+                   theme=jzcore.DEFAULT_THEME, cover_mode="auto", img_dl=False,
                    want_sum=True, name_fmt=""):
         S = self.S
         custom = custom or ""       # 同上：后台线程不读 tk 变量

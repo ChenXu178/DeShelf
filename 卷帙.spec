@@ -6,9 +6,11 @@
 """
 from PyInstaller.building.datastruct import TOC
 
-# 名字里命中这些就丢掉（只用 JPEG/PNG，不做科学计算）
+# 名字里命中这些就丢掉（只用 JPEG/PNG，不做科学计算）。
+# PIL.imagetk 留着：主题缩略图靠它把 Pillow 图直接交给 Tk，保住就省掉
+# 一层 PNG 编解码（丢了也能用，只是慢一点）。
 _DROP = ("openblas", "numpy", "scipy", "pandas", "matplotlib",
-         "_avif", "PIL.imageqt", "PIL.imagetk", "PIL.imageshow")
+         "_avif", "PIL.imageqt", "PIL.imageshow")
 
 
 def _keep(entry):
@@ -20,7 +22,8 @@ a = Analysis(
     ['Juanzhi_Desktop.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    # 版面主题是纯数据：打包进 EXE；用户也可在 EXE 同级放 styles 覆盖
+    datas=[('styles', 'styles')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

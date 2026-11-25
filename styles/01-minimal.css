@@ -1,0 +1,71 @@
+@charset "utf-8";
+/*!
+* @theme-name: 素笺白 Minimal White
+* @theme-version: 1.0
+* @description: 纯白无彩色的极简排版，章名居中并配一道细线，插图不加边框，图注浅灰居中。
+*/
+
+html {
+  background: #ffffff;
+}
+
+body {
+  margin: 1.9em 1.45em;
+  color: #1d1d1f;
+  line-height: 1.92;
+  text-align: justify;
+  background: #ffffff;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.4em 0 1.9em;
+  padding: 0;
+  text-align: center;
+  letter-spacing: 0.16em;
+  line-height: 1.6;
+  color: #111111;
+}
+
+h2::after {
+  content: "";
+  display: block;
+  width: 2.4em;
+  height: 1px;
+  margin: 1em auto 0;
+  background: #d9d6d0;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.92;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 0;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.85em 0 0;
+  text-indent: 0;
+  text-align: center;
+  color: #8c8c8e;
+  letter-spacing: 0.08em;
+  line-height: 1.6;
+}

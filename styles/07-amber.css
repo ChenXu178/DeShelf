@@ -1,0 +1,67 @@
+@charset "utf-8";
+/*!
+* @theme-name: 暖橘夜读 Amber Lamp
+* @theme-version: 1.0
+* @description: 奶油底配琥珀橙，章名虚线收尾，插图浅描边加微投影，像台灯下摊开的一页纸。
+*/
+
+html {
+  background: #fdf9f2;
+}
+
+body {
+  margin: 1.85em 1.45em;
+  color: #3d3229;
+  line-height: 1.92;
+  text-align: justify;
+  background: #fdf9f2;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.2em 0 1.8em;
+  padding: 0 0 0.8em;
+  text-align: center;
+  letter-spacing: 0.12em;
+  line-height: 1.6;
+  color: #8a5a2b;
+  border-bottom: 1px dashed #e3cbb0;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.92em;
+  text-indent: 2em;
+  line-height: 1.92;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 9px 9px 5px;
+  background: #fffdf8;
+  border: 1px solid #f1e1cc;
+  border-radius: 4px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(165, 125, 80, 0.1);
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.72em 0 0.2em;
+  text-indent: 0;
+  text-align: center;
+  color: #a8825c;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+}

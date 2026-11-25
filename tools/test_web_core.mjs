@@ -277,5 +277,81 @@ console.log("== 插图下载（伪造 fetch / Image） ==");
   }
 }
 
+// ---------- 版面主题（样式必须内联进 HTML，且与 styles/*.css 完全一致） ----------
+console.log("== 版面主题 ==");
+{
+  const dirs = ["styles", path.join("assets", "styles")];
+  const dir = dirs.map(d => path.join(import.meta.dirname, "..", d))
+    .find(d => fs.existsSync(d));
+  const files = dir ? fs.readdirSync(dir).filter(f => f.endsWith(".css")).sort() : [];
+  ok("找到样式目录", !!dir, dir);
+  ok("内嵌主题数量与目录一致", Core.THEMES.length === files.length,
+    { embedded: Core.THEMES.length, files: files.length });
+  let same = true, bad = null;
+  for (const f of files) {
+    const disk = fs.readFileSync(path.join(dir, f), "utf8").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+    const got = Core.THEME_CSS[f];
+    if (got !== disk) { same = false; bad = f; break; }
+  }
+  ok("每套 CSS 与磁盘逐字节一致", same, bad);
+  ok("默认主题存在", !!Core.THEME_CSS[Core.DEFAULT_THEME], Core.DEFAULT_THEME);
+  ok("未知 id 回落到默认", Core.themeCss("nope.css") === Core.THEME_CSS[Core.DEFAULT_THEME]);
+  const t = Core.themeById(Core.DEFAULT_THEME);
+  ok("themeTitle 拆分中英", Core.themeTitle(t, false) !== Core.themeTitle(t, true), Core.themeTitle(t, false));
+  const c = Core.parseThemeCss("/*! @theme-name: 我的墨绿 My Green\n * @description: 自用 */\nbody{margin:1em}",
+    "my.css");
+  ok("自定义 CSS 读到名字", c.named && c.name === "我的墨绿 My Green", c.name);
+  ok("自定义 id 带前缀", c.id === "custom:my.css", c.id);
+  const bare = Core.parseThemeCss("body{margin:1em}", "plain.css");
+  ok("没写名字 → 用文件名", !bare.named && bare.name === "plain", bare.name);
+  Core.addTheme(c);
+  ok("addTheme 后可直接取样式", Core.themeCss("custom:my.css").includes("margin:1em"));
+  ok("预览页含主题 CSS 与章名",
+    Core.themePreviewHtml("body{color:red}", true).includes("color:red")
+    && Core.themePreviewHtml("body{color:red}", true).includes("第一章 山雨"));
+  ok("长正文比短正文长",
+    Core.themePreviewHtml("", true).length > Core.themePreviewHtml("", false).length);
+}
+
+// 自定义 CSS 也要能整本导出（style.css 打进 zip 包）
+function zipEntry(u8, name) {
+  const buf = Buffer.from(u8);
+  let p = 0;
+  while ((p = buf.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]), p)) >= 0) {
+    const method = buf.readUInt16LE(p + 8);
+    const csize = buf.readUInt32LE(p + 18);
+    const nlen = buf.readUInt16LE(p + 26);
+    const xlen = buf.readUInt16LE(p + 28);
+    const nm = buf.slice(p + 30, p + 30 + nlen).toString("utf8");
+    if (nm === name) {
+      const start = p + 30 + nlen + xlen;
+      const data = buf.slice(start, start + csize);
+      return method === 0 ? data : zlib.inflateRawSync(data);
+    }
+    p += 4;
+  }
+  return null;
+}
+{
+  const custom = Core.parseThemeCss("body{margin:3em}\nh2{text-align:center}\np{text-indent:2em}",
+    "e2e.css");
+  Core.addTheme(custom);
+  const zip = await Core.buildEpub({
+    title: "T", author: "A", chapters: [{ t: "第1章", b: "正文" }],
+    theme: custom.id, images: [],
+  });
+  const css = zipEntry(zip, "OEBPS/style.css");
+  ok("自定义主题能导出 EPUB", zip.length > 400, zip.length);
+  ok("导出的 style.css 就是所选自定义 CSS",
+    !!css && css.toString("utf8") === custom.css);
+  const builtin = await Core.buildEpub({
+    title: "T", author: "A", chapters: [{ t: "第1章", b: "正文" }],
+    theme: Core.DEFAULT_THEME, images: [],
+  });
+  const bc = zipEntry(builtin, "OEBPS/style.css");
+  ok("内置主题导出的 style.css 与文件一致",
+    !!bc && bc.toString("utf8") === Core.THEME_CSS[Core.DEFAULT_THEME]);
+}
+
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

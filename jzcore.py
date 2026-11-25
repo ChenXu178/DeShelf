@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 import urllib.error
@@ -2897,57 +2898,293 @@ def _esc(s):
 
 # ---------------------------------------------------------------- EPUB 版面主题
 
-# 只换 style.css，不动正文与章节结构：同一本书换主题，epub 里除 css 外逐字节相同。
-THEMES = [
-    {"id": "classic", "name": "传统书籍", "name_en": "Classic print",
-     "desc": "宋体 · 首行缩进两字 · 行距宽松", "desc_en": "Song serif, indent, relaxed"},
-    {"id": "reading", "name": "现代阅读", "name_en": "Modern reading",
-     "desc": "段间空一行 · 不缩进 · 黑体标题", "desc_en": "Spaced paragraphs, no indent"},
-    {"id": "compact", "name": "紧凑省纸", "name_en": "Compact",
-     "desc": "小行距 · 密排 · 适合快速通读", "desc_en": "Tight leading, dense"},
-    {"id": "large", "name": "大字易读", "name_en": "Large print",
-     "desc": "字号放大 · 行距更宽 · 护眼", "desc_en": "Bigger type, wider leading"},
-]
+# 主题不内置在代码里：styles 下的每个 .css 就是一套版面，文件名（含扩展名）
+# 即主题 id，例如 "01-minimal.css"。CSS 头部用注释声明自身信息：
+#   /*!
+#   * @theme-name: 素笺白 Minimal White
+#   * @theme-version: 1.0
+#   * @description: 纯白无彩色的极简排版……
+#   */
+# 版本号只作记录，界面不展示。
+STYLE_SUBDIR = os.path.join("styles")
+DEFAULT_THEME = "01-minimal.css"
+# 自定义 CSS（用户从别处导入的）不放进 styles 目录，用前缀 + 绝对路径当 id
+CUSTOM_PREFIX = "custom:"
+# 主题预览图（tools/gen_theme_previews.py 的默认尺寸）：给得大一点是为了
+# 高分屏下也清楚；界面按固定框等比缩小显示，不会因为图大而撑变形。
+THEME_PREVIEW_SIZE = (540, 880)
+THEME_THUMB_SUFFIX = ".png"        # 预览图与 CSS 同名：01-minimal.css -> 01-minimal.png
+# 头部字段写成 `@theme-name:`，说明行则是 `@description:`，两种都认
+_THEME_META_RE = re.compile(r"@(?:theme-)?([A-Za-z]+)\s*:\s*([^\r\n*]+)")
 
-_THEME_CSS = {
-    "classic": '@charset "utf-8";\n'
-               'body{margin:1.2em 1em;line-height:1.75;'
-               'font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
-               'h2{font-size:1.25em;margin:1.4em 0 .8em;text-align:center;'
-               'font-weight:normal;line-height:1.4;}\n'
-               'p{margin:0 0 .6em;text-indent:2em;font-size:1em;}\n',
 
-    "reading": '@charset "utf-8";\n'
-               'body{margin:1.5em 1.25em;line-height:1.9;'
-               'font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
-               'h2{font-family:"Heiti SC","STHeiti","SimHei",sans-serif;font-size:1.1em;'
-               'margin:1.2em 0 1.1em;text-align:left;font-weight:600;letter-spacing:.02em;}\n'
-               'p{margin:0 0 1em;text-indent:0;font-size:1em;}\n',
+def app_root():
+    """程序根目录：源码运行时是本文件所在目录，PyInstaller 运行时是解包目录。"""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return meipass
+    return os.path.dirname(os.path.abspath(__file__))
 
-    "compact": '@charset "utf-8";\n'
-               'body{margin:.7em .8em;line-height:1.45;'
-               'font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
-               'h2{font-size:1.1em;margin:.9em 0 .5em;text-align:center;font-weight:normal;}\n'
-               'p{margin:0;text-indent:2em;font-size:.95em;}\n',
 
-    "large": '@charset "utf-8";\n'
-             'body{margin:1.5em 1.2em;line-height:2.05;font-size:1.15em;'
-             'font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
-             'h2{font-size:1.3em;margin:1.6em 0 1em;text-align:center;font-weight:normal;}\n'
-             'p{margin:0 0 .7em;text-indent:2em;}\n',
-}
+def styles_dir():
+    """styles 的绝对路径（不保证存在）。
+
+    优先 EXE 同级的 styles：主题是纯数据，用户想自己加一套 CSS
+    直接放进去即可；其次才用打包进程序里的内置副本。
+    """
+    roots = []
+    if getattr(sys, "frozen", False):
+        roots.append(os.path.dirname(os.path.abspath(sys.executable)))
+    roots.append(app_root())
+    for r in roots:
+        d = os.path.join(r, STYLE_SUBDIR)
+        if os.path.isdir(d):
+            return d
+    return os.path.join(roots[0], STYLE_SUBDIR)
+
+
+def parse_theme(css, fid=""):
+    """从 CSS 头部注释读出主题信息，返回 {id, name, version, desc, css, named}。
+
+    读不到 @theme-name 时退回文件名，保证任何合法 CSS 都能当主题用；
+    named 标记有没有真的读到名字（自定义 CSS 靠它决定显不显示「自定义CSS」）。
+    """
+    meta = {}
+    for key, val in _THEME_META_RE.findall(css or ""):
+        meta.setdefault(key.lower(), val.strip())
+    name = meta.get("name")
+    if not name:
+        # 自定义主题的 id 是 custom:<路径>，退回文件名而不是整串 id
+        base = fid[len(CUSTOM_PREFIX):] if fid.startswith(CUSTOM_PREFIX) else fid
+        name = os.path.splitext(os.path.basename(base))[0] if base else fid
+    return {
+        "id": fid,
+        "name": name,
+        "named": bool(meta.get("name")),
+        "version": meta.get("version") or "",
+        "desc": meta.get("description") or "",
+        "css": css or "",
+    }
+
+
+def read_css(path):
+    """读一个 CSS 文件；UTF-8（含 BOM）读不通就按 GBK 再试一次。读不到返回 None。"""
+    for enc in ("utf-8-sig", "gbk"):
+        try:
+            with open(path, "r", encoding=enc) as f:
+                return f.read()
+        except (OSError, UnicodeError):
+            continue
+    return None
+
+
+def custom_theme_id(path):
+    """自定义 CSS 的主题 id：路径前面加个前缀，和内置主题（纯文件名）区分开。"""
+    return CUSTOM_PREFIX + os.path.abspath(path)
+
+
+def is_custom_theme(tid):
+    return str(tid or "").startswith(CUSTOM_PREFIX)
+
+
+def custom_theme_path(tid):
+    return str(tid)[len(CUSTOM_PREFIX):]
+
+
+def load_theme(tid):
+    """按 id 取主题（内置 = styles 下的文件名，自定义 = custom:<路径>）。
+
+    找不到 / 文件读不出来返回 None。
+    """
+    if is_custom_theme(tid):
+        path = custom_theme_path(tid)
+        css = read_css(path)
+        if css is None:
+            return None
+        t = parse_theme(css, tid)
+        t["path"] = path
+        t["preview"] = ""
+        t["stale"] = False
+        t["custom"] = True
+        return t
+    for t in list_themes():
+        if t["id"] == tid:
+            return t
+    return None
+
+
+def theme_thumb_path(css_path):
+    """CSS 对应的同名预览图路径：01-minimal.css -> 01-minimal.png。"""
+    return os.path.splitext(css_path)[0] + THEME_THUMB_SUFFIX
+
+
+def list_themes():
+    """扫描 styles 目录，按文件名排序返回主题列表；目录不存在返回空列表。
+
+    每个主题额外带上：
+      path       CSS 绝对路径
+      preview    同名预览图的绝对路径（没有图时是空串）
+      stale      有图但图比 CSS 旧（改过 CSS 没重新生成）
+    """
+    d = styles_dir()
+    try:
+        names = sorted(n for n in os.listdir(d)
+                       if n.lower().endswith(".css")
+                       and os.path.isfile(os.path.join(d, n)))
+    except OSError:
+        return []
+    out = []
+    for n in names:
+        path = os.path.join(d, n)
+        css = read_css(path)
+        if css is None:
+            continue
+        t = parse_theme(css, n)
+        t["path"] = path
+        png = theme_thumb_path(path)
+        if os.path.isfile(png):
+            t["preview"] = png
+            t["stale"] = _older_than(png, path)
+        else:
+            t["preview"] = ""
+            t["stale"] = False
+        out.append(t)
+    return out
+
+
+def _older_than(a, b):
+    """a 的修改时间早于 b（读不到时间就当没旧）。"""
+    try:
+        return os.path.getmtime(a) < os.path.getmtime(b)
+    except OSError:
+        return False
 
 
 def theme_css(tid):
-    """取主题的 style.css 正文；未知 id 退回第一个（传统书籍），保证老调用不受影响。"""
-    return _THEME_CSS.get(tid or "", _THEME_CSS["classic"])
+    """按 id 读取主题的 CSS 正文；找不到就退回默认主题，再不行给一个空样式。
+
+    自定义 CSS（custom:<路径>）直接读那个文件，导出 EPUB 时原样打进 style.css。
+    """
+    if is_custom_theme(tid):
+        css = read_css(custom_theme_path(tid))
+        if css is not None:
+            return css
+    d = styles_dir()
+    for name in (os.path.basename(str(tid or "")), DEFAULT_THEME):
+        if not name:
+            continue
+        css = read_css(os.path.join(d, name))
+        if css is not None:
+            return css
+    return '@charset "utf-8";\n'
 
 
-def theme_by_id(tid):
-    for t in THEMES:
-        if t["id"] == tid:
-            return t
-    return THEMES[0]
+# ---------------------------------------------------------------- 主题预览图
+#
+# 一套 CSS 长什么样，只能看渲染结果。预览页按 write_epub 写进 xhtml 的结构拼
+# （h2 章名 + <p> 正文 + div.pic/img.pic/p.cap 插图块），截图交给无头浏览器。
+# 列表用的缩略图由 tools/gen_theme_previews.py 预先烙成同名 .png，
+# 程序里只有左侧大图才现渲。
+
+# 插图用内联 SVG 占位：不必带图片文件，也能看出各主题对 div.pic / img.pic 的处理
+_PREVIEW_IMG = ("data:image/svg+xml;charset=utf-8,"
+                "%3Csvg xmlns='http://www.w3.org/2000/svg' width='720' height='460'%3E"
+                "%3Crect width='720' height='460' fill='%23c9d2da'/%3E"
+                "%3Ccircle cx='556' cy='118' r='56' fill='%23e7ecf0'/%3E"
+                "%3Cpath d='M0 372 L196 236 L384 306 L556 198 L720 322 L720 460 L0 460 Z'"
+                " fill='%23a7b5c1'/%3E"
+                "%3C/svg%3E")
+
+# 两套示例正文：列表缩略图要短（一屏就能看出章名、正文、插图、图注），
+# 左侧大图要长（视口动辄 880~1448 高，正文太短下半页就空了）。
+_PREVIEW_BODY = """  <p>黄昏时山道上起了雾，挑担的人把担子换到另一边肩头，一级一级往下走。石阶被雨水浸得发暗，鞋底踩上去，能听见细小的水声。</p>
+  <p>溪水从石缝里穿出来，声音不大，却盖过了远处的雷。树下有人歇脚，把斗笠摘下来搁在膝上，帽檐还在一滴一滴地落水。</p>
+  <p>“再走半个时辰就到镇上了。”他说，“这雨最多下到掌灯时分。”</p>
+  <div class="pic"><img class="pic" src="%s" alt=""/></div>
+  <p class="cap">图一 · 山道、溪桥与雨中的石阶</p>
+  <p>雾一路漫上来，把山下的屋脊、田埂和那条浅溪都收拢在里头。等到掌灯时分，镇上的人家亮起第一盏灯，顺着石阶往下看，像一粒落进灰白里的琥珀。</p>""" % _PREVIEW_IMG
+
+_PREVIEW_BODY_LONG = """  <p>黄昏时山道上起了雾，挑担的人把担子换到另一边肩头，一级一级往下走。石阶被雨水浸得发暗，鞋底踩上去，能听见细小的水声。</p>
+  <p>溪水从石缝里穿出来，声音不大，却盖过了远处的雷。树下有人歇脚，把斗笠摘下来搁在膝上，帽檐还在一滴一滴地落水。</p>
+  <p>“再走半个时辰就到镇上了。”他说，“这雨最多下到掌灯时分。”</p>
+  <div class="pic"><img class="pic" src="%s" alt=""/></div>
+  <p class="cap">图一 · 山道、溪桥与雨中的石阶</p>
+  <p>雾一路漫上来，把山下的屋脊、田埂和那条浅溪都收拢在里头。等到掌灯时分，镇上的人家亮起第一盏灯，顺着石阶往下看，像一粒落进灰白里的琥珀。</p>
+  <p>桥是老石桥，桥面的石板被磨得中间凹下去，雨天里积着浅浅一线水。过桥时他放轻了脚步，怕担子晃，也怕踩滑了。</p>
+  <p>桥头有一间茶棚，竹帘半卷。掌柜的正往炉子里添炭，见他进来也不多话，只把一碗热茶推过来，茶面上浮着两片碎叶。</p>
+  <p>“今年的雨来得早。”掌柜的说。</p>
+  <p>“早。”他把斗笠靠在门边，“田里的稻子还差半个月。”</p>
+  <p>雨声在竹帘外面铺开，像有人在远处筛豆子。棚角堆着半旧的箩筐，绳索上挂着一串晒干的红辣椒，颜色在昏灯下显得沉。</p>
+  <p>喝完茶，雨果然小了。他重新挑起担子走出茶棚，石阶尽头是镇子的灯，一盏接一盏，把水洼照亮。</p>
+  <p>后来他常想起那一晚：山道、溪桥、半碗剩茶，还有雨里那盏始终没有熄的灯。</p>""" % _PREVIEW_IMG
+
+
+def theme_preview_html(css, width, full=False):
+    """把一套 CSS 套进与 write_epub 相同的页面结构，供截图预览。
+
+    full=True 用长正文（左侧大图），否则用短正文（列表缩略图）。
+    末尾补一条预览专用规则：无头浏览器的排版视口是默认宽度（不是截图宽度），
+    不把 html 宽度定死，正文就会按更宽的行长排版、右边被截掉。
+    """
+    fix = "html{width:%dpx !important;overflow-x:hidden;}" % int(width)
+    return (
+        "<!DOCTYPE html>\n"
+        '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh-CN">\n'
+        "<head>\n"
+        '  <meta charset="utf-8"/>\n'
+        "  <title>版面主题预览</title>\n"
+        "  <style>\n%s\n%s\n  </style>\n"
+        "</head>\n"
+        "<body>\n"
+        "  <h2>第一章 山雨</h2>\n"
+        "%s\n"
+        "</body>\n"
+        "</html>\n"
+    ) % (css, fix, _PREVIEW_BODY_LONG if full else _PREVIEW_BODY)
+
+
+class NoBrowser(Exception):
+    """本机找不到可用的浏览器，没法把 HTML 渲成图。"""
+
+
+def make_renderer(outdir):
+    """建一个 html2image 实例：Chrome / Edge / Chromium 依次尝试。
+
+    每次 screenshot 都会新起一次无头浏览器（一张约 2~3 秒），所以能省的启动
+    步骤都省掉；outdir 是截图落地目录，save_as 只给文件名即可。
+    三个都找不到时抛 NoBrowser，由调用方决定怎么提示。
+    """
+    from html2image import Html2Image
+    flags = ["--no-sandbox", "--disable-gpu", "--hide-scrollbars",
+             "--force-device-scale-factor=1",       # 一个截图像素对应一个 CSS 像素
+             "--default-background-color=FFFFFFFF",
+             "--no-first-run", "--no-default-browser-check",
+             "--disable-extensions", "--disable-sync",
+             "--disable-background-networking", "--disable-component-update",
+             "--disable-features=Translate,BackForwardCache"]
+    err = None
+    for browser in ("chrome", "edge", "chromium"):
+        try:
+            return Html2Image(output_path=outdir, browser=browser,
+                              custom_flags=list(flags), disable_logging=True)
+        except Exception as e:                  # 没装这个浏览器 -> 换下一个
+            err = e
+    raise NoBrowser(str(err) or "no browser found")
+
+
+def render_theme_thumb(theme, size=None, renderer=None):
+    """把一套主题渲成同名预览图，返回图片路径。
+
+    theme 是 list_themes() 的一项；size 默认 THEME_PREVIEW_SIZE；
+    renderer 传上一次的实例可省掉重新探测浏览器的开销。
+    """
+    w, h = size or THEME_PREVIEW_SIZE
+    css_path = theme["path"]
+    out = theme_thumb_path(css_path)
+    r = renderer or make_renderer(os.path.dirname(css_path))
+    r.screenshot(html_str=theme_preview_html(theme["css"], w),
+                 save_as=os.path.basename(out), size=(int(w), int(h)))
+    return out
 
 
 # ---------------------------------------------------------------- EPUB 封面
@@ -3314,13 +3551,14 @@ def _para_with_images(line, images):
     return "    <p>%s</p>" % _put_back(_esc(s), slots)
 
 
-def write_epub(path, title, author, chapters, cover=None, theme="classic",
+def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
                images=None):
     """用标准库 zipfile 手写 EPUB 2.0（含 toc.ncx，兼容绝大多数阅读器）。
 
     cover: cover_for_book / make_cover / prepare_cover_image 的返回值，
            None 表示不带封面（与旧版输出一致）
-    theme: THEMES 里的 id，只影响 style.css
+    theme: assets/styles 下的 CSS 文件名（主题 id），只影响 style.css；
+           文件不存在时退回默认主题 01-minimal.css
     images: download_images 的返回值 {链接键: 本地图片路径}；None / 空表示不带插图，
            给了就把正文里的插图链接换成 images/xxx 并把图片一起打进 epub
     """
@@ -3425,11 +3663,15 @@ def write_epub(path, title, author, chapters, cover=None, theme="classic",
         z.writestr("OEBPS/toc.ncx", ncx, zipfile.ZIP_DEFLATED)
         css = theme_css(theme)
         if img_files:
-            # 只给带插图的书追几条：不插图时不改 css，输出与旧版逐字节相同
-            css += ('\nimg.pic{max-width:100%;height:auto;}\n'
-                    'div.pic{margin:1em 0;text-align:center;}\n'
-                    'p.cap{font-size:.85em;color:#666666;margin:.3em 0 0;'
-                    'text-indent:0;}\n')
+            # 主题自己写了插图规则就一字不动，只给没写的补最小兜底：
+            # 通用的图注/卡片样式会盖掉各主题调过的版面。
+            if "img.pic" not in css:
+                css += "\nimg.pic{max-width:100%;height:auto;}\n"
+            if "div.pic" not in css:
+                css += "div.pic{margin:1em 0;text-align:center;}\n"
+            if "p.cap" not in css:
+                css += ("p.cap{font-size:.85em;color:#666666;margin:.3em 0 0;"
+                        "text-indent:0;}\n")
         z.writestr("OEBPS/style.css", css, zipfile.ZIP_DEFLATED)
         if has_cover:
             z.writestr("OEBPS/" + cover_name, cdata, zipfile.ZIP_DEFLATED)
