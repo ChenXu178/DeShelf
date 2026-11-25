@@ -4,6 +4,9 @@ rem  DeShelf / Juanzhi - build single-file EXE with PyInstaller
 rem  Uses the .spec file in this folder (卷帙.spec).
 rem  Output: dist\卷帙.exe
 rem
+rem  The script also guards two Windows/IDE traps that otherwise break
+rem  "PyInstaller --clean" (see the two blocks below for details).
+rem
 rem  Usage:  build.bat              (build, keeps window open)
 rem          build.bat /nopause    (build, no pause, for scripts)
 rem ============================================================
@@ -12,7 +15,18 @@ chcp 65001 >nul
 cd /d "%~dp0"
 set "RC=0"
 
+rem --- Trap 1: IDE-injected sitecustomize -------------------------------
+rem PyCharm's copilot plugin puts its own sitecustomize.py on PYTHONPATH
+rem and that shim reroutes os.remove() to the recycle bin. Under it,
+rem "--clean" never really deletes the old build tree, and the build dies
+rem while deleting dist\*.exe with: SHFileOperationW failed 0x7c.
+set "PYTHONPATH="
+
+rem --- Interpreter: prefer the project virtualenv -----------------------
+rem PyInstaller lives in .venv; a bare "python" on PATH may be a different
+rem install that has no PyInstaller at all.
 set "PY=python"
+if exist ".venv\Scripts\python.exe" set "PY="%CD%\.venv\Scripts\python.exe""
 %PY% -c "import sys" >nul 2>&1
 if errorlevel 1 set "PY=py -3"
 %PY% -c "import sys" >nul 2>&1
@@ -21,7 +35,7 @@ if errorlevel 1 (
     goto :fail
 )
 
-echo [1/3] Locating spec file ...
+echo [1/4] Locating spec file ...
 set "SPEC="
 for %%f in ("*.spec") do (
     if defined SPEC (
@@ -36,7 +50,7 @@ if not defined SPEC (
 )
 echo       %SPEC%
 
-echo [2/3] Checking PyInstaller ...
+echo [2/4] Checking PyInstaller ...
 %PY% -m PyInstaller --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] PyInstaller is not installed for "%PY%".
@@ -44,7 +58,16 @@ if errorlevel 1 (
     goto :fail
 )
 
-echo [3/3] Building, please wait ...
+echo [3/4] Closing a running instance ...
+rem --- Trap 2: onefile leaves two processes -----------------------------
+rem A running (or half-killed) 卷帙.exe keeps a lock on dist\卷帙.exe and
+rem the next build fails with: PermissionError [WinError 5]. onefile apps
+rem use a parent bootloader + child process, so kill by image name.
+if exist "dist\*.exe" for %%e in ("dist\*.exe") do taskkill /f /im "%%~nxe" >nul 2>&1
+rem Give Windows a moment to release the file handle.
+ping -n 2 127.0.0.1 >nul
+
+echo [4/4] Building, please wait ...
 %PY% -m PyInstaller --noconfirm --clean "%SPEC%"
 if errorlevel 1 (
     echo.

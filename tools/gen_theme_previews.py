@@ -11,9 +11,14 @@ xhtml 的 h2 / p / div.pic 结构一致）+ html2image 无头浏览器截图。
 尺寸默认 540x880（高分屏下也清楚）：主程序按主题窗口的大小等比缩放这些图，
 尺寸给得大一些，窗口拉大时才不糊。
 
+截图落地后统一重编码成 256 色调色板 PNG（见 shrink_png）：文字版面的截图
+颜色本来就少，调色板 + 抖动能把 70 KB 压到 25 KB 上下，肉眼几乎无损；
+这些图打包进 EXE 时 PNG 不会再被压缩，所以省下的字节数基本等于 EXE 小多少。
+
 用法:
     python tools/gen_theme_previews.py             # 全部重渲
     python tools/gen_theme_previews.py --missing   # 只补缺图和过期图
+    python tools/gen_theme_previews.py --recompress  # 只重压已有图（不起浏览器）
     python tools/gen_theme_previews.py 01-minimal 05-grid 10-ink
     python tools/gen_theme_previews.py --size 480x782
 """
@@ -26,6 +31,40 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import jzcore                                   # noqa: E402
+
+
+# 预览图是「文字 + 版面」的截图，颜色本来就不多：256 色调色板 + 抖动能把
+# 70 KB 左右的 PNG 压到 25 KB 上下（PSNR ~48 dB，肉眼看不出），而 JPEG 同样
+# 画质要 50 KB 且字形边缘会起彩边，WebP 也要 30 KB。
+_PALETTE_COLORS = 256
+
+
+def shrink_png(path, colors=_PALETTE_COLORS):
+    """把一张预览图原地重编码成调色板 PNG，返回 (原字节数, 新字节数)。
+
+    只在确实变小时才覆盖：万一同尺寸的图重编码后反而更大，保留原图不动。
+    """
+    from PIL import Image                     # 只有这一处需要 Pillow，延后导入
+
+    old = os.path.getsize(path)
+    im = Image.open(path)
+    if im.mode not in ("RGB", "L"):
+        im = im.convert("RGB")                # 截图不透明，丢掉 alpha 即可
+    q = im.quantize(colors=colors, method=Image.MEDIANCUT,
+                    dither=Image.FLOYDSTEINBERG)
+
+    tmp = path + ".tmp"
+    try:
+        q.save(tmp, "PNG", optimize=True, compress_level=9)
+        new = os.path.getsize(tmp)
+        if new < old:
+            os.replace(tmp, path)
+        else:
+            new = old
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return old, new
 
 
 def parse_size(s):
@@ -60,6 +99,8 @@ def main(argv=None):
                          % jzcore.THEME_PREVIEW_SIZE)
     ap.add_argument("--missing", action="store_true",
                     help="只补缺失的、以及比 CSS 旧的图")
+    ap.add_argument("--recompress", action="store_true",
+                    help="只把已有预览图重压成调色板 PNG，不启动浏览器")
     args = ap.parse_args(argv)
 
     themes = jzcore.list_themes()
@@ -73,6 +114,28 @@ def main(argv=None):
     if not targets:
         print("没有要生成的主题。")
         return 1
+
+    if args.recompress:
+        total_old = total_new = done = 0
+        for t in targets:
+            png = t.get("preview") or jzcore.theme_thumb_path(t["path"])
+            if not os.path.isfile(png):
+                print("[跳过] 还没有预览图：%s" % os.path.basename(png))
+                continue
+            old, new = shrink_png(png)
+            total_old += old
+            total_new += new
+            done += 1
+            print("%-22s %6.1f KB -> %6.1f KB%s" % (
+                os.path.basename(png), old / 1024, new / 1024,
+                "" if new < old else "（未变小，保留原图）"))
+        if not done:
+            print("没有可重压的图。")
+            return 1
+        print("完成：%d 张，%.1f KB -> %.1f KB（省 %.1f KB）" % (
+            done, total_old / 1024, total_new / 1024,
+            (total_old - total_new) / 1024))
+        return 0
 
     # --missing 时先筛一遍，剩下的才值得起浏览器
     todo = []
@@ -112,8 +175,10 @@ def main(argv=None):
             fails += 1
             print("[%d/%d] %s 失败：%s" % (i, len(todo), t["id"], e))
             continue
-        print("[%d/%d] %s -> %s  (%.1fs)" % (
-            i, len(todo), t["id"], os.path.basename(out), time.time() - t0))
+        old, new = shrink_png(out)
+        print("[%d/%d] %s -> %s  (%.1fs, %.1f KB -> %.1f KB)" % (
+            i, len(todo), t["id"], os.path.basename(out), time.time() - t0,
+            old / 1024, new / 1024))
 
     print("完成：%d 张，用时 %.1fs%s" % (
         len(todo) - fails, time.time() - t_all,
