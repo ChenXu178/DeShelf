@@ -208,5 +208,216 @@ function zipEntries(zip) {
   ok("分章 zip 中文文件名", sent.every(e => e.name.includes("样例/") && e.name.endsWith(".txt")));
 }
 
+console.log("== 插图链接粗筛（明显不是图的本地拦掉） ==");
+{
+  const acc = [
+    "https://a.com/1.jpg",
+    "https://a.com/pic.png?x=1",
+    "http://a.com/showimg.php?id=9",
+    "https://a.com/images?q=tbn:abc",
+    "https://a.com/image/12345",
+    "www.a.com/x.gif",
+    "//cdn.a.com/x.webp",
+    "https://a.com/pic/1.JPEG",
+  ];
+  const rej = [
+    "https://zxcstxt.com/",
+    "https://zxcstxt.com",
+    "http://zxcstxt.com/book/",
+    "https://a.com/index.html",
+    "https://a.com/book.php",
+    "https://a.com/x.JSP",
+    "/img/1.jpg",          // 补不出完整地址
+    "",
+  ];
+  const badAcc = acc.filter(u => !Core.imgWorthTrying(u));
+  const badRej = rej.filter(u => Core.imgWorthTrying(u));
+  ok("该放行的链接都放行", badAcc.length === 0, badAcc);
+  ok("该拦掉的链接都拦掉", badRej.length === 0, badRej);
+}
+
+console.log("== 插图下载（伪造 fetch / Image） ==");
+{
+  const realFetch = globalThis.fetch, realImage = globalThis.Image, realLoc = globalThis.location;
+  globalThis.location = { protocol: "file:", href: "file:///x" };
+  globalThis.Image = class {                       // 只有 /probe-ok 能当图解码
+    set referrerPolicy(v) { }
+    set src(v) {
+      const ok = String(v).includes("probe-ok");
+      setTimeout(() => { if (ok) { this.naturalWidth = 8; this.onload && this.onload(); }
+                         else this.onerror && this.onerror(); }, 0);
+    }
+  };
+  const jpeg = Uint8Array.from([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]);
+  let calls = [];
+  globalThis.fetch = async (u) => {
+    calls.push(String(u));
+    if (String(u).includes("/page"))
+      return new Response(new TextEncoder().encode("<html>x</html>"),
+        { status: 200, headers: { "content-type": "text/html" } });
+    if (String(u).includes("/dead"))
+      return new Response(jpeg, { status: 404, headers: { "content-type": "text/plain" } });
+    /* 模拟 CORS/混合内容：http 请求直接抛，https 能正常读 */
+    if (String(u).startsWith("https://"))
+      return new Response(jpeg, { status: 200, headers: { "content-type": "image/jpeg" } });
+    throw new TypeError("Failed to fetch");
+  };
+  try {
+    const links = Core.imageLinksInText('A <img src="//cdn.x.com/a.jpg"> B http://b.com/c.png');
+    ok("认出协议相对 <img src>", links.includes("//cdn.x.com/a.jpg"), links);
+    ok("认出裸链接", links.includes("http://b.com/c.png"), links);
+    ok("不重复认被截断的短地址", !links.includes("x.com/a.jpg"), links);
+
+    calls = [];
+    let r = await Core.fetchImages("图 http://img.site.com/a.jpg 尾", { limit: 2 });
+    ok("http 被掐后改试 https", calls.length === 2 && calls[1].startsWith("https://"), calls);
+    ok("取到 1 张", r.images === 1 && r.map.size === 1, r.images);
+
+    calls = [];
+    r = await Core.fetchImages("图 https://x.com/probe-ok/page 尾", { limit: 2 });
+    ok("返回网页不当图", r.images === 0, r.images);
+    ok("探测通过计入 missed（跨域读不到字节）", r.missed === 1, r.missed);
+
+    calls = [];
+    r = await Core.fetchImages('A <img src="//cdn2.x.com/b.jpg"> B', { limit: 2 });
+    ok("协议相对补成 https", calls[0] === "https://cdn2.x.com/b.jpg", calls);
+    ok("协议相对能下载", r.images === 1, r.images);
+
+    calls = [];
+    r = await Core.fetchImages("图 https://x.com/dead.jpg 尾", { limit: 2 });
+    ok("404 不换协议重试", calls.length === 1, calls);
+
+    /* 粗筛：域名首页/目录页不发请求，也不占「检查条数」 */
+    calls = [];
+    r = await Core.fetchImages("首页 https://zxcstxt.com/ 目录 https://x.com/book/ 图 https://x.com/real.jpg",
+      { limit: 3 });
+    ok("首页/目录页不发请求", calls.length === 1 && String(calls[0]).includes("real.jpg"), calls);
+    ok("检查条数只算真候选", r.checked === 1 && r.images === 1,
+      { checked: r.checked, images: r.images });
+
+    /* 进度回调：done 从 1 递增到 total（界面靠它显示「正在下第几张」） */
+    const seen = [];
+    r = await Core.fetchImages("图1 https://x.com/1.jpg 图2 https://x.com/2.jpg",
+      { limit: 1, progress: (d, t) => seen.push(d + "/" + t) });
+    ok("进度回调按完成条数递增", seen.join(",") === "1/2,2/2", seen);
+    ok("进度回调不影响结果", r.images === 2, r.images);
+
+    r = await Core.fetchImages("图1 https://x.com/1.jpg 图2 https://x.com/2.jpg", { limit: 2 });
+    const imap = Core.imagesForEpub(r, "图1 https://x.com/1.jpg 图2 https://x.com/2.jpg");
+    ok("epub 编号 001/002", [...imap.values()].map(v => v.name).join(",") === "001.jpg,002.jpg",
+      [...imap.values()].map(v => v.name));
+
+    /* 预取结果喂给清洗：<img src="//…"> 的写法要去重后仍能命中校验，
+       否则整行会被当「含网址的行」删掉，图就白下载了 */
+    const raw = "正文。http://a.com/x.jpg\n\n插图：<img src=\"//cdn.b.com/pic1.jpg\">\n";
+    const pre = await Core.fetchImages(raw, { limit: 4 });
+    const cleaned = Core.cleanText(raw, ["url", "imgkeep", "imgcheck"], false, null, pre.ctMap).text;
+    ok("插图行不被当网址删掉", cleaned.includes('<img src="//cdn.b.com/pic1.jpg">'), cleaned);
+    ok("两张图都进 epub", Core.imagesForEpub(pre, cleaned).size === 2,
+      [...Core.imagesForEpub(pre, cleaned).keys()]);
+  } finally {
+    globalThis.fetch = realFetch; globalThis.Image = realImage; globalThis.location = realLoc;
+  }
+}
+
+// ---------- 版面主题（样式必须内联进 HTML，且与 styles/*.css 完全一致） ----------
+console.log("== 版面主题 ==");
+{
+  const dirs = ["styles", path.join("assets", "styles")];
+  const dir = dirs.map(d => path.join(import.meta.dirname, "..", d))
+    .find(d => fs.existsSync(d));
+  const files = dir ? fs.readdirSync(dir).filter(f => f.endsWith(".css")).sort() : [];
+  ok("找到样式目录", !!dir, dir);
+  ok("内嵌主题数量与目录一致", Core.THEMES.length === files.length,
+    { embedded: Core.THEMES.length, files: files.length });
+  let same = true, bad = null;
+  for (const f of files) {
+    const disk = fs.readFileSync(path.join(dir, f), "utf8").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+    const got = Core.THEME_CSS[f];
+    if (got !== disk) { same = false; bad = f; break; }
+  }
+  ok("每套 CSS 与磁盘逐字节一致", same, bad);
+  ok("默认主题存在", !!Core.THEME_CSS[Core.DEFAULT_THEME], Core.DEFAULT_THEME);
+  ok("未知 id 回落到默认", Core.themeCss("nope.css") === Core.THEME_CSS[Core.DEFAULT_THEME]);
+  const t = Core.themeById(Core.DEFAULT_THEME);
+  ok("themeTitle 拆分中英", Core.themeTitle(t, false) !== Core.themeTitle(t, true), Core.themeTitle(t, false));
+  const c = Core.parseThemeCss("/*! @theme-name: 我的墨绿 My Green\n * @description: 自用 */\nbody{margin:1em}",
+    "my.css");
+  ok("自定义 CSS 读到名字", c.named && c.name === "我的墨绿 My Green", c.name);
+  ok("自定义 id 带前缀", c.id === "custom:my.css", c.id);
+  const bare = Core.parseThemeCss("body{margin:1em}", "plain.css");
+  ok("没写名字 → 用文件名", !bare.named && bare.name === "plain", bare.name);
+  Core.addTheme(c);
+  ok("addTheme 后可直接取样式", Core.themeCss("custom:my.css").includes("margin:1em"));
+  ok("预览页含主题 CSS 与章名",
+    Core.themePreviewHtml("body{color:red}", true).includes("color:red")
+    && Core.themePreviewHtml("body{color:red}", true).includes("第一章 山雨"));
+  ok("长正文比短正文长",
+    Core.themePreviewHtml("", true).length > Core.themePreviewHtml("", false).length);
+}
+
+// 自定义 CSS 也要能整本导出（style.css 打进 zip 包）
+function zipEntry(u8, name) {
+  const buf = Buffer.from(u8);
+  let p = 0;
+  while ((p = buf.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]), p)) >= 0) {
+    const method = buf.readUInt16LE(p + 8);
+    const csize = buf.readUInt32LE(p + 18);
+    const nlen = buf.readUInt16LE(p + 26);
+    const xlen = buf.readUInt16LE(p + 28);
+    const nm = buf.slice(p + 30, p + 30 + nlen).toString("utf8");
+    if (nm === name) {
+      const start = p + 30 + nlen + xlen;
+      const data = buf.slice(start, start + csize);
+      return method === 0 ? data : zlib.inflateRawSync(data);
+    }
+    p += 4;
+  }
+  return null;
+}
+{
+  const custom = Core.parseThemeCss("body{margin:3em}\nh2{text-align:center}\np{text-indent:2em}",
+    "e2e.css");
+  Core.addTheme(custom);
+  const zip = await Core.buildEpub({
+    title: "T", author: "A", chapters: [{ t: "第1章", b: "正文" }],
+    theme: custom.id, images: [],
+  });
+  const css = zipEntry(zip, "OEBPS/style.css");
+  ok("自定义主题能导出 EPUB", zip.length > 400, zip.length);
+  ok("导出的 style.css 就是所选自定义 CSS",
+    !!css && css.toString("utf8") === custom.css);
+  const builtin = await Core.buildEpub({
+    title: "T", author: "A", chapters: [{ t: "第1章", b: "正文" }],
+    theme: Core.DEFAULT_THEME, images: [],
+  });
+  const bc = zipEntry(builtin, "OEBPS/style.css");
+  ok("内置主题导出的 style.css 与文件一致",
+    !!bc && bc.toString("utf8") === Core.THEME_CSS[Core.DEFAULT_THEME]);
+
+  /* 封面：epub 内部文件名按 MIME 归一，与传进来的 name 无关（与桌面版 write_epub 一致） */
+  const pngBytes = Uint8Array.from([0x89, 0x50, 0x4E, 0x47, 1, 2, 3, 4]);
+  const zc = await Core.buildEpub({
+    title: "T", author: "A", chapters: [{ t: "第1章", b: "正文" }],
+    theme: Core.DEFAULT_THEME, images: [],
+    cover: { data: pngBytes, name: "斗破苍穹.webp", mime: "image/png" },
+  });
+  const coverEntry = zipEntry(zc, "OEBPS/cover.png");
+  ok("封面文件名按 MIME 归一成 cover.png", !!coverEntry);
+  ok("封面字节原样打进 zip",
+    !!coverEntry && Buffer.compare(coverEntry, Buffer.from(pngBytes)) === 0);
+  ok("不沿用传进来的原名", zipEntry(zc, "OEBPS/斗破苍穹.webp") === null);
+  ok("opf 引用归一后的封面名",
+    zipEntry(zc, "OEBPS/content.opf").toString("utf8").includes('href="cover.png"'));
+  ok("cover.xhtml 指向归一后的封面",
+    zipEntry(zc, "OEBPS/cover.xhtml").toString("utf8").includes('src="cover.png"'));
+  const zn = await Core.buildEpub({
+    title: "T", author: "A", chapters: [{ t: "第1章", b: "正文" }],
+    theme: Core.DEFAULT_THEME, images: [],
+    cover: { data: new Uint8Array(0), name: "cover.jpg", mime: "image/jpeg" },
+  });
+  ok("空封面字节按无封面处理", zipEntry(zn, "OEBPS/cover.xhtml") === null);
+}
+
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

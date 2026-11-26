@@ -2,6 +2,27 @@
 
 > 本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · **导出 EPUB / TXT**
 >
+> **v1.6.0M** · 这一版把「插图 + 排版」补齐：正文配图能保留、校验、下载并打进 EPUB，导出前可挑版面主题、逐本配封面；分章多了章节树校验，导出多了文件名格式与清洗汇总。
+>
+> **功能新增**
+>
+> ① **插图三件套**——勾「含网址的行」后多出「保留插图链接」（按 jpg/jpeg/png/webp/gif 后缀留下正文配图）与「插图链接校验」（逐条请求，只认 Content-Type 真是图片的链接；返回网页的、已失效的照样删）。导出页「下载插图链接」再把图存进「输出目录/插图/书名」，按 001、002… 编号，webp/gif/bmp 统一转 jpg；同时导出 EPUB 时打包进书里，正文链接（含 `<img src>` 写法）自动改指书内路径，`alt` 原样留作图注。单本最多试 300 条，日志里有一行「插图下载中 3/57」的进度。
+> ② **导出文件名可设**——保持原样 / 作者名 - 书名 / [作者名] 书名 / 《书名》作者：作者名 / 自定义格式（`book`、`author` 占位，必须含 `book`）；EPUB、合并 TXT、分章 TXT 目录同时生效，非法字符与空括号自动清掉。
+> ③ **章节树校验**——分章页逐章核对序号：缺章、重复、顺序错误、章号错误、序号提取失败都在「校验」栏标出并标红，书库列表给「校验异常 N 处 · 章节树 N 级」；「导出章节树」把层级（卷/部/章）、解析出的序号链和校验结果写成 txt，分章规则错在哪一眼能看出来。
+> ④ **10 套版面主题**——素笺白 / 和纸暖褐 / 靛蓝典籍 / 朱印素纸 / 墨格硬边 / 青瓷柔雾 / 暖橘夜读 / 报刊排印 / 卡片浮层 / 苍青水墨；导出前按真实正文渲染预览（可调视口宽高），也支持导入自定义 CSS。
+> ⑤ **封面窗口**——逐本设封面：选本地图片、填链接下载网络封面，或换内置风格（素笺 / 靛蓝 / 朱印 / 墨韵 / 极简）；底栏可一次把「内置封面」统一换风格，自选图不受影响。
+> ⑥ **清洗内容汇总**（默认勾选）——在输出目录写「清洗内容汇总.txt」：按书列出每一段被清理的文字、它在**原文**里的行号、命中的规则（自定义规则写规则名或正则）；空行只计数不逐条列，用来回查正文有没有被误删。
+> ⑦ **书库可直接改书名 / 作者**——右键修改，确定后立刻更新列表与索引；导出的文件名、EPUB 元数据、内置封面上的书名都跟着走。
+> ⑧ **桌面版预览标红**——左栏把被清洗掉的内容标红：整行删的整行红，行内只挖掉一段的只标那一段（与网页版同一套标记）。
+>
+> **问题优化**
+>
+> ① **网址清理认得更全**——以前只认 `http://`、`www.` 这段头，长图链的路径和参数被当成正文放过；现在从命中点吃下整条网址：整行只有网址（多长都算）直接删，网址贴在行尾只裁网址，正文一字不动。
+> ② **含网址的 HTML 标签整块清掉**——`<img src="…">`、`<a href="…">` 这类站点插图标签不再留在正文里，标签外的文字照样保留，清洗汇总里能看到被挖掉的那几段。
+> ③ **插图链接先本地粗筛**——域名首页、目录页、`.html/.php` 这类一眼不是图的链接不再逐个发请求（一本几百条能把导出拖很久）；带查询参数或图片后缀的仍照试，不漏真图。
+> ④ **打包更小更稳**——`build.bat` 一条命令出单文件 EXE；剔除 numpy / OpenBLAS / AVIF 与系统 DLL、重新压缩预览图后，EXE 从约 30 MB 降到**约 15 MB**，同时处理了 IDE 注入 sitecustomize、onefile 双进程占用导致的构建失败。
+> ⑤ **字数列更好读**——中文按「万/亿」（214.7万）、英文按 K/M（2.1M），一万以下保留千位分隔，不再是一长串数字。
+>
 > **v1.5.7** · 新增两条**段落修复**规则，专治「一句话没写完就换行」「收尾引号自己占一行」。这类毛病不是阅读器的锅——是盗版站抓取时**按手机屏宽硬断**留下的：一段话被切成十几行，`衣服湿答` / `答的。”`、`”，大宝还觉` / `得午后潮热` 这种断在词中间、字中间的都见过。
 >
 > ① **标点单独占一行（默认关）**：整行只有一个收尾引号、句号或逗号的，接回上一行末尾。**省略号、破折号独占一行一律不动**——290 本真实样本里这类共 153 行，多数是作者故意用它表示沉默、停顿（有一本 25 行全是「……」）；挡掉这些之后，规则只会落在真正的坏行上。默认关闭，是因为它属于"替你改正文"，请先预览再勾。
@@ -67,19 +88,19 @@
 你硬盘上躺着几百本从各处下载的 TXT：编码有的是 GBK 有的是 UTF-8，打开全是乱码；正文里夹着
 "请收藏本站""本章未完"这类推广行；章节没有目录，丢进阅读器里是一整坨；同一个文件还下重了好几份。
 
-卷帙就是把这批"野生 TXT"变成能直接读的书的流水线工具。它**不下载、不上传、不联网**，
-只处理你本机已有的文件。
+卷帙就是把这批"野生 TXT"变成能直接读的书的流水线工具。它**不下载书籍、不上传**，
+只处理你本机已有的文件；只有你主动勾选插图校验 / 下载插图时才会联网取图。
 
 ### 功能
 
 | 步骤 | 做什么 |
 |---|---|
-| **1 扫描入库** | 递归扫描目录，自动识别编码（GBK / UTF-8 / UTF-8 BOM / UTF-16），统计字数，按内容 MD5 标出重复文件 |
-| **2 批量清洗** | 勾选规则后一键清洗：网址行、站点宣传行、翻页导航残留、乱码行、**标点单独占一行**（默认关，省略号/破折号独占一行不动）、**合并句中断行**（默认关）、空行压缩、全角转半角、段落缩进。可先预览前后对比 |
-| **3 智能分章** | 内置中文网文章节规则库，也支持自定义正则。分完直接在列表里看章节目录 |
-| **4 导出分发** | 导出 EPUB（带完整目录）、合并 TXT、分章 TXT。清洗结果可选择输出到新目录、原地覆盖（先备份 .bak）或不落盘 |
+| **1 扫描入库** | 递归扫描目录，自动识别编码（GBK / UTF-8 / UTF-8 BOM / UTF-16），统计字数（按万/亿显示），按内容 MD5 标出重复文件；右键可改书名 / 作者 |
+| **2 批量清洗** | 14 条规则：网址行（长网址、含网址的 HTML 标签都认）、**保留插图链接**、**插图链接校验**（默认关，逐条请求确认真是图片）、站点宣传行、翻页导航残留、乱码行、**标点单独占一行**（默认关，省略号/破折号独占一行不动）、**合并句中断行**（默认关）、空行、首尾空白、全角转半角、段落缩进、**简繁重复行**。预览里被清洗的部分标红 |
+| **3 智能分章** | 内置中文网文章节规则库，也支持全局 / 本书专用自定义正则；**章节树校验**逐章核对缺章、重复、顺序与章号，可把层级与校验结果导出成 txt |
+| **4 导出分发** | 导出 EPUB（带目录、10 套版面主题、逐本封面，正文插图可下载并打包进书）、合并 TXT、分章 TXT；文件名可选保持原样 / 作者名 - 书名 / [作者名] 书名 / 《书名》作者：作者名 / 自定义；清洗结果可输出到新目录、原地覆盖（先备份 .bak）或不落盘，并可生成「清洗内容汇总.txt」核对误删 |
 
-其它：目录记忆、扫描索引缓存（秒开）、书单导出 CSV、按内容指纹找出重复文件。
+其它：目录记忆、扫描索引缓存（秒开）、书单导出 CSV、规则包 JSON 导入导出、按内容指纹找出重复文件。
 
 ### 为什么要转 EPUB
 
@@ -104,7 +125,7 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 | 广告行批量清洗 | ✅ 规则化 | ❌ | ❌ | 手动替换规则 |
 | 不复制原文件 | ✅ 只写索引，原地不动 | ❌ 会复制进自己的书库 | ✅ | — |
 | 带目录 EPUB 导出 | ✅ | ✅ | ✅ | — |
-| 体积 | ~14 MB 单文件 | 100 MB+ 安装包 | 13 MB | — |
+| 体积 | ~15 MB 单文件 | 100 MB+ 安装包 | 13 MB | — |
 
 **卷帙不做阅读器。** 手机上看书交给成熟的阅读 App，卷帙只负责让书变得能顺畅导入。
 
@@ -123,29 +144,33 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 1. 点「浏览…」选中你的小说目录 → 点「扫描」
 2. 在「批量清洗」勾选规则 → 点「预览效果」确认
 3. 在「智能分章」点「试分章节」看章节数对不对
-4. 在「导出分发」选择去向与格式 → 点「开始处理」
+4. 在「导出分发」选择去向与格式（可顺手定文件名、版面主题、封面）→ 点「开始处理」
 
 ### 技术说明
 
-- Python 3 + Tkinter，单文件 EXE，**零第三方依赖**
-- EPUB 由标准库 `zipfile` 手写（EPUB 2.0 + toc.ncx，兼容绝大多数阅读器）
+- Python 3 + Tkinter，打包成单文件 EXE（约 15 MB）；清洗 / 分章 / EPUB 只用到标准库
+- 封面绘制与主题缩略图用 Pillow，版面预览用 html2image 调本机已装的 Chrome / Edge 渲染（浏览器不随包分发）
+- EPUB 由标准库 `zipfile` 手写（EPUB 2.0 + toc.ncx，兼容绝大多数阅读器）；主题 CSS 与预览图随包内置，也可在 EXE 同级放 `styles` 覆盖
 - 编码识别不依赖 chardet：BOM 判断 → UTF-8 严格解码 → 含 NUL 字节判 UTF-16 → 回落 GBK
 - 扫描结果缓存在目录下的 `.deshelf_index.json`，校验 mtime 与体积判断缓存是否过期
 - 批量处理在后台线程执行，界面不卡，可随时停止
+- 仓库自带 `build.bat` + `卷帙.spec`，一条命令出 EXE；打包时剔除 numpy / OpenBLAS / AVIF 与系统 DLL
 
 ### 本版实测
 
-每次发版前跑完整回归，下面是 v1.5.5 的实际结果（数字来自仓库里的测试脚本，不是估算）：
+每次发版前跑完整回归，下面是 v1.6.0M 的实际结果（数字来自仓库里的测试脚本，不是估算）：
 
 | 测试 | 覆盖什么 | 结果 |
 |---|---|---|
-| 清洗一致性 | `tools/test_clean_parity.py`：逐条规则比对两端输出 | 36 项通过 |
-| 网页核心 | `tools/test_web_core.mjs`：分章 / 清洗 / 简繁 / 导出逻辑 | 56 项通过 |
-| 端到端 | 6 本真实样本走完「扫描 → 清洗 → 分章 → 导出」 | 62 项通过 |
-| 网页 EPUB | `test_web_epub.js`：用 epub.js 反向解析产物 | 36 项通过 |
-| 浏览器冒烟 | `smoke_web_browser.mjs`：headless 真浏览器点界面 | 23 项通过 |
-| 分章边界 | 标题与正文挤一行、副标题、引号结尾、正文提及章号等 10 种写法 | 10 项通过 |
-| 真实书 | 反馈的那本 81 万字：桌面版与网页版各跑一遍，核章号是否连续、有无假章 | 旧 81 章 → 新 106 章，缺号 0 |
+| 核心逻辑 | `_test_core.py`：编码 / 清洗 / 分章 / 章节树 / 文件名格式 / EPUB 与 TXT 导出 / 去重指纹 | 105 项通过 |
+| 端到端 | `_test_flow.py`：扫描 → 清洗 → 分章 → 导出全流程，含失败分支与异常标红 | 59 项通过 |
+| 封面 | `_test_cover.py`：5 套内置封面、同名图、网络图转码、EPUB 引用 | 114 项通过 |
+| 界面 | `_test_ui.py`：字数显示、文字省略、按钮与弹窗状态 | 40 项通过 |
+| 双语词典 | `_test_bilingual.py`：中英 290 键 ×2 对齐、占位符与文案长度 | 42 项通过 |
+| 清洗一致性 | `tools/test_clean_parity.py`：逐条规则比对两端输出 | 53 项通过 |
+| 网页核心 | `tools/test_web_core.mjs`：分章 / 清洗 / 简繁 / 主题 / 封面 / 导出逻辑 | 96 项通过 |
+| 浏览器冒烟 | `tools/smoke_web_browser.mjs`：headless 真浏览器点界面 | 72 项通过 |
+| 真实书 | v1.5.5 的反馈样本（81 万字）：桌面版与网页版各跑一遍，核章号是否连续、有无假章 | 旧 81 章 → 新 106 章，缺号 0 |
 
 两条硬性约束，每次都过：
 
@@ -159,12 +184,13 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 - 简体行 0 误删；
 - 22 000 行耗时 1.21 秒（单线程）。
 
-产物：`DeShelf-v1.5.5.exe` 14.85 MB（PyInstaller onefile），网页版单文件 0.16 MB，均不联网。
+产物：`卷帙.exe` 约 15 MB（PyInstaller onefile），网页版单文件约 0.3 MB，均为本地运行。
 
 ### 免责声明
 
-卷帙是一款纯本地文本整理工具：不联网、不下载、不上传、不提供也不存储任何书籍内容，
-仅对用户本机已有的文件做清洗、分章与格式转换。使用者应确保所处理文件来源合法，
+卷帙是一款以本地处理为主的文本整理工具：默认不联网、不上传，也不提供、不存储任何书籍内容，
+仅对用户本机已有的文件做清洗、分章与格式转换。只有你主动勾选「插图链接校验」「下载插图链接」
+或使用「下载网络封面」时才会联网取图，取回的内容只保存在你自己的电脑上。使用者应确保所处理文件来源合法，
 因使用本工具产生的任何版权或法律问题由使用者自行承担。软件按"现状"提供，
 作者不对数据丢失或损坏承担责任；使用"原地覆盖"前请先确认备份。
 
@@ -176,13 +202,13 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 
 引用时建议注明：`卷帙 DeShelf © 2026 永远的兰兰 (Lanlan Eternal)，MIT License`。
 
-第三方组件见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)：Python 3.12（PSF License）、Tcl/Tk（BSD-style）、Pillow（MIT-CMU）、OpenCC 简繁对照表（Apache-2.0，仅用于比对）。封面所用楷体是 Windows 自带字体，本项目不打包、不分发任何字体文件。
+第三方组件见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)：Python 3.15（PSF License）、Tcl/Tk 9.0（BSD-style）、Pillow（MIT-CMU，封面与主题缩略图）、html2image（MIT，调本机浏览器渲染版面预览，浏览器本身不分发）、PyInstaller（构建期打包，GPL-2.0 with bootloader exception），以及简繁比对用的 OpenCC 字表（Apache-2.0）与 zhconv zh2Hans 字表（GPL-2.0-or-later，补 547 对，仅用于比对）。封面所用楷体是 Windows 自带字体，本项目不打包、不分发任何字体文件。
 
 程序内「帮助 → 关于」有同一份说明，可一键复制全文或 MIT 原文。
 
 ### 卷帙 Web 版（同一份 HTML · 本地或在线双栖）
 
-除桌面 EXE 外，卷帙还提供**单文件 HTML 版** `DeShelf.html`（78 KB，单击即用、零依赖），
+除桌面 EXE 外，卷帙还提供**单文件 HTML 版** `DeShelf.html`（约 0.3 MB 单文件，单击即用、零依赖），
 支持两种使用方式：
 
 | 方式 | 怎么用 | 适用范围 |
@@ -198,7 +224,8 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 | 🅱️ **文件模式** | 任何现代浏览器 | 把 TXT 文件或文件夹拖进网页，逐文件处理后下载到本机；无法原地写回 |
 
 **在线版为什么安全**：`DeShelf.html` 是一个**纯前端**程序，打开后所有处理都在你浏览器里跑，
-**不会上传任何文件、不与任何服务器通讯**。把这份 HTML 放到 GitHub Pages 等 https 静态托管只是给你一个访问入口，
+**不会上传你的任何文件**；除了你主动勾选的「插图链接校验」/「下载插图链接」、主动填写的网络封面链接，
+以及页面上的匿名访问计数，不与任何服务器通讯。把这份 HTML 放到 GitHub Pages 等 https 静态托管只是给你一个访问入口，
 服务器只负责把 HTML 文件送给你，之后的所有读写都发生在你的电脑里。换设备就失效（你的书不在服务器上），
 这也是它能做成在线版的根本原因——无版权风险。
 
@@ -214,21 +241,42 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 | 跨平台（Windows / macOS / Linux / 手机） | 仅 Windows | ✅ 任何带现代浏览器的设备 |
 | 中文 GBK 自动识别 | ✅ | ✅ |
 | 联机分享 / 在线使用 | ❌ | ✅ |
-| 离线纯本地 | ✅ | ✅ |
+| 纯本地处理（插图 / 封面可联网） | ✅ | ✅ |
 
 如果只是想把几本 TXT 整理成能直接塞进电纸书的 EPUB，**Web 版完全够用**，连 Python 都不用装。
 需要批量"原地覆盖写回"原始文件时用桌面版 EXE。
 
 **自检通过**：
-- 核心纯逻辑 46/46 单测（编码识别 / 清洗 12 条规则（可加自定义） / 分章 / EPUB / ZIP）
-- 真实浏览器冒烟 18/18（Edge headless · 页面初始化 / 双语切换 / 文件入库 / 清洗 / 分章 / 导出）
-- 双语词典 125 键 + 125 键完全对齐
+- 单测：核心 105 / 端到端 59 / 封面 114 / 界面 40 项全过（详见上文「本版实测」）
+- 真实浏览器冒烟 72/72（Edge headless · 页面初始化 / 双语切换 / 文件入库 / 清洗 / 分章 / 主题 / 封面 / 插图 / 导出）
+- 双语词典 290 键 + 290 键完全对齐
 
 ---
 
 ## English
 
 > Local TXT organizing tool — scan · clean · split · **export EPUB / TXT**
+>
+> **v1.6.0M** · Illustrations and layout are now one complete path: pictures found in the text can be kept, verified, downloaded and packed into the EPUB, and before export you can pick a layout theme and set covers book by book; chapter splitting gains a chapter-tree check, and export gains file-name formats plus a cleanup summary.
+>
+> **New features**
+>
+> (1) **The illustration trio.** Ticking “Lines with URLs” reveals **Keep illustration links** (picture links by jpg/jpeg/png/webp/gif suffix) and **Verify illustration links** (requests each link and keeps only those whose Content-Type really is an image; HTML pages and dead links are still removed). On the export tab, **Download illustration links** saves them to “output folder/插图/book title” as 001, 002… (webp/gif/bmp converted to jpg); when EPUB is exported as well they are packed into the book and the links in the text — `<img src>` included — are rewritten to the in-EPUB paths, with `alt` kept as a caption. Up to 300 links per book, with a single “downloading illustrations 3/57” progress line in the log.
+> (2) **Export file names.** Keep as is / Author - Title / [Author] Title / 《Title》by Author / custom format (`book` and `author` placeholders, `book` required). It applies to the EPUB, the merged TXT and the per-chapter TXT folder; illegal characters and empty brackets are stripped.
+> (3) **Chapter-tree check.** Every chapter number is checked: missing chapters, duplicates, out-of-order, wrong numbers and unparseable ones are flagged in the “Check” column with the row tinted; the library shows “N check issues · chapter tree N levels”. **Export chapter tree** writes the levels (part / volume / chapter), the parsed number chains and the check results to a txt, so a bad split rule is visible at a glance.
+> (4) **Ten layout themes.** Minimal White, Washi Paper, Indigo Classic, Cinnabar Seal, Ink Grid, Celadon Mist, Amber Lamp, Editorial, Soft Card and Still Ink — previewed with real body text before export (viewport size adjustable), plus custom CSS import.
+> (5) **Cover window.** Set covers per book: pick a local image, download one from a URL, or switch the built-in style (Paper / Indigo / Vermilion / Ink / Minimal); the bottom bar can re-style every built-in cover at once without touching user-picked images.
+> (6) **Cleanup summary** (on by default) — writes “清洗内容汇总.txt” into the output folder: per book, every removed piece of text, its line number in the **original** file, and the rule that removed it (custom rules show their name or pattern); blank lines are counted only. It exists to check that no real paragraph was deleted.
+> (7) **Edit title / author in the library.** Right-click to change either field; the list and the index update immediately, and the export file name, EPUB metadata and generated cover title follow.
+> (8) **Desktop preview highlights removals.** The left pane tints whatever the cleaning removed — a whole line when the line goes, just the span when only part of it is cut — the same marking the web build uses.
+>
+> **Fixes & optimisations**
+>
+> (1) **URL cleaning sees the whole URL.** It used to count only the `http://` / `www.` head, so the path and query of a long image link were treated as body text; now the whole URL is consumed: a URL-only line (however long) is dropped, a URL glued to a line end is trimmed off, and the text itself is never touched.
+> (2) **HTML tags carrying a URL are stripped.** Site image tags such as `<img src="…">` and `<a href="…">` no longer survive in the body; text outside the tags is kept, and the summary shows exactly which spans were removed.
+> (3) **Illustration links are filtered locally first.** Domain home pages, directory pages and `.html/.php` links that are obviously not images are no longer requested one by one (hundreds of them could stall an export); links with a query string or an image suffix are still tried, so no real picture is skipped.
+> (4) **Smaller, sturdier builds.** `build.bat` produces the single-file EXE in one command; dropping numpy / OpenBLAS / AVIF and system DLLs and recompressing the preview PNGs took the EXE from ~30 MB down to **~15 MB**, and the script now survives an IDE-injected sitecustomize and the onefile parent/child lock.
+> (5) **Readable character counts.** Chinese uses 万/亿 (214.7万), English uses K/M (2.1M), and anything below ten thousand keeps a thousands separator instead of a long digit string.
 >
 > **v1.5.7** · Two new **paragraph-repair** rules for text where a sentence breaks mid-way and a closing quote sits alone on its own line. This is not the reader's fault — it is what happens when a scraper **hard-wraps at phone width**: one paragraph gets cut into a dozen lines, and the breaks land inside words (`衣服湿答` / `答的。”`) and inside clauses (`”，大宝还觉` / `得午后潮热`).
 >
@@ -290,20 +338,21 @@ You have hundreds of downloaded TXT files: mixed GBK / UTF-8 encodings that show
 promotional lines like "please bookmark this site" sprinkled through the text, no chapter structure,
 and the same book downloaded twice.
 
-DeShelf turns that pile of raw TXT into books you can actually read. It **never connects to the
-network** — no downloading, no uploading. It only touches files already on your machine.
+DeShelf turns that pile of raw TXT into books you can actually read. It **never downloads books
+and never uploads anything** — it only touches files already on your machine. The network is used
+only when you opt in to verifying / downloading illustration links.
 
 ### Features
 
 | Step | What happens |
 |---|---|
-| **1 Scan** | Recursively scans a folder, auto-detects encoding (GBK / UTF-8 / UTF-8 BOM / UTF-16), counts characters, flags duplicates by content MD5 |
-| **2 Clean** | Rule-based batch cleaning: URL lines, site promo lines, page-nav leftovers, mojibake lines, **punctuation alone on a line** (off by default; ellipsis/dash-only lines are never touched), **join mid-sentence line breaks** (off by default), blank-line compression, full-width to half-width, paragraph indent. Preview before applying |
-| **3 Chapters** | Built-in regex library for Chinese web-novel chapter headings, custom regex supported, live chapter preview |
-| **4 Export** | EPUB with a real table of contents, merged TXT, or one file per chapter. Cleaned text can go to a new folder, overwrite in place (with `.bak` backup), or not be saved at all |
+| **1 Scan** | Recursively scans a folder, auto-detects encoding (GBK / UTF-8 / UTF-8 BOM / UTF-16), counts characters (shown as 万/亿 or K/M), flags duplicates by content MD5; right-click to edit title / author |
+| **2 Clean** | 14 rules: URL lines (long URLs and HTML tags carrying a URL included), **keep illustration links**, **verify illustration links** (off by default; requests each link), site promo lines, page-nav leftovers, mojibake lines, **punctuation alone on a line** (off by default; ellipsis/dash-only lines are never touched), **join mid-sentence line breaks** (off by default), blank lines, trailing spaces, full-width to half-width, paragraph indent, **duplicate simplified/traditional lines**. Removed text is tinted in the preview |
+| **3 Chapters** | Built-in regex library for Chinese web-novel chapter headings, plus global / per-book custom regex; a **chapter-tree check** flags missing chapters, duplicates, out-of-order and wrong numbers, and the levels plus check results can be exported as txt |
+| **4 Export** | EPUB with a real table of contents, 10 layout themes, per-book covers and illustrations packed into the book; merged TXT; one file per chapter. Five file-name formats, three destinations (new folder / overwrite with `.bak` / export only), and an optional “清洗内容汇总.txt” listing everything the cleaning removed |
 
 Also: remembers the last folder, caches the scan index for instant reload, exports the book list as CSV,
-finds duplicates by content fingerprint.
+imports / exports rule packs as JSON, and finds duplicates by content fingerprint.
 
 ### Why EPUB
 
@@ -328,7 +377,7 @@ EPUB is DeShelf's primary output format and the recommended way to read on e-rea
 | Batch ad-line cleaning | ✅ rule-based | ❌ | ❌ | manual rules |
 | Leaves originals in place | ✅ index only | ❌ copies into its own library | ✅ | — |
 | EPUB with TOC | ✅ | ✅ | ✅ | — |
-| Size | ~14 MB single file | 100 MB+ installer | 13 MB | — |
+| Size | ~15 MB single file | 100 MB+ installer | 13 MB | — |
 
 **DeShelf is not a reader.** Hand the finished EPUB to whichever reading app you like.
 
@@ -345,30 +394,34 @@ The **Web version** `DeShelf.html` is also on the same Release page (source: `we
 1. Browse to your novels folder → **Scan**
 2. Tick the cleaning rules → **Preview**
 3. **Try split** in the Chapters tab to check the chapter count
-4. Choose destination and formats → **Start**
+4. Choose destination and formats (file name, layout theme and covers are set here too) → **Start**
 
 ### Technical notes
 
-- Python 3 + Tkinter, single-file EXE, **zero third-party dependencies**
-- EPUB is written by hand with the standard-library `zipfile` (EPUB 2.0 + toc.ncx)
+- Python 3.15 + Tkinter, shipped as a single-file EXE (~15 MB); cleaning / splitting / EPUB use the standard library only
+- Covers and theme thumbnails use Pillow; layout previews use html2image to drive the Chrome / Edge already on your machine (no browser is redistributed)
+- EPUB is written by hand with the standard-library `zipfile` (EPUB 2.0 + toc.ncx); the theme CSS files and their previews are bundled, and a `styles` folder next to the EXE overrides them
 - Encoding detection without chardet: BOM check → strict UTF-8 decode → NUL byte test for UTF-16 → fall back to GBK
 - Scan results cached in `.deshelf_index.json`, invalidated by mtime and size
 - Batch jobs run on a worker thread; the UI stays responsive and can be stopped at any time
+- `build.bat` + `卷帙.spec` build the EXE in one command; numpy / OpenBLAS / AVIF and system DLLs are stripped
 
 ### What was actually tested
 
-The full suite runs before every release; these are the real numbers for v1.5.5, taken from the
+The full suite runs before every release; these are the real numbers for v1.6.0M, taken from the
 scripts in this repo rather than estimated:
 
 | Suite | What it covers | Result |
 |---|---|---|
-| Clean parity | `tools/test_clean_parity.py` — every rule diffed across both ends | 36 checks pass |
-| Web core | `tools/test_web_core.mjs` — split / clean / script-dedupe / export logic | 56 checks pass |
-| End-to-end | six real books through scan → clean → split → export | 62 checks pass |
-| Web EPUB | `test_web_epub.js` — output re-parsed with epub.js | 36 checks pass |
-| Browser smoke | `smoke_web_browser.mjs` — a headless browser clicking the real UI | 23 checks pass |
-| Split edges | heading-and-body-on-one-line, subtitle colons, quote-ending headings, body text naming a chapter, 10 shapes | 10 checks pass |
-| Real book | the reported 810k-character book, run through both the desktop and the web core — chapter numbering and phantom-chapter check | 81 chapters → 106, no gaps |
+| Core logic | `_test_core.py` — encoding / cleaning / splitting / chapter tree / file names / EPUB and TXT export / duplicate fingerprint | 105 checks pass |
+| End-to-end | `_test_flow.py` — scan → clean → split → export, including failure branches and tinted rows | 59 checks pass |
+| Covers | `_test_cover.py` — five built-in styles, same-named images, URL images, EPUB references | 114 checks pass |
+| UI | `_test_ui.py` — character counts, ellipsis, button and dialog state | 40 checks pass |
+| Bilingual | `_test_bilingual.py` — 290 keys × 2 aligned, placeholders and copy lengths | 42 checks pass |
+| Clean parity | `tools/test_clean_parity.py` — every rule diffed across both ends | 53 checks pass |
+| Web core | `tools/test_web_core.mjs` — split / clean / script-dedupe / themes / covers / export logic | 96 checks pass |
+| Browser smoke | `smoke_web_browser.mjs` — a headless browser clicking the real UI | 72 checks pass |
+| Real book | the 810k-character sample from v1.5.5, run through both the desktop and the web core — chapter numbering and phantom-chapter check | 81 chapters → 106, no gaps |
 
 Two hard rules that must hold every time:
 
@@ -386,14 +439,16 @@ and one traditional copy of each):
 - 0 simplified lines lost;
 - 22,000 lines processed in 1.21 s on a single thread.
 
-Artifacts: `DeShelf-v1.5.5.exe` 14.85 MB (PyInstaller onefile), web version 0.16 MB as a single file,
-both fully offline.
+Artifacts: `卷帙.exe` ~15 MB (PyInstaller onefile), web version ~0.3 MB as a single file,
+both running locally.
 
 ### Disclaimer
 
-DeShelf is a purely local text-processing utility. It does not connect to the network, does not
-download or upload anything, and neither provides nor stores any book content — it only cleans,
-splits and converts files that already exist on the user's machine. Users are responsible for
+DeShelf is a local-first text-processing utility. By default it does not connect to the network
+and never uploads anything, and it neither provides nor stores any book content — it only cleans,
+splits and converts files that already exist on the user's machine. Network access happens only when
+you opt in to illustration verification / download or fetch a cover from a URL, and whatever is
+fetched stays on your own computer. Users are responsible for
 ensuring they have the legal right to process their files. Provided "as is"; the author is not
 liable for any data loss. Back up before using in-place overwrite.
 
@@ -405,14 +460,14 @@ Released under the [MIT License](LICENSE): use, copy, modify, merge and redistri
 
 Suggested credit: `DeShelf © 2026 Lanlan Eternal, MIT License`.
 
-Third-party components are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md): Python 3.12 (PSF), Tcl/Tk (BSD-style), Pillow (MIT-CMU), OpenCC character tables (Apache-2.0, comparison only). The cover uses KaiTi shipped with Windows — no font file is bundled or redistributed.
+Third-party components are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md): Python 3.15 (PSF), Tcl/Tk 9.0 (BSD-style), Pillow (MIT-CMU, covers and theme thumbnails), html2image (MIT; drives your own browser for theme previews — no browser is redistributed), PyInstaller (build time only, GPL-2.0 with bootloader exception), plus the OpenCC tables (Apache-2.0) and zhconv's zh2Hans table (GPL-2.0-or-later, 547 pairs, comparison only). The cover uses KaiTi shipped with Windows — no font file is bundled or redistributed.
 
 The in-app “Help → About” screen carries the same text, with one-click copy for the full notice or the MIT wording.
 
 ### DeShelf Web (single-file HTML · local or online)
 
 In addition to the desktop EXE, 卷帙 ships a **single-file HTML** called `DeShelf.html`
-(78 KB, double-click to run, zero dependencies) — usable two ways:
+(a ~0.3 MB single file, double-click to run, zero dependencies) — usable two ways:
 
 | Mode | How | Scope |
 |---|---|---|
@@ -427,7 +482,9 @@ Two internal modes are auto-detected based on browser capability:
 | 🅱️ **File mode** | Any modern browser | Drop TXT files or a folder into the page; each book is processed and downloaded to your machine. No in-place writes |
 
 **Why the online version is safe**: `DeShelf.html` is **purely client-side**. After opening,
-all processing runs inside your browser — **no files are uploaded, no server communication**.
+all processing runs inside your browser — **your files are never uploaded**. Apart from the
+illustration check / download you opt into, a cover URL you paste in, and the anonymous visit
+counter, the page talks to no server.
 Putting it on GitHub Pages or any https static host only gives you a URL to load it. From that point on,
 all reads and writes happen on your own computer. Switch devices and the access vanishes (your books
 aren't on any server) — that is exactly why this design can be safely hosted online with no copyright risk.
@@ -444,15 +501,15 @@ aren't on any server) — that is exactly why this design can be safely hosted o
 | Cross-platform (Win/macOS/Linux/phone) | Windows only | ✅ Any device with a modern browser |
 | Auto GBK detection | ✅ | ✅ |
 | Share / online use | ❌ | ✅ |
-| 100% offline | ✅ | ✅ |
+| Local processing by default (images may go online) | ✅ | ✅ |
 
 For most "I have a few TXT files and want a readable EPUB for my e-reader" jobs, **Web is enough** —
 no Python, no install. Reach for the desktop EXE only when you need to batch-overwrite original files in place.
 
 **Self-tests passing**:
-- 46/46 core unit tests (encoding / 12 cleaning rules (plus your own) / chapters / EPUB / ZIP)
-- 18/18 real-browser smoke (Edge headless: init / language / file import / clean / chapters / export)
-- 125 keys × 2 in the bilingual dictionary, fully aligned
+- Unit tests: 105 core / 59 end-to-end / 114 covers / 40 UI — all green (details under “What was actually tested”)
+- 72/72 real-browser smoke (Edge headless: init / language / file import / clean / chapters / themes / covers / illustrations / export)
+- 290 keys × 2 in the bilingual dictionary, fully aligned
 
 ---
 

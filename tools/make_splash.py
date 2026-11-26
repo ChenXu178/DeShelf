@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""卷帙开屏海报 -> PNG 源图渲染器。
+"""卷帙书卷风海报 -> PNG 渲染器。
 
-卷帙 EXE 的开屏海报本无位图源文件——由 tkinter Canvas 代码绘制
-(Juanzhi_Desktop.py 的 _Splash._paint)。本脚本把同款设计渲成高清 PNG，
-供 HTML 版启动图 / README / 分享图等复用。
+桌面版启动时的开屏海报已移除，这套深底金线的视觉仍用于 README / 分享图，
+本脚本把同一套设计渲成高清 PNG。
 
 用法:  python tools/make_splash.py    ->  assets/splash_poster.png (1120x680)
 """
@@ -71,7 +70,7 @@ def main():
     dr.line([CX - 180, 548, CX + 180, 548], fill=LINE, width=3)
 
     # 底部版本信息
-    dr.text((CX, 600), "卷帙 DeShelf · 纯本地离线工具",
+    dr.text((CX, 600), "卷帙 DeShelf · 本地整理 · 可选联网取图",
             font=ImageFont.truetype(YH, 26), fill=DIM, anchor="ma")
 
     out = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

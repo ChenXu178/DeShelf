@@ -1,0 +1,70 @@
+@charset "utf-8";
+/*!
+* @theme-name: 卡片浮层 Soft Card
+* @theme-version: 1.0
+* @description: 浅灰底上，章名与插图各自成为白色圆角卡片并带轻投影，正文直接落在灰面，层次分明。
+*/
+
+html {
+  background: #f1f2f4;
+}
+
+body {
+  margin: 1.7em 1.3em;
+  color: #33383f;
+  line-height: 1.9;
+  text-align: justify;
+  background: #f1f2f4;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 1.9em 0 1.8em;
+  padding: 0.95em 1em;
+  text-align: center;
+  letter-spacing: 0.12em;
+  line-height: 1.55;
+  color: #2b3440;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 5px rgba(30, 40, 55, 0.08);
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.9;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 1.9em 0;
+  padding: 10px 10px 4px;
+  background: #ffffff;
+  border-radius: 8px;
+  border: 0;
+  text-align: center;
+  box-shadow: 0 1px 6px rgba(30, 40, 55, 0.09);
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+  border-radius: 4px;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.7em 0 0.3em;
+  text-indent: 0;
+  text-align: center;
+  color: #8d95a1;
+  letter-spacing: 0.08em;
+  line-height: 1.6;
+}

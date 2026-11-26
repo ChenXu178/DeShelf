@@ -5,7 +5,7 @@
 <link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>卷帙 DeShelf · Web</title>
-<meta name="description" content="本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · 导出 EPUB / TXT。纯本地运行，不上传任何数据。">
+<meta name="description" content="本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · 导出 EPUB / TXT。文件只在本机处理、不上传；仅在你主动勾选插图校验 / 下载插图时联网。">
 <style>
 :root{
   --bg:#e4e6e8; --panel:#f2f3f5; --card:#fafbfc; --line:#c9ccd1; --line2:#d8dade;
@@ -62,12 +62,18 @@ nav.steps .st.act b{color:var(--blue)}
 .btn{display:inline-block;border:1px solid transparent;border-radius:var(--r);
   padding:7px 16px;cursor:pointer;color:#fff;font-weight:600;white-space:nowrap}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+.select:disabled{opacity:.45;cursor:not-allowed}
+.off{opacity:.45}
 .btn.b1{background:var(--blue)} .btn.b1:hover:not(:disabled){background:var(--blue-d)}
 .btn.b2{background:var(--green)} .btn.b2:hover:not(:disabled){background:var(--green-d)}
 .btn.b3{background:var(--amber)} .btn.b3:hover:not(:disabled){background:#9a610c}
 .btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
 .btn.ghost:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
 .btn.sm{padding:3px 10px;font-size:12px;font-weight:500}
+/* 主题按钮宽度固定：主题名过长时用省略号收尾（完整名字在 title 提示里），
+   与桌面版 _fit_theme_btn 一个目的——不撑宽按钮、不把文字硬切一半 */
+#btnTheme{width:160px;max-width:160px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;vertical-align:middle}
 .btn.danger{background:var(--red)}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .msg{margin-top:8px;padding:6px 10px;border-radius:var(--r);font-size:13px}
@@ -93,6 +99,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .rule{border:1px solid var(--line2);border-radius:var(--r);padding:8px 10px;background:#fff;cursor:pointer}
 .rule:hover{border-color:var(--blue)}
 .rule.on{border-color:var(--green);background:#f0f8f2}
+.rule.locked{opacity:.55;cursor:not-allowed}
 .rule input{accent-color:var(--green);margin-right:6px}
 .rule .t{font-weight:600}
 .rule .d{color:var(--muted);font-size:12px}
@@ -115,11 +122,21 @@ label.lab{font-size:13px;color:var(--muted)}
 .check input{accent-color:var(--blue)}
 
 /* ---------- chapter list ---------- */
-.chlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px;
-  max-height:300px;overflow:auto;border:1px solid var(--line2);border-radius:var(--r);padding:8px;background:#fff}
-.chlist .ch{font-size:12px;color:var(--muted);padding:2px 6px;border-radius:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chlist{display:flex;flex-direction:column;gap:2px;
+  max-height:320px;overflow:auto;border:1px solid var(--line2);border-radius:var(--r);padding:8px;background:#fff}
+.chlist .ch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
+  padding:2px 6px;border-radius:4px;white-space:nowrap}
 .chlist .ch:nth-child(odd){background:#f6f7f8}
-.chlist .ch:first-child{color:var(--blue);font-weight:600}
+.chlist .ch .no{width:44px;flex:none;text-align:right;color:var(--muted)}
+.chlist .ch .ti{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#333}
+.chlist .ch .ct{width:64px;flex:none;text-align:right;color:var(--muted)}
+.chlist .ch .ck{width:190px;flex:none;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.chlist .ch.bk{cursor:pointer}
+.chlist .ch.bad{color:#c62828}
+.chlist .ch.bad .ti{color:#c62828}
+.chlist .ch.bad .ck{color:#c62828;font-weight:600}
+.chlist .ch.lv .ck{color:var(--blue)}
+.chlist .ch.bad.lv .ck{color:#c62828}
 
 /* ---------- dropzone ---------- */
 .dz{border:2px dashed var(--line);border-radius:var(--r);background:var(--card);
@@ -142,6 +159,58 @@ label.lab{font-size:13px;color:var(--muted)}
 .dlg .db{padding:14px 16px;overflow:auto}
 .dlg .df{padding:10px 16px;border-top:1px solid var(--line2);display:flex;justify-content:flex-end;gap:8px}
 
+/* ---------- 主题选择器 ---------- */
+.tpick{display:flex;height:min(68vh,660px);min-height:360px}
+.tp-l{display:flex;flex-direction:column;flex:0 0 42%;min-width:190px}
+.tp-shot{position:relative;flex:1;overflow:hidden;background:#fff;
+  border:1px solid var(--line);border-radius:var(--r)}
+.tp-shot iframe,.tp-shot2 iframe{position:absolute;top:0;left:0;border:0;background:#fff;
+  transform-origin:top left;pointer-events:none}
+.tp-row{display:flex;align-items:center;gap:6px;padding-top:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.tp-row input{width:64px;padding:3px 6px;border:1px solid var(--line);border-radius:var(--r);
+  background:#fff;color:var(--ink);font:inherit;font-size:12px}
+.tp-split{flex:0 0 11px;margin:0 7px;cursor:col-resize;position:relative;
+  border-radius:3px;transition:background .12s}
+.tp-split::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:4px;
+  margin-left:-2px;background:var(--line);border-radius:2px;transition:background .12s}
+.tp-split:hover{background:var(--line2)}
+.tp-split:hover::before,.tp-split.on::before{background:var(--blue)}
+.tp-split.on{background:var(--line2)}
+.tp-r{flex:1;min-width:0;overflow:auto;padding-right:2px}
+.tp-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.tp-card{background:var(--card);border:2px solid var(--line);border-radius:8px;
+  padding:9px 9px 7px;cursor:pointer}
+.tp-card.on{border-color:var(--blue)}
+.tp-shot2{position:relative;width:100%;overflow:hidden;background:#fff;
+  border:1px solid var(--line);border-radius:4px}
+.tp-name{font-weight:700;font-size:13px;margin-top:7px;overflow:hidden;
+  white-space:nowrap;text-overflow:ellipsis}
+.tp-desc{font-size:12px;color:var(--muted);margin-top:2px;height:34px;overflow:hidden;line-height:1.45}
+
+/* ---------- 封面设置（与桌面版同一套：网格卡片 + 右键菜单） ---------- */
+.cv-tip{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px}
+.cv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));gap:14px}
+.cv-card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;
+  cursor:context-menu;transition:border-color .12s,box-shadow .12s}
+.cv-card:hover{border-color:var(--blue);box-shadow:0 2px 10px rgba(47,111,176,.12)}
+.cv-shot{position:relative;width:100%;aspect-ratio:3/4.2;background:#fff;border:1px solid var(--line2);
+  border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.cv-shot img{max-width:100%;max-height:100%;display:block}
+.cv-shot .ph{font-size:12px;color:var(--faint);padding:6px;text-align:center;line-height:1.5}
+.cv-name{font-weight:700;font-size:13px;margin-top:7px;overflow:hidden;
+  white-space:nowrap;text-overflow:ellipsis}
+.cv-auth{font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;height:17px;
+  white-space:nowrap;text-overflow:ellipsis}
+.cv-menu{position:fixed;z-index:90;background:#fff;border:1px solid var(--line);border-radius:6px;
+  box-shadow:0 6px 20px rgba(0,0,0,.18);padding:4px;font-size:13px;min-width:160px}
+.cv-menu div{padding:7px 12px;border-radius:4px;cursor:pointer;color:var(--ink)}
+.cv-menu div:hover{background:var(--line2)}
+.cv-menu div.on{color:var(--blue);font-weight:700}
+.cv-menu div.back{color:var(--muted);font-size:12px}
+/* 底栏「默认封面」下拉框：紧挨着取消按钮，与桌面版同一个位置 */
+.cv-style{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.cv-style .select{padding:4px 6px;font-size:12px}
+
 .dz-inline{display:inline-block;border:1px dashed var(--line);border-radius:var(--r);padding:6px 18px;color:var(--muted)}
 .dz-inline.over{border-color:var(--blue);color:var(--blue);background:#eef4fb}
 .prog{height:10px;background:#dfe2e5;border-radius:6px;overflow:hidden;margin-top:8px;display:none}
@@ -159,7 +228,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.5.7</span>
+  <span class="ver">v1.6.0M</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -237,6 +306,7 @@ b.dark{color:var(--ink)}
       <select class="select" id="chapBook" style="min-width:260px"></select>
       <button class="btn b1" id="btnChapTry" data-k="btnChapTry">试分章节</button>
       <button class="btn b2" id="btnChapApply" data-k="btnChapApply">应用分章到该书</button>
+      <button class="btn b2" id="btnChapTree" data-k="btnChapTree">导出章节树</button>
       <span class="hint" id="chapInfo"></span>
     </div>
     <fieldset>
@@ -266,12 +336,16 @@ b.dark{color:var(--ink)}
       <label><input type="checkbox" id="fmtEpub" checked> EPUB（带目录 · 推荐电纸书）</label>
       <label><input type="checkbox" id="fmtTxt"> 合并 TXT</label>
       <label><input type="checkbox" id="fmtSplit"> 分章 TXT（每章一个文件）</label>
+      <span class="lab" data-k="fileName">文件名</span>
+      <select id="selNameFmt" class="select" style="width:196px"></select>
     </div>
     <div class="check" style="margin-top:-2px">
       <span class="hint" data-k="outTheme"></span>
-      <select id="selTheme" class="select" style="width:132px"></select>
-      <span class="hint" data-k="outCover" style="margin-left:14px"></span>
-      <select id="selCover" class="select" style="width:196px"></select>
+      <button class="btn ghost" id="btnTheme" title="01-minimal">01-minimal</button>
+      <!-- 封面与主题同一套按钮样式：点开窗口逐本设置，不再用下拉框选策略 -->
+      <button class="btn ghost" id="btnCover" style="min-width:132px;margin-left:14px">封面</button>
+      <label class="lab" id="imgDlWrap" style="margin-left:14px">
+        <input type="checkbox" id="optImgDl" disabled> <span data-k="optImgDl"></span></label>
     </div>
     <div class="check" style="margin-top:-2px">
       <span class="hint" data-k="savAs"></span>
@@ -284,6 +358,7 @@ b.dark{color:var(--ink)}
       <button class="btn b2" id="btnRun" data-k="btnRun">▶ 开始处理所选书籍</button>
       <span class="btn ghost" id="btnSaveDir" data-k="btnSaveDir">保存到所选文件夹…</span>
       <label class="lab" style="margin-left:6px"><input type="checkbox" id="optSkipDup"> <span data-k="optSkipDup"></span></label>
+      <label class="lab" style="margin-left:6px" id="sumWrap"><input type="checkbox" id="optSum" checked> <span data-k="optSum"></span></label>
     </div>
     <div class="msg hidden" id="outMsg"></div>
     <div class="prog" id="progBar"><div></div></div>
@@ -342,12 +417,62 @@ const Z = {
   bookRePh:"只对这一本书生效，比如它的章节是「卷一 第X回」这种写法",
   bookReOn:"✔ 已设置本书专用规则",
   btnChapAll:"⚡ 全部书籍一键分章", chAllEmpty:"书库为空，请先扫描或拖入 TXT", chAllDoing:"正在分章 {i}/{n}：{name}", chAllDone:"批量分章完成：{n} 本 · 共 {m} 章",
+  btnChapTree:"导出章节树", treeSuffix:"_章节树",
+  trBook:"书籍：{0}", trSplit:"切分：{n} 章 · 正文 {c} 字 · 章节树 {l} 级",
+  trCheck:"校验：{0}", chkLv:"第{0}级", chkBad:"校验异常 {n} 处", chkBooks:"校验异常 {n} 本",
+  chkNoBook:"请先在「选择一本书试分」里选一本书", chkDl:"章节树已下载：{name}",
+  chDblHint:"（双击某一行进入该书单本试分）",
   outTitle:"④ 导出分发", btnRun:"▶ 开始处理所选书籍", btnSaveDir:"保存到所选文件夹…",
   optSkipDup:"跳过已经处理过的文件",
   savAs:"保存方式：", savSuf:"另存时加后缀",
-  outTheme:"版面主题：", outCover:"封面：",
-  coverAuto:"自动（优先同名图片）", coverDefault:"生成默认封面", coverNone:"不加封面",
+  outTheme:"版面主题：",
+  /* 主题选择器（与桌面版同款：卡片缩略图 + 左侧大图预览 + 视口尺寸） */
+  themePick:"选择版面主题", themeImport:"导入自定义CSS", themeCustom:"自定义CSS",
+  themeVpW:"宽", themeVpH:"高", themeApply:"应用", themeVpHint:"预览视口（CSS 像素）",
+  themeBad:"这个 CSS 读不出来：{msg}",
+  themeHint:"点击缩略图切换左侧预览；确定后用于导出 EPUB。",
+  themeNeed:"请输入 200~3000 之间的宽高。",
+  /* 封面设置窗口（与桌面版同一套：网格卡片 + 右键换图 + 下载网络封面） */
+  btnCover:"封面", btnCoverN:"封面（已设 {n} 本）",
+  coverPick:"设置导出封面",
+  coverHint:"右键封面（或点一下卡片）换图：选择本地图片 / 下载网络封面 / 更换默认封面；底栏「默认封面」可一次改掉所有内置封面。确定后按这里的封面导出 EPUB。",
+  coverPickImg:"选择封面图片", coverDl:"下载网络封面",
+  coverDefault:"默认封面", coverNewDefault:"更换默认封面", coverBack:"‹ 返回",
+  coverUrlTitle:"下载网络封面",
+  coverUrlHint:"填入图片直链（以 .jpg/.png 等结尾的地址最稳）。网页版受跨域（CORS）限制：站点没给跨站许可时浏览器读不到图片，这类情况请用桌面版下载。",
+  coverUrlBad:"请先填入图片链接。",
+  coverDlWait:"正在下载封面…",
+  coverDlSaved:"封面已保存：{f}",
+  coverDlOnlyEpub:"封面已用于本次导出的 EPUB（未选择输出目录，不另存文件）",
+  coverDlFailNotImg:"这个链接返回的不是图片（或已失效），换一个图片直链再试。",
+  coverDlFailCorsTitle:"无法下载这张封面",
+  coverDlFailCors:"浏览器有跨域（CORS）限制：目标站点没有返回允许跨站的响应头（Access-Control-Allow-Origin），浏览器拒绝把图片数据交给本页，所以网页版下载不了。<br><br>这是浏览器的安全策略，网页版无法绕过。请改用<b>桌面版（exe）</b>的「封面 → 下载网络封面」，桌面端不受此限制；或者先把图片另存到本地，再用「选择封面图片」导入。",
+  coverImgBad:"这张图片读不出来，换一张试试。",
+  coverNoBooks:"没有已选的书籍", coverNoBooksMsg:"请先在书库中勾选要导出的书，再设置封面。",
+  coverPreparing:"正在准备封面…", coverNone:"无封面",
+  logCoverSet:"封面设置已更新：{n} 本",
+  /* 「文件名」：保持原样以外的选项都换算成 book/author 模板，与自定义格式共用同一套解析 */
+  fileName:"文件名",
+  nameKeep:"保持原样", nameAuthorTitle:"作者名 - 书名", nameBracket:"[作者名] 书名",
+  nameBookAuthor:"《书名》作者：作者名", nameCustom:"自定义格式",
+  namePatBookAuthor:"《book》作者：author",
+  nameCustomTitle:"自定义文件名格式",
+  nameCustomHint:"用 book 代表书名、author 代表作者名，例如：《book》author。格式必须包含 book 占位符，且不能出现 \\ / : * ? \" < > | 这些文件名非法字符。",
+  nameFmtLabel:"格式模板",
+  nameCustomBad:"格式里必须包含 book 占位符。",
+  nameCustomBadChar:"文件名里不能使用这些字符：{c}",
+  namePreview:"预览：{n}",
+  namePreviewTitle:"示例书名", namePreviewAuthor:"示例作者",
+  nameCustomDemo:"《book》author",
+  optImgDl:"下载插图链接",
+  optImgDlTip:"网页版受浏览器跨域（CORS）限制：站点没发跨域许可的图片，浏览器读不到图片字节，只能跳过。这类图请用桌面版（exe）下载，桌面端不受此限制。",
   optInplace:"原地覆盖原文件（先备份 .bak）",
+  optSum:"生成清洗内容汇总",
+  optSumTip:"按书籍分类列出被清洗掉的每一段文字、它在原文件里的行号，以及命中的规则（自定义规则写明规则名或正则）；空格与空行不逐条列出，只统计数量。用来回查有没有把正文误删",
+  logSumOk:"清洗内容汇总：{f}（{n} 本 · {m} 条 · 删除空行 {b} 行）",
+  logSumFail:"清洗内容汇总写入失败：{e}",
+  sumFail:"处理失败：{e}",
+  sumNoteSnap:"沿用清洗页的快照，没有逐条明细（重新批量清洗后再处理即可记录）",
   savHintCopy:"原文件不动，新文件名为「原名 + 后缀」，与原书并排存放",
   savHintInplace:"清洗后的全文写回原文件；首次覆盖时把原文备份为「文件名.bak」",
   savHintNoDir:"需先用「选择文件夹」授权书库目录",
@@ -371,8 +496,9 @@ const Z = {
   ruleOn:"已启用 {n} 条规则", rPrev:"原文", rClean:"清洗后",
   rmStat:"删除 {n} 行", cutStat:"另 {m} 行只裁了行尾网址", jsdupStat:"其中简繁重复 {n} 行",
   mergeStat:"合并断行 {n} 处", glueStat:"标点接回上一行 {n} 处", wrapSkipStat:"{n} 段过长未合并",
+  imgStat:"保留插图链接 {n} 行", imgChecking:"正在逐条校验插图链接（单条最长 6 秒）…",
   loneHint:"另有 {n} 处标点独占一行，勾选「标点单独占一行」可修", wrapHint:"另有 {n} 段疑似句中硬断，勾选「合并句中断行」可合并",
-  prevHint:"仅预览前 500 行：整行划线＝删除；只有网址被划线＝正文保留",
+  prevHint:"仅预览前 500 行：整行划线＝删除；只有网址或 HTML 标签被划线＝正文保留",
   applyDone:"已清洗 {n} 本，共删除 {m} 行垃圾内容",
   cleanAllDone:"全部所选书籍已清洗",
   cleanNeedSel:"书库中没有已选书籍，请先勾选要清洗的书",
@@ -400,6 +526,12 @@ const Z = {
   modeFull:"目录模式 · 可写缓存可批量保存", modeBasic:"文件模式 · 仅导出下载",
   dlNone:"没有生成任何文件",
   dlMulti:"生成 {n} 个文件，逐一下载中（浏览器可能询问允许）",
+  logImgProg:"《{name}》插图下载中：{d}/{t}",
+  logImgPrefetch:"《{name}》插图链接：检查 {n} 条，认出 {m} 张",
+  logImgSaved:"《{name}》插图 {n} 张已打进 EPUB",
+  logImgDir:"《{name}》插图 {n} 张已写入 {d}",
+  logImgCors:"· 另有 {k} 条确实是插图，但站点没给跨域许可，浏览器读不到图片（桌面版可下载）",
+  logImgSkip:"· 另有 {k} 条链接不是图片或已失效，已跳过",
   zipName:"DeShelf导出_{ts}", epDupName:"（重复）",
   closeX:"关闭", copy:"复制",
   aboutTitle:"关于 卷帙 DeShelf",
@@ -458,12 +590,62 @@ const E = {
   bookRePh:"Applies to this book alone, e.g. its chapters read \"Part X, Chapter Y\"",
   bookReOn:"✔ Own rule set for this book",
   btnChapAll:"⚡ Chapter all books", chAllEmpty:"Library is empty — scan or drop TXT files first", chAllDoing:"Splitting {i}/{n}: {name}", chAllDone:"Done: {n} books · {m} chapters in total",
+  btnChapTree:"Export tree", treeSuffix:"_chapter_tree",
+  trBook:"Book: {0}", trSplit:"Split: {n} chapters · {c} chars · chapter tree {l} level(s)",
+  trCheck:"Check: {0}", chkLv:"Level {0}", chkBad:"{n} check issue(s)", chkBooks:"{n} book(s) with issues",
+  chkNoBook:"Pick a book above first", chkDl:"Chapter tree downloaded: {name}",
+  chDblHint:"  (double-click a row to open that book)",
   outTitle:"④ Export", btnRun:"▶ Process selected books", btnSaveDir:"Save to chosen folder…",
   optSkipDup:"Skip files already processed",
   savAs:"Save as:", savSuf:"Suffix",
-  outTheme:"Layout:", outCover:"Cover:",
-  coverAuto:"Auto (same-name image first)", coverDefault:"Generate default cover", coverNone:"No cover",
+  outTheme:"Layout:",
+  /* theme picker (same as the desktop app: cards + big preview + viewport) */
+  themePick:"Choose Layout Theme", themeImport:"Import custom CSS",
+  themeCustom:"Custom CSS",
+  themeVpW:"W", themeVpH:"H", themeApply:"Apply",
+  themeVpHint:"Preview viewport (CSS px)",
+  themeBad:"This CSS can't be read: {msg}",
+  themeHint:"Click a thumbnail to preview; the choice is used for EPUB export.",
+  themeNeed:"Enter a width and height between 200 and 3000.",
+  btnCover:"Cover", btnCoverN:"Cover ({n} set)",
+  coverPick:"Set Export Covers",
+  coverHint:"Right-click a cover (or click a card) to change it: local image / download from URL / change the built-in cover; the “Default cover” dropdown at the bottom switches every built-in cover at once. EPUB export uses exactly these covers.",
+  coverPickImg:"Choose cover image", coverDl:"Download cover from URL",
+  coverDefault:"Default cover", coverNewDefault:"Change default cover", coverBack:"‹ Back",
+  coverUrlTitle:"Download Cover",
+  coverUrlHint:"Paste a direct image link (.jpg/.png and friends work best). The web build is subject to CORS: when the site sends no cross-origin header the browser cannot read the image — use the desktop app for those.",
+  coverUrlBad:"Enter an image URL first.",
+  coverDlWait:"Downloading cover…",
+  coverDlSaved:"Cover saved: {f}",
+  coverDlOnlyEpub:"Cover applied to this EPUB export (no output folder chosen, so no file is saved)",
+  coverDlFailNotImg:"That link does not return an image (or is dead) — try a direct image link.",
+  coverDlFailCorsTitle:"Cannot download this cover",
+  coverDlFailCors:"Browser CORS limit: the target site returned no cross-origin header (Access-Control-Allow-Origin), so the browser refuses to hand the image bytes to this page — the web build cannot download it.<br><br>This is a browser security policy that the web build cannot bypass. Please use the <b>desktop app (exe)</b> → “Cover → Download cover from URL”; it is not subject to CORS. Alternatively save the image locally and import it with “Choose cover image”.",
+  coverImgBad:"This image cannot be read — try another one.",
+  coverNoBooks:"No books selected", coverNoBooksMsg:"Select the books to export in the library first.",
+  coverPreparing:"Preparing cover…", coverNone:"No cover",
+  logCoverSet:"Covers updated: {n}",
+  fileName:"File name",
+  nameKeep:"Keep as is", nameAuthorTitle:"Author - Title", nameBracket:"[Author] Title",
+  nameBookAuthor:"《Title》by Author", nameCustom:"Custom format",
+  namePatBookAuthor:"《book》by author",
+  nameCustomTitle:"Custom File Name Format",
+  nameCustomHint:"Use book for the title and author for the author, e.g. 《book》by author. The format must contain the book placeholder and must not use \\ / : * ? \" < > | these illegal file-name characters.",
+  nameFmtLabel:"Format template",
+  nameCustomBad:"The format must contain the book placeholder.",
+  nameCustomBadChar:"These characters cannot be used in a file name: {c}",
+  namePreview:"Preview: {n}",
+  namePreviewTitle:"Sample Title", namePreviewAuthor:"Sample Author",
+  nameCustomDemo:"《book》by author",
+  optImgDl:"Download illustrations",
+  optImgDlTip:"Browser CORS limit: images from sites that send no CORS header cannot be read here and are skipped. Use the desktop app for those — it is not subject to CORS.",
   optInplace:"Overwrite originals (backup .bak)",
+  optSum:"Write a cleanup summary",
+  optSumTip:"Per book, every removed piece of text, its line number in the ORIGINAL file, and the rule that removed it (custom rules show their name or pattern). Blank lines are only counted. Use it to check that no real text was deleted by mistake",
+  logSumOk:"Cleanup summary: {f} ({n} book(s) · {m} record(s) · {b} blank line(s) removed)",
+  logSumFail:"Cannot write the cleanup summary: {e}",
+  sumFail:"processing failed: {e}",
+  sumNoteSnap:"reused the snapshot from the Clean tab — no per-item detail (clean the books again to record it)",
   savHintCopy:"Originals untouched — new files are “name + suffix”, sitting next to the original",
   savHintInplace:"Cleaned text is written back; the first overwrite saves the original as “name.bak”",
   savHintNoDir:"pick a folder first",
@@ -487,8 +669,9 @@ const E = {
   ruleOn:"{n} rules enabled", rPrev:"Original", rClean:"Cleaned",
   rmStat:"{n} lines removed", cutStat:"{m} more lines: only the URL tail trimmed", jsdupStat:"{n} of them were script duplicates",
   mergeStat:"{n} line breaks joined", glueStat:"{n} punctuation marks pulled back up", wrapSkipStat:"{n} paragraphs left alone (too long)",
+  imgStat:"{n} illustration links kept", imgChecking:"Verifying illustration links one by one (6 s each at most)…",
   loneHint:"{n} more lines hold punctuation only — tick \u201cPunctuation alone on a line\u201d to fix", wrapHint:"{n} more paragraphs look hard-wrapped — tick \u201cJoin mid-sentence line breaks\u201d to merge",
-  prevHint:"First 500 lines only: fully struck = removed; only the URL struck = text kept",
+  prevHint:"First 500 lines only: fully struck = removed; only the URL or an HTML tag struck = text kept",
   applyDone:"Cleaned {n} book(s), removed {m} junk lines",
   cleanAllDone:"All selected books cleaned",
   cleanNeedSel:"No books selected in the library. Tick the books to clean first.",
@@ -516,6 +699,12 @@ const E = {
   modeFull:"Directory mode · index cache + batch save", modeBasic:"File mode · export downloads only",
   dlNone:"Nothing generated",
   dlMulti:"{n} files generated — downloading one by one (the browser may ask for permission)",
+  logImgProg:"“{name}”: downloading illustrations {d}/{t}",
+  logImgPrefetch:"“{name}”: {n} illustration links checked, {m} image(s) found (verify + download share one request)",
+  logImgSaved:"“{name}”: {n} illustration(s) packed into the EPUB",
+  logImgDir:"“{name}”: {n} illustration(s) written to {d}",
+  logImgCors:"· {k} link(s) really are images, but the site sends no CORS header — the browser cannot read them (use the desktop app)",
+  logImgSkip:"· {k} link(s) were not images or are dead — skipped",
   zipName:"DeShelfExport_{ts}", epDupName:"(dup)",
   closeX:"Close", copy:"Copy",
   aboutTitle:"About 卷帙 DeShelf",
@@ -541,10 +730,10 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.6.0M</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
- +'<p>清洗规则 12 条：网址、站点宣传、翻页残留、乱码、<b>标点单独占一行</b>（整行只有一个收尾引号、句号或逗号的，接回上一行；省略号/破折号独占一行不动，默认关闭）、<b>合并句中断行</b>（按手机屏宽硬断的文件，以空行为段落界接回去，默认关闭）、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
- +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。</p>'
+ +'<p>清洗规则 14 条：网址、<b>保留插图链接</b>（按 jpg/jpeg/png/webp/gif 后缀留下配图链接）、<b>插图链接校验</b>（逐条校验 Content-Type 与链接是否失效，默认关闭）、站点宣传、翻页残留、乱码、<b>标点单独占一行</b>（整行只有一个收尾引号、句号或逗号的，接回上一行；省略号/破折号独占一行不动，默认关闭）、<b>合并句中断行</b>（按手机屏宽硬断的文件，以空行为段落界接回去，默认关闭）、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0）与 <b>zhconv</b> 的 zh2Hans 字表（GPL-2.0-or-later），仅用于比对，不改写正文。</p>'
+ +'<p>本页以本地处理为主：默认不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。会联网的只有两处、都由你主动触发：勾选「插图链接校验」后逐条请求文中链接（只读响应头判断是不是图片），以及在「封面 → 下载网络封面」里填入图片链接时去取那张图。正文内容不会发送出去；受浏览器跨域（CORS）限制，站点没给跨站许可的图片网页版读不到，这类图请用桌面版下载。</p>'
  +'<p>技术：单文件 HTML · File System Access（目录模式）/ 拖拽（全浏览器）· TextDecoder 编码识别 · 手写 EPUB 2.0 + ZIP（CompressionStream deflate）。</p>'
  +'<p>同一份 HTML 本地双击即用；放到 GitHub Pages 等 https 静态托管即是"在线版"，功能不变——数据始终不出本机。</p>'
  +'<p class="hint">桌面版（Windows EXE）支持原地覆盖写回与 .bak 备份，批量处理大书库建议用桌面版。</p>'
@@ -552,12 +741,12 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p class="hint">隐私：本页仅加载一个匿名访问计数器（不蒜子），用于统计访问次数；它不接触你的文件，书籍内容始终不出本机。离线打开时计数器不加载，功能不受影响。</p>'
  +'<p><b>许可与署名 / License</b></p>'
  +'<p>本页以 <b>MIT License</b> 发布：可自由使用、复制、修改、再分发，也包括商业用途——不用付费、不用事先告知。唯一的硬性条件是<b>保留作者署名</b>：任何副本或实质性部分都必须保留「© 2026 永远的兰兰 (Lanlan Eternal)」与完整的 MIT 许可文本（仓库根目录的 LICENSE）。可以改代码、改软件名、闭源分发，但不能删掉署名，也不能改成自己的名字后声称原创。</p>'
- +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0，仅用于比对，不改写正文）；封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
+ +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0）与 zhconv zh2Hans 字表（GPL-2.0-or-later），均仅用于比对、不改写正文；可选访问计数由不蒜子（Busuanzi）提供，只统计页面访问次数。封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.6.0M</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
- +'<p>Twelve cleaning rules: URLs, site promos, pagination leftovers, corrupted lines, <b>punctuation alone on a line</b> (a line holding only a closing quote, full stop or comma is pulled back; ellipsis/dash-only lines are never touched; off by default), <b>join mid-sentence line breaks</b> (for files hard-wrapped at phone width — blank lines are treated as paragraph breaks; off by default), blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
- +'<p>This page runs 100% locally: no network, no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved.</p>'
+ +'<p>Fourteen cleaning rules: URLs, <b>keep illustration links</b> (jpg/jpeg/png/webp/gif suffixes), <b>verify illustration links</b> (checks Content-Type and dead links; off by default), site promos, pagination leftovers, corrupted lines, <b>punctuation alone on a line</b> (a line holding only a closing quote, full stop or comma is pulled back; ellipsis/dash-only lines are never touched; off by default), <b>join mid-sentence line breaks</b> (for files hard-wrapped at phone width — blank lines are treated as paragraph breaks; off by default), blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0) plus <b>zhconv</b>&rsquo;s zh2Hans table (GPL-2.0-or-later), used for comparison only &mdash; text is never rewritten.</p>'
+ +'<p>This page is local-first: it uploads nothing and never stores your books. Files are processed only inside your browser, and you decide where exports are saved. Network access happens in exactly two places, both started by you: ticking “Verify illustration links” requests the links found in the text one by one to inspect their headers, and “Cover → Download cover from URL” fetches the image you paste. Book text itself is never sent anywhere. Because of browser CORS rules, images from sites that send no cross-origin header cannot be read here — use the desktop app for those.</p>'
  +'<p>Tech: single-file HTML · File System Access (directory mode) / drag &amp; drop (every browser) · TextDecoder encoding detection · hand-rolled EPUB 2.0 + ZIP (CompressionStream deflate).</p>'
  +'<p>Double-click the same HTML file for local use, or host it on any https static site (e.g. GitHub Pages) for an “online” version — behavior is identical, and data never leaves your machine.</p>'
  +'<p class="hint">The desktop app (Windows EXE) can overwrite files in place with .bak backup — prefer it for big in-place batch jobs.</p>'
@@ -565,13 +754,15 @@ E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p class="hint">Privacy: the page loads one anonymous visit counter (Busuanzi) to count page views. It never touches your files — book content stays on your machine. Offline, the counter simply does not load and everything still works.</p>'
  +'<p><b>License &amp; attribution</b></p>'
  +'<p>Released under the <b>MIT License</b>: use, copy, modify and redistribute freely, including commercially, with no fee and no need to ask first. The one hard requirement is to <b>keep the author&rsquo;s attribution</b> &mdash; every copy or substantial portion must retain &ldquo;&copy; 2026 Lanlan Eternal&rdquo; and the full MIT text (LICENSE at the repository root). You may change the code, rename the app or ship it closed-source, but you may not strip the credit or put your own name on it and claim it as original work.</p>'
- +'<p class="hint">Third-party: OpenCC character tables (Apache License 2.0, comparison only &mdash; text is never rewritten); covers and body text use the system KaiTi font, no font file is redistributed. Full notices: THIRD-PARTY-NOTICES.md at the repository root.</p>'
+ +'<p class="hint">Third-party: OpenCC character tables (Apache License 2.0) and zhconv&rsquo;s zh2Hans table (GPL-2.0-or-later), both used for comparison only &mdash; text is never rewritten; the optional visit counter is provided by Busuanzi and only counts page views. Covers and body text use the system KaiTi font, no font file is redistributed. Full notices: THIRD-PARTY-NOTICES.md at the repository root.</p>'
  +'<p style="color:var(--muted);font-size:12px">© Lanlan Eternal</p>';
 Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<li><b>书库</b>：Chrome/Edge 点「选择文件夹」授权目录（可整目录扫描、写缓存、批量保存）；其它浏览器或临时用，直接拖入文件即可。</li>'
- +'<li><b>清洗</b>：勾选规则（网址行 / 站点宣传 / 翻页残留 / 乱码行 / 空行压缩等），先「预览」看前后对比，再「应用到所选书籍」。</li>'
+ +'<li><b>清洗</b>：勾选规则（网址行 / 站点宣传 / 翻页残留 / 乱码行 / 空行压缩等），先「预览」看前后对比，再「应用到所选书籍」。勾上「含网址的行」后会多出「保留插图链接」「插图链接校验」：前者按后缀留下配图链接，后者还会逐条请求校验（只读响应头，会联网），图链落在站点宣传行里仍随那一行删除。</li>'
  +'<li><b>分章</b>：选中一本书点「试分章节」看章节目录；标题写法特殊就用面板右上角「常用写法」；「应用分章」后章节目录会随书保存。</li>'
- +'<li><b>导出</b>：勾选格式（EPUB 带目录 / 合并 TXT / 分章 TXT）。单本直接下载；多本自动逐一下载，或先「保存到所选文件夹」把全部结果一次写入你授权的目录。</li></ol>'
+ +'<li><b>导出</b>：勾选格式（EPUB 带目录 / 合并 TXT / 分章 TXT）。单本直接下载；多本自动逐一下载，或先「保存到所选文件夹」把全部结果一次写入你授权的目录。</li>'
++'<li><b>文件名</b>：「分章 TXT」右边的下拉框决定导出文件（EPUB / 合并 TXT / 分章 ZIP）叫什么：保持原样（默认，用书名）/ 作者名 - 书名 / [作者名] 书名 / 《书名》作者：作者名 / 自定义格式。自定义格式用 book 表示书名、author 表示作者名，必须含 book，且不能出现 \\ / : * ? " < > | 等文件名非法字符。</li>'
+ +'<li><b>清洗内容汇总</b>（默认勾选）：处理完会多出一份「清洗内容汇总.txt」，按书籍分类列出被清洗掉的每一段文字、它在原文件里的行号，以及命中的规则（自定义规则写明规则名或正则）；空格与空行不逐条列出，只统计数量。用来回查有没有把正文当广告误删。</li></ol>'
  +'<p><b>自定义章节正则</b>（内置认不出的写法才需要）</p><ul>'
  +'<li>内置只认「第X章/节/回」「卷X」「序章/楔子/尾声/番外」。书里写成「第一折」「01」「卷一 第3回」，整本会被当成一章。</li>'
  +'<li>上面那格对所有书生效；下面「本书专用规则」只对选中的那本生效，并优先于上面那格。填了自定义正则后内置规则不再参与，所以规则要盖住这本书的每种标题写法。</li>'
@@ -586,9 +777,11 @@ Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<p class="hint">免责：本工具只处理你本机已有的文件，请确保来源合法；软件按现状提供，请在使用前自行备份重要文件。</p>';
 E.helpBody = '<p><b>The four steps</b></p><ol>'
  +'<li><b>Library</b>: in Chrome/Edge hit “Choose Folder” to authorize a directory (full-folder scan, index cache, batch save). Otherwise just drop files in — works in every browser.</li>'
- +'<li><b>Clean</b>: tick rules (URL lines / site promos / page-nav leftovers / mojibake / blank compression…), hit “Preview”, then “Apply to selected books”.</li>'
+ +'<li><b>Clean</b>: tick rules (URL lines / site promos / page-nav leftovers / mojibake / blank compression…), hit “Preview”, then “Apply to selected books”. Ticking “Lines with URLs” reveals “Keep illustration links” and “Verify illustration links” — the latter requests each link (headers only, uses the network) and keeps just real images; a link on a site-promo line is still deleted with it.</li>'
  +'<li><b>Chapters</b>: pick a book and press “Try splitting” to see the TOC; a custom regex is supported; “Apply” keeps the split with the book.</li>'
- +'<li><b>Export</b>: tick formats (EPUB with TOC / merged TXT / per-chapter TXT). A single book downloads directly; multiple books download one by one, or pick “Save to chosen folder” once and write everything there.</li></ol>'
+ +'<li><b>Export</b>: tick formats (EPUB with TOC / merged TXT / per-chapter TXT). A single book downloads directly; multiple books download one by one, or pick “Save to chosen folder” once and write everything there.</li>'
++'<li><b>File name</b>: the dropdown right after “per-chapter TXT” names the exported files (EPUB / merged TXT / split ZIP): keep as is (the title) / Author - Title / [Author] Title / 《Title》by Author / custom format. A custom format uses book for the title and author for the author, must contain book, and must not use \\ / : * ? " < > | .</li>'
+ +'<li><b>Cleanup summary</b> (on by default): after processing you also get “清洗内容汇总.txt” — per book, every removed piece of text, its line number in the original file, and the rule that removed it (custom rules show their name or pattern). Blank lines are only counted. Use it to check that no real paragraph was deleted as an ad.</li></ol>'
  +'<p><b>Custom chapter regex</b> (only when the built-ins miss)</p><ul>'
  +'<li>Built-ins know 第X章/节/回, 卷X and 序章/楔子/尾声/番外 only. A book using 第一折 / 01 / 卷一 第3回 becomes one single chapter.</li>'
  +'<li>The upper box applies to every book; the per-book rule below applies only to the selected book and wins over it. Any custom regex replaces the built-in library, so it must cover every heading form.</li>'
@@ -611,15 +804,48 @@ function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 function fmtSize(n){const u=["B","KB","MB","GB"];let i=0;while(n>=1024&&i<3){n/=1024;i++;}
   return i===0?Math.round(n)+" B":(n%1>0?n.toFixed(1):n)+" "+u[i];}
 function fmtNum(n){return Number(n||0).toLocaleString("en-US");}
+/* 书库「字数」列的读法（与桌面版一致）：中文按「万 / 亿」，英文按 K / M；
+   阈值以下保留千位分隔，免得短数字被缩写出 0.5万 这种更差精度的写法。 */
+function fmtChars(n){
+  const v=Number(n||0);
+  if(!(v>0))return "—";
+  const short=x=>{const s=x.toFixed(1);return s.endsWith(".0")?s.slice(0,-2):s;};
+  if(CUR==="zh"){
+    if(v>=99995000)return short(v/1e8)+"亿";   /* 顶到 10000 万时按「亿」更好读 */
+    if(v>=1e4)return short(v/1e4)+"万";
+  }else{
+    if(v>=1e6)return short(v/1e6)+"M";
+    if(v>=1000)return v>=999950?short(v/1e6)+"M":short(v/1e3)+"K";
+  }
+  return fmtNum(v);
+}
 function fmtTime(t){const d=new Date(t*1000);const p=x=>String(x).padStart(2,"0");
   return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());}
 function fill(tpl,map){return tpl.replace(/\{(\w+)\}/g,(m,k)=>map[k]!==undefined?map[k]:m);}
 
 const logBox=$("logBox");
-function log(msg){const d=new Date();const p=x=>String(x).padStart(2,"0");
-  const ts=p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
-  logBox.textContent += "["+ts+"] "+msg+"\n";
+/* 运行日志里「插图下载中 3/57」这一行的刷新间隔（毫秒）：太密会刷屏、
+   太稀又像卡住；首条与末条一定输出，不受它限制。 */
+const IMG_PROG_GAP=300;
+let _logProg=null;          /* 正在原地刷新的那一行（不含换行）；null = 没有进度行 */
+function _logTS(){const d=new Date();const p=x=>String(x).padStart(2,"0");
+  return p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());}
+function log(msg){
+  if(_logProg!==null){logBox.textContent+="\n";_logProg=null;}   /* 进度行就此定住 */
+  logBox.textContent += "["+_logTS()+"] "+msg+"\n";
   logBox.scrollTop = logBox.scrollHeight;}
+/* 原地刷新日志最后一行（插图下载进度）：几百张图也只占一行 */
+function logProgress(msg){
+  const line="["+_logTS()+"] "+msg;
+  if(_logProg!==null&&logBox.textContent.endsWith(_logProg)){
+    logBox.textContent=logBox.textContent.slice(0,-_logProg.length)+line;
+  }else{
+    if(_logProg!==null)logBox.textContent+="\n";
+    logBox.textContent+=line;
+  }
+  _logProg=line;
+  logBox.scrollTop = logBox.scrollHeight;
+}
 $("logToggle").onclick=()=>{const h=logBox.classList.toggle("hidden");$("logArrow").textContent=h?"▸":"▾";};
 
 /* ================= 工具 ================= */
@@ -817,11 +1043,19 @@ const Core = (() => {
     return {title:title.trim(),author:author.trim()};
   }
 
-  /* ---------- 清洗规则（12 条：原 10 条 + 标点独占一行 + 合并句中断行） ---------- */
+  /* ---------- 清洗规则（14 条：12 条 + 保留插图链接 + 插图链接校验） ----------
+     两条插图规则是「含网址的行」的子项（sub:"url"）：父项没勾时不显示，
+     「插图链接校验」还要等「保留插图链接」勾上才允许勾。 */
   const RULES=[
     {id:"url",name:"含网址的行",name_en:"Lines with URLs",
-     tip:"删除只有网址的行；网址若粘在段尾，只裁掉网址本身，正文保留",
-     tip_en:"Removes URL-only lines; if a URL is glued to a paragraph end, only the URL is trimmed"},
+     tip:"删除只有网址的行；含网址的 HTML 标签整块清除；网址若粘在段尾，只裁掉网址本身，正文保留",
+     tip_en:"Removes URL-only lines (however long the image link), strips HTML tags that contain a URL, and trims only the URL when it is glued to a paragraph end"},
+    {id:"imgkeep",name:"保留插图链接",name_en:"Keep illustration links",sub:"url",
+     tip:"配图链接不再当广告删掉：按后缀认出 jpg/jpeg/png/webp/gif 的链接，「图片：https://…jpg」这种整行、以及粘在正文后面的图链都原样保留；若图链落在站点宣传行里，仍然随那一行一起删掉",
+     tip_en:"Illustration links are no longer deleted as ads: links ending in jpg/jpeg/png/webp/gif are recognised, so lines like “image: https://…jpg” and links glued to a paragraph end are kept. A link sitting on a site-promo line is still deleted with it"},
+    {id:"imgcheck",name:"插图链接校验",name_en:"Verify illustration links",sub:"url",need:"imgkeep",
+     tip:"对行内所有链接（含没有图片后缀的）各校验一次：响应头 Content-Type 为 image/jpeg、image/png、image/gif、image/webp 的才算插图保留；跨域读不到响应头时改用图片探测（能正常解码才算），返回网页的、已失效的都不保留（单条超时 6 秒）。须先开启「保留插图链接」",
+     tip_en:"Checks every link on a line (image suffix or not) and keeps it only when Content-Type is image/jpeg, image/png, image/gif or image/webp; if cross-origin headers are unreadable it falls back to loading the picture (must decode). HTML pages and dead links are dropped (6 s each). Requires “Keep illustration links”"},
     {id:"site",name:"站点宣传行",name_en:"Site promo lines",
      tip:"删除“请收藏本站”这类推广行；推广语贴在段尾时只裁掉那一截",
      tip_en:"Removes promo lines; if the promo is glued to a paragraph end, only that part is trimmed"},
@@ -852,6 +1086,27 @@ const Core = (() => {
   const DEFAULT_ON=["url","site","nav","moji","blank2","trim","half"];
 
   const URL_RE=/(https?:\/\/|www\.|ftp:\/\/|[a-z0-9\-]+\.(com|net|org|cn|cc|me|la|tv|info|xyz)\b)/i;
+  /* 从命中位置起“吃下整条网址”（含路径、查询串）：判断网址是否孤零零占一行、
+     网址后面还剩多少正文。只认协议头的话，长图链会被当成一大段正文放过。 */
+  const URL_BODY_SRC="(?:(?:https?|ftp):\\/\\/|www\\.)[A-Za-z0-9\\-._~:\\/?#\\[\\]@!$&'()*+,;=%]+"
+    +"|[A-Za-z0-9\\-]+\\.(?:com|net|org|cn|cc|me|la|tv|info|xyz)\\b[A-Za-z0-9\\-._~:\\/?#\\[\\]@!$&'()*+,;=%]*";
+  const URL_BODY_RE=new RegExp(URL_BODY_SRC,"i");    /* 检索 */
+  const URL_BODY_G=new RegExp(URL_BODY_SRC,"gi");    /* 全局替换 */
+  const URL_BODY_Y=new RegExp(URL_BODY_SRC,"iy");    /* 定点匹配（lastIndex 处） */
+  /* 正文里夹带的 HTML 标签（<img src="http://…">、<a href="…">、</a>、<br> 等） */
+  const HTML_TAG_RE=/<[A-Za-z\/!][^<>]{0,2000}>/gi;
+  /* 清掉含网址的 HTML 标签：返回 [新文本, 是否命中, 被删标签在原行里的位置]。
+     第三项给预览标红用 —— 标签是从行中间挖掉的，既不是整行删除也不是行尾裁剪。 */
+  function stripUrlTags(s){
+    const tags=s.match(HTML_TAG_RE);
+    if(!tags||!tags.some(t=>URL_RE.test(t)))return[s,false,[]];
+    const rng=[];
+    HTML_TAG_RE.lastIndex=0;
+    for(const m of s.matchAll(HTML_TAG_RE)) rng.push([m.index,m.index+m[0].length]);
+    return[s.replace(HTML_TAG_RE,""),true,rng];
+  }
+  /* 去掉网址与 HTML 标签后还剩多少真内容：为 0 说明这行只有网址/标签 */
+  function residual(s){return slim(s.replace(URL_BODY_G,"").replace(HTML_TAG_RE,""));}
   /* 强特征宣传词：正文里几乎不会出现，命中即可疑 */
   const SITE_RE=/(记住本站|收藏本站|本站地址|书籍地址|笔趣|顶点小说|手机阅读|wap\.|txt下载|TXT下载|小说下载网|免费小说网|最新网址|首发网址|天才一秒|无弹窗|更新最快|手打版|本章免费)/i;
   /* 备注：请记住/请收藏/请到/转载请/手机版/百度搜索 这些在正常对话里也会出现
@@ -862,31 +1117,144 @@ const Core = (() => {
   /* 判定“这行是不是广告”用的尺子 */
   const AD_TAIL_MAX=64, AD_MIN_BODY=6, AD_SHORT=32, AD_TINY=24, AD_AFTER=10;
   const AD_HEAD_RE=/(记住|收藏|网址|本站|书站|手机阅读|手机版|最新章|一秒|更新最快|推荐票|月票|笔趣阁|顶点|全文阅读|小说网|手打)/;
+  /* 推广套话的常用词。整行只剩这些词 + 网址时，它就是广告，网址再长也一样。
+     起因：`欢迎关注笔趣阁https://…（两百字符的图链）` 这类行，
+     按字数算的尺子把网址算进正文，于是只裁网址、把一句推广语留成正常段落。 */
+  const PROMO_WORDS=/(?:欢迎(?:关注|访问|来到|光临|阅读|收藏))|(?:(?:感谢|请|求)?(?:关注|收藏|订阅|推荐|打赏|月票))|(?:畅享|海量|百万|书库|书站|本站|网址|域名|最新|首发|永久|记住)|(?:手机|电脑|阅读|下载|更新|免费|无弹窗|全文|章节|一秒|天才)|(?:笔趣|顶点|手打|本章|小说)/;
+  const SITE_G=new RegExp(SITE_RE.source,"gi");
+  const PROMO_G=new RegExp(PROMO_WORDS.source,"gi");
   const SLIM_RE=/[\s\u3000，,。.！!？?、；;：:…\-—－_“”‘’"'（）()《》〈〉【】\[\]·~@#%&*+=|/\\<>^_]/g;
   function slim(s){return s.replace(SLIM_RE,"").length;}
-  /* 判定一行里的广告：keep 不动 / cut 只裁行尾 / drop 整行丢弃 */
-  function adSplit(s,useUrl,useSite){
+  /* 整行除了推广套话和网址，几乎不剩正文：`欢迎关注笔趣阁https://…` */
+  function promoOnlyLine(s){
+    const txt=String(s||"").replace(URL_BODY_G,"").replace(HTML_TAG_RE,"").trim();
+    if(!txt||slim(txt)>AD_SHORT) return false;
+    if(!PROMO_WORDS.test(txt)&&!SITE_RE.test(txt)) return false;
+    /* 门槛压得很低（≤3 字）：像「他打开了网址https://…」这种真句子要留下 */
+    return slim(txt.replace(SITE_G,"").replace(PROMO_G,""))<=3;
+  }
+  /* 判定一行里的广告：keep 不动 / cut 只裁行尾 / drop 整行丢弃。
+     why 传入对象时写入 {rule:"url"|"site"}：这一行是命中「含网址的行」还是
+     「站点宣传行」被处理掉的，清洗内容汇总要用它标清理原因。 */
+  function adSplit(s,useUrl,useSite,why){
     const mu=useUrl?URL_RE.exec(s):null, ms=useSite?SITE_RE.exec(s):null;
     if(!mu&&!ms)return["keep",0];
     const siteFirst=!!ms&&(!mu||ms.index<=mu.index);
-    const start=siteFirst?ms.index:mu.index, end=siteFirst?(ms.index+ms[0].length):(mu.index+mu[0].length);
+    if(why) why.rule=siteFirst?"site":"url";
+    const start=siteFirst?ms.index:mu.index;
+    let end;
+    if(siteFirst) end=ms.index+ms[0].length;
+    else{
+      URL_BODY_Y.lastIndex=start;                        /* 吃下整条网址，别只算协议头 */
+      const mf=URL_BODY_Y.exec(s);
+      end=mf?mf.index+mf[0].length:mu.index+mu[0].length;
+    }
     const head=s.slice(0,start);
     const body=slim(head), total=slim(s);
+    const tail=s.slice(end), tailSlim=slim(tail);
+    /* 推广套话 + 网址、剥掉网址后没剩正文：整行是广告（不能只裁网址把推广语留下） */
+    if(promoOnlyLine(s))return["drop",0];
     if(siteFirst){
       if(total<AD_SHORT)return["drop",0];
       if(body>=AD_MIN_BODY&&s.length-start<=AD_TAIL_MAX)return["cut",start];
       return["keep",0];
     }
+    if(residual(s)===0)return["drop",0];                 /* 整行只有网址，再长也是广告 */
     if(AD_HEAD_RE.test(head)&&total<AD_SHORT)return["drop",0];
+    if(tailSlim===0&&residual(s)<AD_MIN_BODY&&!HEAD_LINE.test(s))return["drop",0];
+    if(body>=AD_MIN_BODY&&tailSlim===0)return["cut",start];  /* 网址贴行尾（多长都算） */
     if(body<AD_MIN_BODY){
-      if(body===0&&(total<AD_TINY||AD_HEAD_RE.test(head+s.slice(end))))return["drop",0];
+      if(body===0&&(total<AD_TINY||AD_HEAD_RE.test(head+tail)))return["drop",0];
       /* 网址前面只有几个字（“欢迎访问”），后面又接着推广语 → 整行仍是广告 */
-      const tail=s.slice(end);
-      if(AD_HEAD_RE.test(tail)&&slim(tail)<=AD_TAIL_MAX)return["drop",0];
+      if(AD_HEAD_RE.test(tail)&&tailSlim<=AD_TAIL_MAX)return["drop",0];
       return["keep",0];
     }
-    if(slim(s.slice(end))<=AD_AFTER&&s.length-start<=AD_TAIL_MAX)return["cut",start];
+    if(tailSlim<=AD_AFTER&&s.length-start<=AD_TAIL_MAX)return["cut",start];
     return["keep",0];
+  }
+
+  /* ---------- 插图链接（与桌面版 jzcore 同一套判据） ----------
+     「保留插图链接」只认后缀，不联网；「插图链接校验」逐条请求，读 Content-Type。
+     浏览器跨域读不到响应头（对方没给 CORS 头）时退回 <img> 探测：能解码出图片、
+     且没有 onerror，就说明它是活着的插图；404 的图会直接触发 onerror。 */
+  const IMG_EXT_RE=/(?:jpe?g|png|webp|gif)$/i;
+  const IMG_MIMES=new Set(["image/jpeg","image/png","image/gif","image/webp"]);
+  const IMG_PROBE="image/x-probe";     /* 图片探测通过（读不到响应头，但确实是图） */
+  const IMG_TIMEOUT=6000;              /* 单条链接的超时（毫秒） */
+  const IMG_DL_TIMEOUT=20000;          /* 下载插图放宽到 20 秒：整张图比响应头慢得多 */
+  const IMG_TRAIL=/["'，。、；,;）)】\]]+$/;
+  function imgFullUrl(u){
+    u=String(u||"").trim().replace(IMG_TRAIL,"");
+    if(/^https?:\/\//i.test(u)) return u;
+    /* 协议相对地址（//cdn.xxx.com/a.jpg）：跟当前页面走；页面是 file:// 时按 https 试 */
+    if(u.startsWith("//")){
+      const p=(typeof location!=="undefined"&&/^https?:$/.test(location.protocol))?location.protocol:"https:";
+      return p+u;
+    }
+    if(/^(?:www\.|[a-z0-9\-]+\.)/i.test(u)) return "http://"+u;
+    return "";
+  }
+  function imgBySuffix(u){
+    return IMG_EXT_RE.test(String(u||"").split(/[?#]/)[0].replace(/\/+$/,""));
+  }
+  /* 明确是网页的扩展名：book.php / index.html 这种没有参数的，一眼就知道不是图 */
+  const IMG_PAGE_EXT=[".htm",".html",".shtml",".xhtml",".php",".asp",".aspx",
+    ".jsp",".jspx",".do",".action",".cgi",".pl",".txt",".exe"];
+  /* 本地粗筛：明显不可能是图片的链接就别发请求了（对齐桌面版 _img_worth_trying）。
+     一本书的正文里常有整篇的站点地址（https://zxcstxt.com/、/book/1234/），
+     以前每条都要请求一次，几百条能把导出拖很久。只拦「一眼假」的三类：
+       ① 补不出完整地址的（相对路径）；
+       ② 域名首页、目录页 —— 域名后面既没有文件名也没有查询参数；
+       ③ 带网页后缀且没有参数的。
+     图床常见的不带图片后缀写法（/images?q=tbn:…、/showimg.php?id=9、/image/12345）
+     都有参数或非网页后缀，一律放行 —— 宁可多请求一次，也不漏掉真插图。 */
+  function imgWorthTrying(u){
+    const full=imgFullUrl(u);
+    if(!full) return false;
+    let parts;
+    try{ parts=new URL(full); }catch(e){ return false; }
+    const path=parts.pathname||"";
+    if(IMG_EXT_RE.test(path)) return true;          /* 带图片后缀：候选 */
+    if(parts.search) return true;                   /* 有查询参数：图床常这么写，放行 */
+    if(!path||/\/$/.test(path)) return false;       /* 域名首页 / 目录页：zxcstxt.com/、/book/ */
+    const seg=path.slice(path.lastIndexOf("/")+1);
+    const m=/\.([A-Za-z0-9]+)$/.exec(seg);
+    const ext=m?("."+m[1].toLowerCase()):"";
+    return IMG_PAGE_EXT.indexOf(ext)<0;             /* 认不出的路径照旧试一次 */
+  }
+  /* 查一条链接的校验结果。行里认出的写法常和预取的键不同：
+     <img src="//cdn.x.com/a.jpg"> 会被裸域名规则从中间截断成 x.com/a.jpg，
+     直接查不到就按「后缀 + 分隔符」再对一次，免得把好好的插图行当网址删掉 */
+  function ctOfLink(ctMap,url){
+    if(!ctMap||!url)return "";
+    const direct=ctMap.get(url);
+    if(direct!==undefined)return direct||"";
+    const byKey=ctMap.get(imgKey(url));
+    if(byKey!==undefined)return byKey||"";
+    for(const [key,ct] of ctMap){
+      if(!ct||!key.endsWith(url))continue;
+      if(/[.\/]/.test(key.charAt(key.length-url.length-1)||""))return ct;
+    }
+    return "";
+  }
+  /* 找出一行里的插图链接：[[起,止,网址]]。verify 时按 ctMap 里的 Content-Type 认 */
+  function findImageLinks(s,verify,ctMap){
+    const out=[];
+    if(!s) return out;
+    const re=new RegExp(URL_BODY_SRC,"gi");
+    let m;
+    while((m=re.exec(s))){
+      if(!m[0].length){re.lastIndex++;continue;}
+      const url=m[0].replace(IMG_TRAIL,"");
+      if(!url) continue;
+      let ok;
+      if(verify&&ctMap){
+        const ct=ctOfLink(ctMap,url);
+        ok=IMG_MIMES.has(ct)||ct===IMG_PROBE;
+      }else ok=imgBySuffix(url);   /* 没给校验结果就退回按后缀，别凭空删图 */
+      if(ok) out.push([m.index,m.index+url.length,url]);
+    }
+    return out;
   }
 
   /* ---------- 段落修复：标点独占一行 / 句中断行 ----------
@@ -1077,7 +1445,7 @@ const Core = (() => {
      ② 一边被插了乱码/网址，归一后对不上，按 bigram 包含率认成同一句 → 删；
      ③ 整块「简体一份 + 繁体一份」，连两岸用词差异（螢幕/屏幕）都算差异，
         于是按偏移找出成对整块，整块删繁体那份。 */
-  function dedupeScriptDup(lines){
+  function dedupeScriptDup(lines,goneOut){
     const n=lines.length,keys=new Array(n).fill(""),sc=new Array(n).fill(0);
     const gone=new Set();
     for(let i=0;i<n;i++)if(lines[i]&&_isVerMark(lines[i]))gone.add(i);  /* 版本标记行：先去 */
@@ -1197,83 +1565,403 @@ const Core = (() => {
       if(gone.has(i)){dels.push(lines[i]);continue;}
       kept.push(lines[i]);
     }
+    if(goneOut) for(const i of gone) goneOut.add(i);   /* 汇总要靠它回找原文行号 */
     return {kept,dels};
   }
 
-  function cleanText(text,enabled,wantDel,custom){
-    /* 自定义规则先编译：drop 整行丢弃，cut 只挖掉命中的片段（与桌面版同序） */
+  function cleanText(text,enabled,wantDel,custom,imgCt,wantTrace){
+    /* 自定义规则先编译：drop 整行丢弃，cut 只挖掉命中的片段（与桌面版同序）。
+       第三项是规则说明（规则名，缺省用正则），「清洗内容汇总」标原因用 */
     const cust=[];
     for(const r of (custom||[])){
       if(!r||r.enabled===false)continue;
       const pat=String(r.pattern||"").trim();
       if(!pat)continue;
       const fl=String(r.flags||"").replace(/[^im]/g,"");
-      try{cust.push([new RegExp(pat,fl),r.action==="cut"?"cut":"drop"]);}catch(e){}
+      const lab=(String(r.name||"").trim()||pat).slice(0,60);
+      try{cust.push([new RegExp(pat,fl),r.action==="cut"?"cut":"drop",lab]);}catch(e){}
     }
     const on=new Set(enabled||[]);let removed=0,trimmed=0;let out=[];const del=new Set();const cut=new Map();
+    /* mark：行内被删掉的片段（原行里的位置区间），预览按范围标红用 */
+    const mark=new Map();
     let glued=0,merged=0,wrapSkip=0;
+    let blankN=0;                        /* 删掉的空行数：不进明细，只统计数量 */
+    /* 清理明细：line 是原文行号（从 1 起），rule 是命中的内置规则 id */
+    const trace=wantTrace?[]:null;
+    const noteTrace=(kind,txt,line,rule,label)=>{
+      if(!trace)return;
+      const t=String(txt==null?"":txt).trim();
+      if(t) trace.push({kind,text:t,line,rule:rule||"",label:label||""});
+    };
     /* 段落修复放在逐行规则之前：合并后网址/导航行才判得准 */
     if(on.has("punct")||on.has("unwrap")){
-      let ls=text.split(/\r\n|\r|\n/);
+      let ls=splitLines(text);
       if(on.has("punct")){const a=fixLineHeads(ls);ls=a[0];glued=a[1];}
       if(on.has("unwrap")){const a=unwrapParagraphs(ls);ls=a[0];merged=a[1];wrapSkip=a[2];}
       text=ls.join("\n");
     }
     let prevBlank=false;
     const useUrl=on.has("url"),useSite=on.has("site");
-    for(const raw of text.split(/\r\n|\r|\n/)){
+    /* 插图两条规则挂在「含网址的行」下面；imgcheck 只是把“按后缀认”换成“按响应头认” */
+    const useImg=on.has("imgkeep")&&(useUrl||useSite);
+    const useImgChk=useImg&&on.has("imgcheck");
+    let imgKept=0;
+    /* outSrc 与 out 一一对应：记每行来自原文第几行（简繁去重要回找行号） */
+    let outSrc=[];
+    let iRaw=0;
+    for(const raw of splitLines(text)){
+      iRaw++;
       let s=raw,lead=0;
       if(on.has("trim")){lead=raw.length-raw.replace(/^\s+/,"").length;s=s.trim();}
       if(on.has("half")) s=toHalfwidth(s);
-      let d=0,drop=false;
-      if(useUrl||useSite){
-        const r=adSplit(s,useUrl,useSite);
+      let d=0,drop=false,protect=false,rule="",label="";
+      if(useImg){
+        const links=findImageLinks(s,useImgChk,imgCt);
+        if(links.length){
+          if(useSite&&SITE_RE.test(s)&&residual(s)<AD_TINY){drop=true;rule="site";}  /* 宣传行里的图链一并删 */
+          else{protect=true;imgKept++;}                                             /* 这一行是插图，原样保留 */
+        }
+      }
+      if(drop){removed++;if(wantDel)del.add(raw);noteTrace("drop",s,iRaw,rule);continue;}
+      if(useUrl&&!protect){
+        /* 含网址的 HTML 标签整块清掉，标签外的文字保留 */
+        const before=s;
+        const st=stripUrlTags(s);
+        if(st[1]){
+          s=st[0];
+          if(!s.replace(/[ \u3000]+/g,"")){removed++;if(wantDel)del.add(raw);noteTrace("drop",before,iRaw,"url");continue;}
+          if(st[2].length){                   /* 标签是从行中间挖掉的：正文还在，只记被挖掉的那几段 */
+            noteTrace("tag",st[2].map(rg=>before.slice(rg[0],rg[1])).join(""),iRaw,"url");
+          }
+          if(wantDel&&st[2].length){          /* 记下被挖掉的那几段，预览要标红 */
+            const cur=mark.get(raw)||[];
+            for(const rg of st[2]) cur.push([rg[0]+lead,rg[1]+lead]);
+            mark.set(raw,cur);
+          }
+          if(on.has("trim")) s=s.trim();
+        }
+      }
+      if((useUrl||useSite)&&!protect){
+        const why={};
+        const r=adSplit(s,useUrl,useSite,why);
+        rule=why.rule||rule;
         if(r[0]==="drop") drop=true;
         else if(r[0]==="cut") d=r[1];
       }
       if(!drop&&!d){
-        if(on.has("nav")&&NAV_RE.test(s)) drop=true;
-        else if(on.has("moji")&&MOJI_RE.test(s)) drop=true;
+        if(on.has("nav")&&NAV_RE.test(s)){drop=true;rule="nav";}
+        else if(on.has("moji")&&MOJI_RE.test(s)){drop=true;rule="moji";}
       }
-      if(drop){removed++;if(wantDel)del.add(raw);continue;}
+      if(drop){removed++;if(wantDel)del.add(raw);noteTrace("drop",s,iRaw,rule,label);continue;}
       if(d){
-        s=s.slice(0,d).replace(/[ \u3000，,、；;：:]+$/,"");
-        if(!slim(s)){removed++;if(wantDel)del.add(raw);continue;}
+        /* 裁掉的是行尾那截广告：留下的是 s[:d]，被清洗掉的就是余下部分 */
+        const head=s.slice(0,d),tail=s.slice(d);
+        s=head.replace(/[ \u3000，,、；;：:]+$/,"");
+        if(!slim(s)){removed++;if(wantDel)del.add(raw);noteTrace("drop",head+tail,iRaw,rule,label);continue;}
         trimmed++;
+        noteTrace("cut",tail,iRaw,rule,label);
         if(wantDel)cut.set(raw,d+lead);
       }
       if(cust.length&&!drop){
+        let hit="";
         for(const item of cust){
           const m=item[0].exec(s);
           if(!m)continue;
-          if(item[1]==="cut") s=s.slice(0,m.index)+s.slice(m.index+m[0].length);
+          if(item[1]==="cut"){hit=m[0];s=s.slice(0,m.index)+s.slice(m.index+m[0].length);}
           else drop=true;
+          rule="custom";label=item[2];
           break;
         }
-        if(drop){removed++;if(wantDel)del.add(raw);continue;}
+        if(drop){removed++;if(wantDel)del.add(raw);noteTrace("drop",s,iRaw,rule,label);continue;}
+        if(hit) noteTrace("custom",hit,iRaw,rule,label);
       }
-      if(on.has("blank")&&!s){removed++;if(wantDel)del.add(raw);continue;}
+      if(on.has("blank")&&!s){removed++;blankN++;if(wantDel)del.add(raw);continue;}
       if(on.has("blank2")&&!s){
-        if(prevBlank){removed++;if(wantDel)del.add(raw);continue;}
-        prevBlank=true;out.push("");continue;}
+        if(prevBlank){removed++;blankN++;if(wantDel)del.add(raw);continue;}
+        prevBlank=true;out.push("");outSrc.push(iRaw);continue;}
       prevBlank=false;
       if(on.has("indent")&&s) s="　　"+s;
-      out.push(s);
+      out.push(s);outSrc.push(iRaw);
     }
     let jsdup=0;
     if(on.has("jsdup")&&out.length){
-      const r=dedupeScriptDup(out);
+      const gone=new Set();
+      const r=dedupeScriptDup(out,gone);
       if(r.dels.length){
         jsdup=r.dels.length;removed+=jsdup;
         if(wantDel)for(const x of r.dels)del.add(x);
+        if(trace) for(const j of [...gone].sort((x,y)=>x-y)) noteTrace("jsdup",out[j],outSrc[j],"jsdup");
         out=r.kept;
+        outSrc=outSrc.filter((_,i)=>!gone.has(i));
       }
     }
     let a=0,b=out.length;
     while(a<b&&!out[a]) a++;
     while(b>a&&!out[b-1]) b--;
-    out=out.slice(a,b);
-    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut,jsdup,merged,glued,wrapSkip};
+    if(a||b!==out.length) blankN+=a+(out.length-b);   /* 掐掉的首尾空行也算删掉的空行 */
+    out=out.slice(a,b);outSrc=outSrc.slice(a,b);
+    if(trace) trace.sort((x,y)=>x.line-y.line);      /* 简繁去重的条目是循环后补记的 */
+    return {text:out.join("\n")+(out.length?"\n":""),removed,trimmed,del,cut,mark,jsdup,merged,glued,wrapSkip,img:imgKept,
+      blank:blankN,trace:trace||[]};
+  }
+
+  /* ---------- 插图链接校验（异步：请求/探测 + 结果缓存） ---------- */
+  function probeImage(url,timeout){
+    if(typeof Image==="undefined") return Promise.resolve("");
+    return new Promise(res=>{
+      let done=false;
+      const img=new Image();
+      const finish=v=>{if(done)return;done=true;img.onload=null;img.onerror=null;res(v);};
+      setTimeout(()=>finish(""),timeout);
+      img.onload=()=>finish(img.naturalWidth>0?IMG_PROBE:"");
+      img.onerror=()=>finish("");
+      img.referrerPolicy="no-referrer";
+      img.src=url;
+    });
+  }
+  async function imgContentType(url,timeout){
+    const full=imgFullUrl(url);
+    if(!full) return "";
+    const ac=(typeof AbortController!=="undefined")?new AbortController():null;
+    const tid=setTimeout(()=>{if(ac)ac.abort();},timeout);
+    try{
+      for(const method of ["HEAD","GET"]){
+        let resp;
+        try{
+          resp=await fetch(full,{method,cache:"no-store",mode:"cors",signal:ac?ac.signal:undefined});
+        }catch(e){break;}                       /* 跨域/网络失败 → 交给图片探测 */
+        if(!resp.ok){
+          if(method==="HEAD"&&(resp.status===403||resp.status===405||resp.status===501)) continue;
+          return "";                            /* 404/500 等：链接已失效 */
+        }
+        try{if(resp.body&&resp.body.cancel)resp.body.cancel();}catch(e){}
+        const ct=(resp.headers.get("content-type")||"").split(";")[0].trim().toLowerCase();
+        if(ct) return ct;
+        break;
+      }
+    }finally{clearTimeout(tid);}
+    return probeImage(full,timeout);
+  }
+  /* 把整篇文本里的链接各校验一次，返回 Map(网址 → Content-Type)；同一条只算一次 */
+  async function verifyImageLinks(text,limit,timeout){
+    limit=limit||6;timeout=timeout||IMG_TIMEOUT;
+    const map=new Map(),todo=[];
+    const re=new RegExp(URL_BODY_SRC,"gi");
+    for(const line of String(text||"").split(/\r\n|\r|\n/)){
+      re.lastIndex=0;
+      let m;
+      while((m=re.exec(line))){
+        if(!m[0].length){re.lastIndex++;continue;}
+        const url=m[0].replace(IMG_TRAIL,"");
+        /* 首页/目录页一眼不是图：直接判空、不联网（同 fetchImages 的粗筛） */
+        if(url&&!map.has(url)){map.set(url,"");if(imgWorthTrying(url))todo.push(url);}
+      }
+    }
+    let i=0;
+    const worker=async()=>{
+      while(i<todo.length){
+        const url=todo[i++];
+        map.set(url,await imgContentType(url,timeout));
+      }
+    };
+    const n=Math.min(limit,todo.length);
+    if(n) await Promise.all(Array.from({length:n},worker));
+    return map;
+  }
+  /* 异步清洗：imgcheck 开启时先把链接验一遍，再跑同步的 cleanText。
+     ctMap 若已由 fetchImages 那一趟填好，就不再单独请求（校验与下载合并）。 */
+  async function cleanTextAsync(text,enabled,wantDel,custom,ctMap,wantTrace){
+    const on=new Set(enabled||[]);
+    const useImg=on.has("imgkeep")&&(on.has("url")||on.has("site"));
+    let map=ctMap||null;
+    if(useImg&&on.has("imgcheck")&&!map) map=await verifyImageLinks(text);
+    return cleanText(text,enabled,wantDel,custom,map,wantTrace);
+  }
+
+  /* ---------- 插图下载（打进 EPUB / 写到目录） ----------
+     与桌面版同一套判据，区别在于浏览器只能读到带 CORS 头的图片字节：
+     fetch 拿不到正文时退回 <img> 探测，判定照旧，只是没法把图存下来。 */
+  const IMG_HREF_DIR="images/";
+  const IMG_MAX_TRIES=300;             /* 一本书最多试这么多条链接 */
+  const IMG_EXT_BY_MIME={"image/jpeg":".jpg","image/jpg":".jpg","image/png":".png",
+    "image/gif":".gif","image/webp":".webp","image/bmp":".bmp"};
+  const IMG_MIME_BY_EXT={".jpg":"image/jpeg",".jpeg":"image/jpeg",".png":"image/png",
+    ".gif":"image/gif",".webp":"image/webp",".bmp":"image/bmp"};
+  const IMG_SAFE_EXT=/(jpe?g|png|gif|webp|bmp)$/i;
+  function imgKey(u){return imgFullUrl(u)||String(u||"").trim().replace(IMG_TRAIL,"");}
+  /* 取标签里某个属性：双引号、单引号、不带引号三种写法都认 */
+  function tagAttr(tag,name){
+    const re=new RegExp(name+"\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'<>]+))","i");
+    const m=re.exec(String(tag||""));
+    return m?String(m[1]||m[2]||m[3]||"").trim():"";
+  }
+  function htmlImageSources(s){
+    const out=[],re=/<img\b[^<>]*>/gi;let m;
+    while((m=re.exec(String(s||"")))){
+      const u=tagAttr(m[0],"src");
+      if(u)out.push(u);
+    }
+    return out;
+  }
+  /* 整篇里的全部链接（按链接去重）：下载的候选，也是清洗前那趟校验的清单 */
+  function imageLinksInText(text){
+    const seen=new Set(),out=[];
+    for(const line of String(text||"").split(/\r\n|\r|\n/)){
+      const re=new RegExp(URL_BODY_SRC,"gi");let m;
+      const found=[];
+      while((m=re.exec(line))){
+        if(!m[0].length){re.lastIndex++;continue;}
+        const u=m[0].replace(IMG_TRAIL,"");
+        if(u)found.push(u);
+      }
+      found.push(...htmlImageSources(line));
+      /* 裸域名规则会把长地址从中间截断（//cdn2.x.com/a.jpg 只认出 x.com/a.jpg），
+         同一行里被另一条完整地址包含的短地址直接丢掉，省一次必然失败的请求 */
+      const solid=found.filter(u=>!found.some(o=>{
+        const a=String(o),b=String(u);
+        if(a.length<=b.length||!a.endsWith(b))return false;
+        return /[.\/]/.test(a.charAt(a.length-b.length-1)||"");
+      }));
+      for(const u of solid){
+        const k=imgKey(u);
+        if(k&&!seen.has(k)){seen.add(k);out.push(u);}
+      }
+    }
+    return out;
+  }
+  /* 认图片后缀：先看文件头（最可靠），再看 Content-Type，最后看链接 */
+  function imgExtOfBytes(b){
+    if(!b||!b.length)return"";
+    if(b[0]===0xFF&&b[1]===0xD8&&b[2]===0xFF)return".jpg";
+    if(b[0]===0x89&&b[1]===0x50&&b[2]===0x4E&&b[3]===0x47)return".png";
+    if(b[0]===0x47&&b[1]===0x49&&b[2]===0x46)return".gif";
+    if(b[0]===0x52&&b[1]===0x49&&b[2]===0x46&&b[3]===0x46
+      &&b[8]===0x57&&b[9]===0x45&&b[10]===0x42&&b[11]===0x50)return".webp";
+    if(b[0]===0x42&&b[1]===0x4D)return".bmp";
+    return"";
+  }
+  function imgExtOfUrl(u){
+    const p=String(imgFullUrl(u)||"").split(/[?#]/)[0];
+    const m=/\.([A-Za-z0-9]+)$/.exec(p);
+    if(!m)return"";
+    const e="."+m[1].toLowerCase();
+    return IMG_SAFE_EXT.test(e)?e:"";
+  }
+  /* 请求一张图，返回 {got,timedOut,retry}。retry 只在“请求根本没发出去/被掐掉”
+     （跨域被拒、混合内容、DNS 失败）时为真 —— 这种换个协议再试可能就好了；
+     超时和 404/403 是站点层面的，重试只是白等 */
+  async function fetchImageOnce(full,timeout){
+    const ac=(typeof AbortController!=="undefined")?new AbortController():null;
+    let timedOut=false;
+    const tid=setTimeout(()=>{timedOut=true;if(ac)ac.abort();},timeout);
+    try{
+      /* referrerPolicy=no-referrer 与桌面版一致：不少站点按 Referer 判防盗链，
+         浏览器又发不了自定义 UA/Referer，能去掉的就别带 */
+      const resp=await fetch(full,{method:"GET",mode:"cors",credentials:"omit",
+        referrerPolicy:"no-referrer",cache:"no-store",signal:ac?ac.signal:undefined});
+      if(!resp.ok)return {got:null,timedOut:false};
+      const ct=(resp.headers.get("content-type")||"").split(";")[0].trim().toLowerCase();
+      const data=new Uint8Array(await resp.arrayBuffer());
+      if(!data.length)return {got:null,timedOut:false};
+      const byHead=imgExtOfBytes(data);
+      /* 200 但返回网页：既认不出文件头、Content-Type 也不是图片 → 丢掉 */
+      if(!byHead&&!ct.startsWith("image/"))return {got:null,timedOut:false};
+      const ext=byHead||IMG_EXT_BY_MIME[ct]||imgExtOfUrl(full);
+      if(!ext)return {got:null,timedOut:false};
+      return {got:{data:data,ext:ext,mime:IMG_MIME_BY_EXT[ext]||ct||"image/jpeg",
+        ct:ct||IMG_MIME_BY_EXT[ext]},timedOut:false};
+    }catch(e){
+      return {got:null,timedOut:timedOut,retry:!timedOut};
+    }finally{clearTimeout(tid);}
+  }
+  /* 候选地址：原样 + 协议互换。页面是 https 时 http 图会被当混合内容直接掐掉，
+     反过来也有站点只认 https，失败一次换个协议常常就好了 */
+  function imgUrlCandidates(url){
+    const out=[],full=imgFullUrl(url);
+    if(full)out.push(full);
+    if(/^http:\/\//i.test(full)){
+      const alt="https://"+full.slice(7);
+      if(out.indexOf(alt)<0)out.push(alt);
+    }else if(/^https:\/\//i.test(full)){
+      const alt="http://"+full.slice(8);
+      if(out.indexOf(alt)<0)out.push(alt);
+    }
+    return out;
+  }
+  /* 取一张图：成功返回 {data,ext,mime,ct}，取不到返回 null（跨域挡住的也算取不到） */
+  async function fetchImageBytes(url,timeout){
+    timeout=timeout||IMG_DL_TIMEOUT;
+    for(const full of imgUrlCandidates(url)){
+      const r=await fetchImageOnce(full,timeout);
+      if(r.got)return r.got;
+      if(!r.retry)break;
+    }
+    return null;
+  }
+  /* 阅读器对 webp/gif/bmp 支持参差：转成 jpg 再打包（canvas 转不动就保留原样） */
+  async function imageToJpeg(got){
+    if(!got||got.ext===".jpg"||got.ext===".jpeg"||got.ext===".png")return got;
+    try{
+      const bmp=await createImageBitmap(new Blob([got.data]));
+      const cv=document.createElement("canvas");
+      cv.width=bmp.width;cv.height=bmp.height;
+      const g=cv.getContext("2d");
+      g.fillStyle="#ffffff";g.fillRect(0,0,cv.width,cv.height);  /* 透明底转 JPEG 会发黑 */
+      g.drawImage(bmp,0,0);
+      const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.88));
+      if(!blob)return got;
+      return {data:new Uint8Array(await blob.arrayBuffer()),ext:".jpg",
+        mime:"image/jpeg",ct:"image/jpeg"};
+    }catch(e){return got;}
+  }
+  /* 全篇候选链接各请求一次：既当「下载」，也当「校验」。
+     首页/目录页这类一眼不是图的链接先本地拦掉，不浪费请求、也不占尝试名额。
+     opt.progress(done,total) 每试完一条调一次：一本书几百张图时靠它显示进度。
+     返回 {map, ctMap, checked, images, missed} —— ctMap 可直接喂给 cleanText */
+  async function fetchImages(text,opt){
+    opt=opt||{};
+    const limit=opt.limit||6,timeout=opt.timeout||IMG_DL_TIMEOUT;
+    const urls=imageLinksInText(text).filter(imgWorthTrying).slice(0,IMG_MAX_TRIES);
+    const total=urls.length;
+    const map=new Map(),ctMap=new Map();
+    let i=0,images=0,missed=0,done=0;
+    const worker=async()=>{
+      while(i<urls.length){
+        const u=urls[i++];
+        const got=await imageToJpeg(await fetchImageBytes(u,timeout));
+        let ct="";
+        if(got){
+          images++;map.set(imgKey(u),got);ct=got.ct||IMG_MIME_BY_EXT[got.ext]||"";
+        }else{
+          /* 拿不到字节：退回图片探测，保证「按响应头认图」的清洗判据不变。
+             探测通过却没有字节 = 确实是图，但站点没给跨域许可（missed） */
+          ct=await probeImage(imgFullUrl(u),IMG_TIMEOUT);
+          if(ct)missed++;
+        }
+        ctMap.set(u,ct||"");
+        const k2=imgKey(u);
+        if(k2&&k2!==u)ctMap.set(k2,ct||"");   /* 归一化写法也存一份，清洗时好查 */
+        done++;
+        if(opt.progress){try{opt.progress(done,total);}catch(e){}}
+      }
+    };
+    const n=Math.min(limit,urls.length);
+    if(n)await Promise.all(Array.from({length:n},worker));
+    return {map:map,ctMap:ctMap,checked:total,images:images,missed:missed};
+  }
+  /* 按清洗后正文里的顺序编号（001.jpg…），返回 Map(链接键 → {name,data,mime}) */
+  function imagesForEpub(fetched,cleaned){
+    const out=new Map();
+    if(!fetched)return out;
+    let n=0;
+    for(const url of imageLinksInText(cleaned)){
+      const got=fetched.map.get(imgKey(url));
+      if(!got||!got.data)continue;
+      n++;
+      out.set(imgKey(url),{name:String(n).padStart(3,"0")+(got.ext||".jpg"),
+        data:got.data,mime:got.mime||"image/jpeg"});
+    }
+    return out;
   }
 
   /* ---------- 分章（对齐 split_chapters） ---------- */
@@ -1346,7 +2034,7 @@ const Core = (() => {
         .filter(x=>x.trim()&&!META_LINE.test(x.trim()));
       if(!keep.length) chapters.shift();
     }
-    if(!chapters.length) chapters=[{t:"全文",b:text.trim()}];
+    if(!chapters.length) chapters.push({t:"全文",b:text.trim()});
     return chapters;
   }
 
@@ -1397,34 +2085,942 @@ const Core = (() => {
     return total;
   }
 
-  /* ---------- 版面主题（与桌面版 THEMES / _THEME_CSS 逐字节一致） ---------- */
+  /* ---------- 版面主题：样式内嵌（与 styles/*.css 逐字节一致，单文件运行） ---------- */
   const THEMES=[
-    {id:"classic",name:"传统书籍",name_en:"Classic print",desc:"宋体 · 首行缩进两字 · 行距宽松",desc_en:"Song serif, indent, relaxed"},
-    {id:"reading",name:"现代阅读",name_en:"Modern reading",desc:"段间空一行 · 不缩进 · 黑体标题",desc_en:"Spaced paragraphs, no indent"},
-    {id:"compact",name:"紧凑省纸",name_en:"Compact",desc:"小行距 · 密排 · 适合快速通读",desc_en:"Tight leading, dense"},
-    {id:"large",name:"大字易读",name_en:"Large print",desc:"字号放大 · 行距更宽 · 护眼",desc_en:"Bigger type, wider leading"}
-  ];
-  const THEME_CSS={
-    classic:'@charset "utf-8";\n'
-      +'body{margin:1.2em 1em;line-height:1.75;font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
-      +'h2{font-size:1.25em;margin:1.4em 0 .8em;text-align:center;font-weight:normal;line-height:1.4;}\n'
-      +'p{margin:0 0 .6em;text-indent:2em;font-size:1em;}\n',
-    reading:'@charset "utf-8";\n'
-      +'body{margin:1.5em 1.25em;line-height:1.9;font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
-      +'h2{font-family:"Heiti SC","STHeiti","SimHei",sans-serif;font-size:1.1em;margin:1.2em 0 1.1em;text-align:left;font-weight:600;letter-spacing:.02em;}\n'
-      +'p{margin:0 0 1em;text-indent:0;font-size:1em;}\n',
-    compact:'@charset "utf-8";\n'
-      +'body{margin:.7em .8em;line-height:1.45;font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
-      +'h2{font-size:1.1em;margin:.9em 0 .5em;text-align:center;font-weight:normal;}\n'
-      +'p{margin:0;text-indent:2em;font-size:.95em;}\n',
-    large:'@charset "utf-8";\n'
-      +'body{margin:1.5em 1.2em;line-height:2.05;font-size:1.15em;font-family:"Songti SC","STSong","SimSun",serif;text-align:justify;}\n'
-      +'h2{font-size:1.3em;margin:1.6em 0 1em;text-align:center;font-weight:normal;}\n'
-      +'p{margin:0 0 .7em;text-indent:2em;}\n'
-  };
-  function themeCss(tid){return THEME_CSS[tid]||THEME_CSS.classic;}
-  function themeById(tid){return THEMES.find(t=>t.id===tid)||THEMES[0];}
+    {id:`01-minimal.css`,name:`素笺白 Minimal White`,desc:`纯白无彩色的极简排版，章名居中并配一道细线，插图不加边框，图注浅灰居中。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 素笺白 Minimal White
+* @theme-version: 1.0
+* @description: 纯白无彩色的极简排版，章名居中并配一道细线，插图不加边框，图注浅灰居中。
+*/
 
+html {
+  background: #ffffff;
+}
+
+body {
+  margin: 1.9em 1.45em;
+  color: #1d1d1f;
+  line-height: 1.92;
+  text-align: justify;
+  background: #ffffff;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.4em 0 1.9em;
+  padding: 0;
+  text-align: center;
+  letter-spacing: 0.16em;
+  line-height: 1.6;
+  color: #111111;
+}
+
+h2::after {
+  content: "";
+  display: block;
+  width: 2.4em;
+  height: 1px;
+  margin: 1em auto 0;
+  background: #d9d6d0;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.92;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 0;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.85em 0 0;
+  text-indent: 0;
+  text-align: center;
+  color: #8c8c8e;
+  letter-spacing: 0.08em;
+  line-height: 1.6;
+}
+`},
+    {id:`02-washi.css`,name:`和纸暖褐 Washi Paper`,desc:`米黄纸底配茶褐文字，章名上下各一道细线，插图嵌入纸白内框，旧平装书的温度。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 和纸暖褐 Washi Paper
+* @theme-version: 1.0
+* @description: 米黄纸底配茶褐文字，章名上下各一道细线，插图嵌入纸白内框，旧平装书的温度。
+*/
+
+html {
+  background: #faf5ec;
+}
+
+body {
+  margin: 1.8em 1.4em;
+  color: #4a3f33;
+  line-height: 1.95;
+  text-align: justify;
+  background: #faf5ec;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.2em 0 1.8em;
+  padding: 0.75em 0.4em;
+  text-align: center;
+  letter-spacing: 0.2em;
+  line-height: 1.65;
+  color: #6b5138;
+  border-top: 1px solid #d8c4a6;
+  border-bottom: 1px solid #d8c4a6;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.95em;
+  text-indent: 2em;
+  line-height: 1.95;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 10px;
+  background: #fffdf7;
+  border: 1px solid #e2d2b8;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.75em 0 0;
+  text-indent: 0;
+  text-align: center;
+  color: #8d7355;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+}
+`},
+    {id:`03-indigo.css`,name:`靛蓝典籍 Indigo Classic`,desc:`冷灰蓝页底配靛青章名，标题上单线下双线，插图为白卡细边，清醒克制的文库本观感。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 靛蓝典籍 Indigo Classic
+* @theme-version: 1.0
+* @description: 冷灰蓝页底配靛青章名，标题上单线下双线，插图为白卡细边，清醒克制的文库本观感。
+*/
+
+html {
+  background: #f5f7fa;
+}
+
+body {
+  margin: 1.9em 1.5em;
+  color: #232f3f;
+  line-height: 1.9;
+  text-align: justify;
+  background: #f5f7fa;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.3em 0 1.9em;
+  padding: 0.8em 0.3em;
+  text-align: center;
+  letter-spacing: 0.14em;
+  line-height: 1.6;
+  color: #2a3f61;
+  border-top: 1px solid #c2cfe1;
+  border-bottom: 3px double #c2cfe1;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.9;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #d5dfec;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.8em 0 0.15em;
+  text-indent: 0;
+  text-align: center;
+  color: #6b7f99;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+}
+`},
+    {id:`04-cinnabar.css`,name:`朱印素纸 Cinnabar Seal`,desc:`白底只用一种朱砂红，章名两侧各一枚方印，插图细边，图注偏红褐，如藏书印般克制。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 朱印素纸 Cinnabar Seal
+* @theme-version: 1.0
+* @description: 白底只用一种朱砂红，章名两侧各一枚方印，插图细边，图注偏红褐，如藏书印般克制。
+*/
+
+html {
+  background: #ffffff;
+}
+
+body {
+  margin: 1.9em 1.45em;
+  color: #241f1c;
+  line-height: 1.9;
+  text-align: justify;
+  background: #ffffff;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.3em 0 1.8em;
+  padding: 0 0 0.85em;
+  text-align: center;
+  letter-spacing: 0.15em;
+  line-height: 1.62;
+  color: #1f1a17;
+  border-bottom: 1px solid #ecdcd9;
+}
+
+h2::before,
+h2::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 0.7em;
+  vertical-align: 0.25em;
+  background: #b23a35;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.9;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 9px;
+  background: #fffdfd;
+  border: 1px solid #f0e1df;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.78em 0 0;
+  text-indent: 0;
+  text-align: center;
+  color: #a2726d;
+  letter-spacing: 0.07em;
+  line-height: 1.6;
+}
+`},
+    {id:`05-grid.css`,name:`墨格硬边 Ink Grid`,desc:`纯黑直角线框风格，章名做成带硬投影的线框牌匾，图注反白成黑条，个性最强。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 墨格硬边 Ink Grid
+* @theme-version: 1.0
+* @description: 纯黑直角线框风格，章名做成带硬投影的线框牌匾，图注反白成黑条，个性最强。
+*/
+
+html {
+  background: #ffffff;
+}
+
+body {
+  margin: 1.8em 1.4em;
+  color: #141414;
+  line-height: 1.86;
+  text-align: justify;
+  background: #ffffff;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2em 0 1.8em;
+  padding: 0.8em 0.6em;
+  text-align: center;
+  letter-spacing: 0.1em;
+  line-height: 1.55;
+  color: #0d0d0d;
+  border: 1px solid #141414;
+  background: #ffffff;
+  box-shadow: 5px 5px 0 #ededed;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.88em;
+  text-indent: 2em;
+  line-height: 1.86;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 1.9em 0;
+  padding: 0;
+  border: 1px solid #141414;
+  background: #ffffff;
+  text-align: center;
+  box-shadow: 6px 6px 0 #e8e8e8;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0;
+  padding: 0.5em 0.4em;
+  text-indent: 0;
+  text-align: center;
+  color: #ffffff;
+  background: #141414;
+  letter-spacing: 0.14em;
+  line-height: 1.6;
+}
+`},
+    {id:`06-celadon.css`,name:`青瓷柔雾 Celadon Mist`,desc:`淡青灰页底，圆角十像素加柔和投影，章名一道青绿下划线，插图收进白卡，温和松弛。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 青瓷柔雾 Celadon Mist
+* @theme-version: 1.0
+* @description: 淡青灰页底，圆角十像素加柔和投影，章名一道青绿下划线，插图收进白卡，温和松弛。
+*/
+
+html {
+  background: #f3f7f6;
+}
+
+body {
+  margin: 1.9em 1.5em;
+  color: #2c3b39;
+  line-height: 1.94;
+  text-align: justify;
+  background: #f3f7f6;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.2em 0 1.8em;
+  padding: 0 0 0.85em;
+  text-align: center;
+  letter-spacing: 0.16em;
+  line-height: 1.6;
+  color: #3a5f57;
+  border-bottom: 2px solid #d2e3de;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.92em;
+  text-indent: 2em;
+  line-height: 1.94;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 10px 10px 6px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 0;
+  text-align: center;
+  box-shadow: 0 2px 9px rgba(74, 108, 101, 0.13);
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+  border-radius: 4px;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.7em 0 0.25em;
+  text-indent: 0;
+  text-align: center;
+  color: #7b918c;
+  letter-spacing: 0.08em;
+  line-height: 1.6;
+}
+`},
+    {id:`07-amber.css`,name:`暖橘夜读 Amber Lamp`,desc:`奶油底配琥珀橙，章名虚线收尾，插图浅描边加微投影，像台灯下摊开的一页纸。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 暖橘夜读 Amber Lamp
+* @theme-version: 1.0
+* @description: 奶油底配琥珀橙，章名虚线收尾，插图浅描边加微投影，像台灯下摊开的一页纸。
+*/
+
+html {
+  background: #fdf9f2;
+}
+
+body {
+  margin: 1.85em 1.45em;
+  color: #3d3229;
+  line-height: 1.92;
+  text-align: justify;
+  background: #fdf9f2;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.2em 0 1.8em;
+  padding: 0 0 0.8em;
+  text-align: center;
+  letter-spacing: 0.12em;
+  line-height: 1.6;
+  color: #8a5a2b;
+  border-bottom: 1px dashed #e3cbb0;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.92em;
+  text-indent: 2em;
+  line-height: 1.92;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 9px 9px 5px;
+  background: #fffdf8;
+  border: 1px solid #f1e1cc;
+  border-radius: 4px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(165, 125, 80, 0.1);
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.72em 0 0.2em;
+  text-indent: 0;
+  text-align: center;
+  color: #a8825c;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+}
+`},
+    {id:`08-editorial.css`,name:`报刊排印 Editorial`,desc:`左对齐刊头式章名，上细下粗两道压线；首段不缩进作导语，图注左对齐并压一道细线。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 报刊排印 Editorial
+* @theme-version: 1.0
+* @description: 左对齐刊头式章名，上细下粗两道压线；首段不缩进作导语，图注左对齐并压一道细线。
+*/
+
+html {
+  background: #ffffff;
+}
+
+body {
+  margin: 1.85em 1.45em;
+  color: #22262b;
+  line-height: 1.88;
+  text-align: justify;
+  background: #ffffff;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2em 0 1.7em;
+  padding: 0.7em 0 0.75em;
+  text-align: left;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  color: #15181c;
+  border-top: 1px solid #22262b;
+  border-bottom: 3px solid #22262b;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.88;
+}
+
+/* 标题后的首段不缩进，作导语处理 */
+h2 + p {
+  text-indent: 0;
+  color: #2e343b;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 0;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.7em 0 0;
+  padding-top: 0.5em;
+  text-indent: 0;
+  text-align: left;
+  color: #8a8f95;
+  letter-spacing: 0.03em;
+  line-height: 1.6;
+  border-top: 1px solid #e8e8e8;
+}
+`},
+    {id:`09-card.css`,name:`卡片浮层 Soft Card`,desc:`浅灰底上，章名与插图各自成为白色圆角卡片并带轻投影，正文直接落在灰面，层次分明。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 卡片浮层 Soft Card
+* @theme-version: 1.0
+* @description: 浅灰底上，章名与插图各自成为白色圆角卡片并带轻投影，正文直接落在灰面，层次分明。
+*/
+
+html {
+  background: #f1f2f4;
+}
+
+body {
+  margin: 1.7em 1.3em;
+  color: #33383f;
+  line-height: 1.9;
+  text-align: justify;
+  background: #f1f2f4;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 1.9em 0 1.8em;
+  padding: 0.95em 1em;
+  text-align: center;
+  letter-spacing: 0.12em;
+  line-height: 1.55;
+  color: #2b3440;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 5px rgba(30, 40, 55, 0.08);
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.9;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 1.9em 0;
+  padding: 10px 10px 4px;
+  background: #ffffff;
+  border-radius: 8px;
+  border: 0;
+  text-align: center;
+  box-shadow: 0 1px 6px rgba(30, 40, 55, 0.09);
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+  border-radius: 4px;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.7em 0 0.3em;
+  text-indent: 0;
+  text-align: center;
+  color: #8d95a1;
+  letter-spacing: 0.08em;
+  line-height: 1.6;
+}
+`},
+    {id:`10-ink.css`,name:`苍青水墨 Still Ink`,desc:`极宽行距与字距，标题上方一道竖笔，插图完全无框，安静通透的留白气质。`,version:`1.0`,css:`@charset "utf-8";
+/*!
+* @theme-name: 苍青水墨 Still Ink
+* @theme-version: 1.0
+* @description: 极宽行距与字距，标题上方一道竖笔，插图完全无框，安静通透的留白气质。
+*/
+
+html {
+  background: #fcfcfa;
+}
+
+body {
+  margin: 2.1em 1.6em;
+  color: #2a2f2e;
+  line-height: 2.02;
+  text-align: justify;
+  background: #fcfcfa;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.6em 0 2em;
+  padding: 0 0 1em;
+  text-align: center;
+  letter-spacing: 0.3em;
+  line-height: 1.65;
+  color: #3d4f4b;
+  border-bottom: 1px solid #e2e6e2;
+}
+
+h2::before {
+  content: "";
+  display: block;
+  width: 1px;
+  height: 1.5em;
+  margin: 0 auto 1em;
+  background: #c2cbc7;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.95em;
+  text-indent: 2em;
+  line-height: 2.02;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2.3em 0;
+  padding: 0;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 1em 0 0;
+  text-indent: 0;
+  text-align: center;
+  color: #93a09c;
+  letter-spacing: 0.3em;
+  line-height: 1.7;
+}
+`}
+  ];
+  const DEFAULT_THEME="01-minimal.css";
+  const THEME_CSS={};            /* id -> css 正文（内置 + 导入的自定义） */
+  THEMES.forEach(t=>{THEME_CSS[t.id]=t.css;});
+  function isCustomTheme(tid){return String(tid||"").indexOf("custom:")===0;}
+  function themeCss(tid){return THEME_CSS[tid]||THEME_CSS[DEFAULT_THEME]||"";}
+  function themeById(tid){return THEMES.find(t=>t.id===tid)||null;}
+  /* 主题名「中文 English」两段，按语言取一半 */
+  function themeTitle(t,en){
+    if(!t)return "";
+    const nm=String(t.name||t.id||"").trim();
+    const m=nm.match(/^([^\x00-\x7f]+)\s+([\x20-\x7e].*)$/);
+    return m?(en?m[2]:m[1]):nm;
+  }
+  function addTheme(t){          /* 导入自定义 CSS 时挂进来 */
+    if(!t||!t.id||!t.css)return null;
+    t.custom=t.custom!==false;
+    const i=THEMES.findIndex(x=>x.id===t.id);
+    if(i>=0)THEMES[i]=t;else THEMES.push(t);
+    THEME_CSS[t.id]=t.css;
+    return t;
+  }
+  /* 自定义 CSS：从文件内容里读 @theme-name / @description，读不到就用文件名 */
+  function parseThemeCss(css,fileName){
+    const meta={};
+    const re=/@(?:theme-)?([A-Za-z]+)\s*:\s*([^\r\n*]+)/g;let m;
+    while((m=re.exec(css))){const k=m[1].toLowerCase();if(!(k in meta))meta[k]=m[2].trim();}
+    const file=String(fileName||"custom.css").replace(/^.*[\\/]/,"");
+    const stem=file.replace(/\.[^.]+$/,"");
+    return {id:"custom:"+file, name:meta.name||stem, named:!!meta.name,
+            desc:meta.description||"", version:meta.version||"",
+            css:css||"", custom:true};
+  }
+
+  /* ---------- 主题预览页（与桌面版 theme_preview_html 同一套结构） ---------- */
+  const PREVIEW_IMG="data:image/svg+xml;charset=utf-8,"+
+    "%3Csvg xmlns='http://www.w3.org/2000/svg' width='720' height='460'%3E"+
+    "%3Crect width='720' height='460' fill='%23c9d2da'/%3E"+
+    "%3Ccircle cx='556' cy='118' r='56' fill='%23e7ecf0'/%3E"+
+    "%3Cpath d='M0 372 L196 236 L384 306 L556 198 L720 322 L720 460 L0 460 Z'"+
+    " fill='%23a7b5c1'/%3E%3C/svg%3E";
+  const PREVIEW_TEXT=`  <p>黄昏时山道上起了雾，挑担的人把担子换到另一边肩头，一级一级往下走。石阶被雨水浸得发暗，鞋底踩上去，能听见细小的水声。</p>
+  <p>溪水从石缝里穿出来，声音不大，却盖过了远处的雷。树下有人歇脚，把斗笠摘下来搁在膝上，帽檐还在一滴一滴地落水。</p>
+  <p>“再走半个时辰就到镇上了。”他说，“这雨最多下到掌灯时分。”</p>
+  <div class="pic"><img class="pic" src="${PREVIEW_IMG}" alt=""/></div>
+  <p class="cap">图一 · 山道、溪桥与雨中的石阶</p>
+  <p>雾一路漫上来，把山下的屋脊、田埂和那条浅溪都收拢在里头。等到掌灯时分，镇上的人家亮起第一盏灯，顺着石阶往下看，像一粒落进灰白里的琥珀。</p>`;
+  const PREVIEW_TEXT_LONG=PREVIEW_TEXT+`
+  <p>桥是老石桥，桥面的石板被磨得中间凹下去，雨天里积着浅浅一线水。过桥时他放轻了脚步，怕担子晃，也怕踩滑了。</p>
+  <p>桥头有一间茶棚，竹帘半卷。掌柜的正往炉子里添炭，见他进来也不多话，只把一碗热茶推过来，茶面上浮着两片碎叶。</p>
+  <p>“今年的雨来得早。”掌柜的说。</p>
+  <p>“早。”他把斗笠靠在门边，“田里的稻子还差半个月。”</p>
+  <p>雨声在竹帘外面铺开，像有人在远处筛豆子。棚角堆着半旧的箩筐，绳索上挂着一串晒干的红辣椒，颜色在昏灯下显得沉。</p>
+  <p>喝完茶，雨果然小了。他重新挑起担子走出茶棚，石阶尽头是镇子的灯，一盏接一盏，把水洼照亮。</p>
+  <p>后来他常想起那一晚：山道、溪桥、半碗剩茶，还有雨里那盏始终没有熄的灯。</p>`;
+  function themePreviewHtml(css,full){
+    return "<!DOCTYPE html>\n<html xml:lang=\"zh-CN\">\n<head>\n"
+      +"  <meta charset=\"utf-8\"/>\n  <title>版面主题预览</title>\n"
+      +"  <style>\n"+(css||"")+"\n  </style>\n</head>\n<body>\n"
+      +"  <h2>第一章 山雨</h2>\n"+(full?PREVIEW_TEXT_LONG:PREVIEW_TEXT)
+      +"\n</body>\n</html>\n";
+  }
+
+  /* ---------- 内置封面：画布版，与桌面版 jzcore.make_cover 同版式 ----------
+     五种风格（素笺 / 靛蓝 / 朱印 / 墨韵 / 极简）。画布只能在浏览器里用，
+     所以这些函数与 makeCover 一样，只在实际调用时碰 document。 */
+  const COVER_STYLES=[["sujian","素笺","Paper"],["indigo","靛蓝","Indigo"],
+    ["cinnabar","朱印","Vermilion"],["ink","墨韵","Ink"],["minimal","极简","Minimal"]];
+  const DEFAULT_COVER_STYLE="sujian";
+  function coverStyleIds(){return COVER_STYLES.map(s=>s[0]);}
+  function coverStyleName(sid,en){
+    const t=COVER_STYLES.find(s=>s[0]===sid)||COVER_STYLES[0];
+    return en?t[2]:t[1];
+  }
+  function coverStyleId(name,en){
+    const t=COVER_STYLES.find(s=>(en?s[2]:s[1])===name);
+    return t?t[0]:DEFAULT_COVER_STYLE;
+  }
+  const CV_KAI='"KaiTi","STKaiti","Kaiti SC","Songti SC","SimSun",serif';
+  const CV_HEI='"SimHei","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif';
+  function cvFont(size,kind){return size+'px '+(kind==="hei"?CV_HEI:CV_KAI);}
+  /* 竖排：短书名一列到底，一列放不下才从右往左折列（同桌面版 _vlayout） */
+  function cvVLayout(text,boxW,boxH,hi,lo,lh,ratio){
+    const n=Math.max(1,text.length);
+    for(let s=hi;s>lo;s-=2){
+      if(n*s*lh<=boxH&&s*ratio<=boxW)return [s,n,1];
+    }
+    for(let s=hi;s>lo;s-=2){
+      const per=Math.max(1,Math.floor(boxH/(s*lh)));
+      const cols=Math.ceil(n/per);
+      if(cols*s*ratio<=boxW)return [s,per,cols];
+    }
+    const per=Math.max(1,Math.floor(boxH/(lo*lh)));
+    return [lo,per,Math.ceil(n/per)];
+  }
+  function cvVCol(g,text,cx,y0,size,fill,lh,kind){
+    g.font=cvFont(size,kind||"kai");
+    g.fillStyle=fill;g.textAlign="center";g.textBaseline="top";
+    let y=y0;
+    for(const ch of text){g.fillText(ch,cx,y);y+=size*lh;}
+    return y;
+  }
+  function cvVTitle(g,text,box,fill,hi,rightEdge){
+    const lh=1.15,ratio=1.35,left=box[0],top=box[1],right=box[2],bottom=box[3];
+    const lay=cvVLayout(text,right-left,bottom-top,hi==null?112:hi,24,lh,ratio);
+    const size=lay[0],per=lay[1],cols=lay[2],colW=size*ratio;
+    let xRight;
+    if(rightEdge==null){
+      const total=cols*colW-(colW-size);
+      xRight=(left+right)/2+total/2-size/2;
+    }else{
+      xRight=rightEdge-size/2;
+      const need=xRight-(cols-1)*colW-size/2;
+      if(need<left+12)xRight+=left+12-need;   /* 折列时别把最左一列挤出画面 */
+    }
+    const blockH=Math.min(per,text.length)*size*lh;
+    const y0=top+((bottom-top)-blockH)/2;
+    for(let ci=0;ci<cols;ci++){
+      const chunk=text.slice(ci*per,(ci+1)*per);
+      if(chunk)cvVCol(g,chunk,xRight-ci*colW,y0,size,fill,lh,"kai");
+    }
+    return {size:size,xRight:xRight,y0:y0,blockH:blockH};
+  }
+  function cvHWidth(g,text,size,kind,track){
+    g.font=cvFont(size,kind||"kai");
+    let w=0;
+    for(const ch of text)w+=g.measureText(ch).width;
+    return w+(track||0)*Math.max(0,text.length-1);
+  }
+  function cvHText(g,text,cx,y,size,fill,track,kind){
+    g.font=cvFont(size,kind||"kai");
+    g.fillStyle=fill;g.textAlign="left";g.textBaseline="top";
+    let x=cx-cvHWidth(g,text,size,kind,track)/2;
+    for(const ch of text){
+      g.fillText(ch,x,y);
+      x+=g.measureText(ch).width+(track||0);
+    }
+  }
+  /* 横排作者名：超宽自动缩字号（同桌面版 _draw_author） */
+  function cvHAuthor(g,text,cx,y,maxW,fill,kind,hi,lo,track){
+    kind=kind||"kai";hi=hi||32;lo=lo||16;track=track||0;
+    let size=hi;
+    while(size>lo&&cvHWidth(g,text,size,kind,track)>maxW)size-=1;
+    cvHText(g,text,cx,y,size,fill,track,kind);
+  }
+  /* 素笺：宣纸底 + 双层旧金细框 + 竖排楷体书名，上下各一道鱼尾金线 */
+  function cvCoverSujian(g,W,H,text,author){
+    const PAPER="#f6f1e4",INK="#2f2a24",GOLD="#c6b494",GRAY="#786e60";
+    g.fillStyle=PAPER;g.fillRect(0,0,W,H);
+    g.strokeStyle=GOLD;g.lineWidth=2;g.strokeRect(18,18,W-37,H-37);
+    g.lineWidth=1;g.strokeRect(30,30,W-61,H-61);
+    /* 书名区上留 150、下留 190：作者行在 H-128，下方金线不能压到它 */
+    const info=cvVTitle(g,text,[130,150,W-130,H-190],INK,112);
+    if(info){
+      const s=info.size,half=s*0.62,x=info.xRight;
+      g.strokeStyle=GOLD;g.lineWidth=2;
+      g.beginPath();g.moveTo(x-half,info.y0-s*0.55);g.lineTo(x+half,info.y0-s*0.55);g.stroke();
+      g.beginPath();
+      g.moveTo(x-half,info.y0+info.blockH+s*0.38);
+      g.lineTo(x+half,info.y0+info.blockH+s*0.38);g.stroke();
+    }
+    if(author)cvHAuthor(g,author,W/2,H-128,W-150,GRAY,"kai",32,16,0);
+  }
+  /* 靛蓝：深靛蓝渐变 + 冷灰细框 + 米白竖排书名，左侧一道竖金线当界栏 */
+  function cvCoverIndigo(g,W,H,text,author){
+    const bg=g.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,"#22324e");bg.addColorStop(1,"#0d1422");
+    g.fillStyle=bg;g.fillRect(0,0,W,H);
+    g.strokeStyle="#5c7092";g.lineWidth=1;g.strokeRect(34,34,W-69,H-69);
+    g.strokeStyle="#40506e";g.strokeRect(44,44,W-89,H-89);
+    const info=cvVTitle(g,text,[0,96,W,H-200],"#f0e8d6",100,W-88);
+    if(info){
+      const s=info.size,x=info.xRight-s*0.95;
+      g.strokeStyle="#927a54";g.lineWidth=2;
+      g.beginPath();
+      g.moveTo(x,info.y0-s*0.26);g.lineTo(x,info.y0+info.blockH+s*0.26);g.stroke();
+      if(author)cvVCol(g,author,108,info.y0+s*1.9,30,"#96a4bc",1.15,"kai");
+    }
+  }
+  /* 朱印：米色纸面，右侧朱红色条内竖排反白书名，左侧竖排作者加「著」 */
+  function cvCoverCinnabar(g,W,H,text,author){
+    g.fillStyle="#f3ece0";g.fillRect(0,0,W,H);
+    const bx0=W-224,bx1=W-58;
+    g.fillStyle="#98342a";g.fillRect(bx0,58,bx1-bx0,H-116);
+    cvVTitle(g,text,[bx0+12,84,bx1-12,H-84],"#f6eee2",74);
+    if(author){
+      const y=cvVCol(g,author,112,130,34,"#382e26",1.15,"kai");
+      cvVCol(g,"著",112,y+14,22,"#9a8c78",1.15,"kai");
+    }
+  }
+  /* 墨韵：近黑渐变 + 墨晕 + 极暗细框 + 暖白竖排书名（桌面版用高斯模糊，
+     画布这边用两层径向渐变叠出同样的水墨感） */
+  function cvCoverInk(g,W,H,text,author){
+    const bg=g.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,"#242321");bg.addColorStop(1,"#0b0b0c");
+    g.fillStyle=bg;g.fillRect(0,0,W,H);
+    let wsh=g.createRadialGradient(W*0.3,H*0.62,0,W*0.3,H*0.62,H*0.62);
+    wsh.addColorStop(0,"rgba(58,55,50,0.55)");wsh.addColorStop(1,"rgba(58,55,50,0)");
+    g.fillStyle=wsh;g.fillRect(0,0,W,H);
+    wsh=g.createRadialGradient(W*0.86,H*0.2,0,W*0.86,H*0.2,H*0.5);
+    wsh.addColorStop(0,"rgba(58,55,50,0.35)");wsh.addColorStop(1,"rgba(58,55,50,0)");
+    g.fillStyle=wsh;g.fillRect(0,0,W,H);
+    g.strokeStyle="#4e4940";g.lineWidth=1;g.strokeRect(42,42,W-85,H-85);
+    const info=cvVTitle(g,text,[0,96,W,H-200],"#e6e0d3",104,W-106);
+    if(info){
+      const s=info.size,cx=info.xRight,half=s*0.34;
+      g.strokeStyle="#967e56";g.lineWidth=2;
+      g.beginPath();
+      g.moveTo(cx-half,info.y0-s*0.28);g.lineTo(cx+half,info.y0-s*0.28);g.stroke();
+      const yb=info.y0+info.blockH+s*0.16;
+      g.beginPath();g.moveTo(cx-half,yb);g.lineTo(cx+half,yb);g.stroke();
+    }
+    if(author)cvHAuthor(g,author,W/2,H-132,W-150,"#8a8276","kai",32,16,6);
+  }
+  /* 极简：米白底 + 黑体疏排横书书名，下面一行小字作者 */
+  function cvCoverMinimal(g,W,H,text,author){
+    g.fillStyle="#f7f6f3";g.fillRect(0,0,W,H);
+    g.strokeStyle="#e4e2dc";g.lineWidth=1;g.strokeRect(0.5,0.5,W-1,H-1);
+    let size=96;
+    while(size>22&&cvHWidth(g,text,size,"hei",size*0.12)>W-200)size-=4;
+    const track=size*0.12,cy=H*0.46;
+    cvHText(g,text,W/2,cy-size/2,size,"#201f1e",track,"hei");
+    if(author)cvHAuthor(g,author,W/2,cy+size*0.92,W-240,"#7a7670","hei",26,14,8);
+  }
+  const CV_COVER_DRAW={sujian:cvCoverSujian,indigo:cvCoverIndigo,
+    cinnabar:cvCoverCinnabar,ink:cvCoverInk,minimal:cvCoverMinimal};
   /* ---------- 默认封面：画布版，与桌面版 PIL 版同版式 ---------- */
   const COVER_PAGE="<?xml version='1.0' encoding='utf-8'?>\n<!DOCTYPE html>\n"+
     '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh-CN">\n<head>\n'+
@@ -1434,58 +3030,15 @@ const Core = (() => {
     'div.cover img{max-width:100%;max-height:100%;}</style>\n'+
     '</head>\n<body>\n  <div class="cover"><img src="__COVER_SRC__" alt="封面"/></div>\n'+
     '</body>\n</html>\n';
-  async function makeCover(title,author,W,H){
+  async function makeCover(title,author,W,H,style){
     try{
       W=W||600;H=H||800;
+      const text=(String(title||"").trim()||"未命名");
+      const au=String(author||"").trim();
       const cv=document.createElement("canvas");cv.width=W;cv.height=H;
       const g=cv.getContext("2d");
-      const PAPER="#f6f1e4",INK="#2f2a24",GOLD="#c6b494",GRAY="#786e60",FAINT="#b0a28a";
-      g.fillStyle=PAPER;g.fillRect(0,0,W,H);
-      g.strokeStyle=GOLD;g.lineWidth=2;g.strokeRect(18,18,W-37,H-37);
-      g.lineWidth=1;g.strokeRect(30,30,W-61,H-61);
-      const text=(String(title||"").trim()||"未命名");
-      const n=text.length;
-      const availH=H-300,availW=W-260;
-      let size=40,per=n,cols=1;
-      /* 先求「一列放下」的最大字号：短书名单列最像书 */
-      let one=false;
-      for(let s=112;s>24;s-=2){
-        if(n*s*1.15<=availH&&s*1.35<=availW){size=s;per=n;cols=1;one=true;break;}
-      }
-      if(!one){
-        for(let s=112;s>24;s-=2){
-          const p=Math.max(1,Math.floor(availH/(s*1.15)));
-          const c=Math.ceil(n/p);
-          if(c*(s*1.35)<=availW){size=s;per=p;cols=c;break;}
-        }
-      }
-      const colW=size*1.35,total=cols*colW-(colW-size);
-      const xRight=W/2+total/2-size/2;
-      const first=Math.min(per,n),blockH=first*size*1.15,y0=(H-blockH)/2;
-      g.fillStyle=INK;g.textAlign="center";g.textBaseline="top";
-      g.font=size+'px "KaiTi","STKaiti","Kaiti SC","Songti SC","SimSun",serif';
-      for(let ci=0;ci<cols;ci++){
-        const chunk=text.slice(ci*per,(ci+1)*per);
-        if(!chunk)continue;
-        const cx=xRight-ci*colW;let y=y0;
-        for(const ch of chunk){g.fillText(ch,cx,y);y+=size*1.15;}
-      }
-      const half=size*0.62;
-      g.strokeStyle=GOLD;g.lineWidth=2;
-      g.beginPath();g.moveTo(xRight-half,y0-size*0.55);g.lineTo(xRight+half,y0-size*0.55);g.stroke();
-      g.beginPath();g.moveTo(xRight-half,y0+blockH+size*0.38);g.lineTo(xRight+half,y0+blockH+size*0.38);g.stroke();
-      if(author){
-        let fs=32;
-        g.font=fs+'px "KaiTi","STKaiti","Kaiti SC","Songti SC",serif';
-        while(fs>16&&g.measureText(author).width>W-150){
-          fs-=2;g.font=fs+'px "KaiTi","STKaiti","Kaiti SC","Songti SC",serif';
-        }
-        g.fillStyle=GRAY;
-        g.fillText(author,W/2,H-128+(32-fs));
-      }
-      g.fillStyle=FAINT;
-      g.font='22px "Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif';
-      g.fillText("卷帙 · DeShelf",W/2,H-66);
+      const draw=CV_COVER_DRAW[style]||CV_COVER_DRAW[DEFAULT_COVER_STYLE];
+      draw(g,W,H,text,au);
       const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.9));
       if(!blob) return null;
       return {data:new Uint8Array(await blob.arrayBuffer()),name:"cover.jpg",mime:"image/jpeg",w:W,h:H};
@@ -1522,19 +3075,83 @@ const Core = (() => {
     "    <rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/>\n"+
     "  </rootfiles>\n</container>\n";
   function xmlEsc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-  async function buildEpub({title,author,chapters,cover,theme}){
+  function xmlEscAttr(s){return xmlEsc(s||"").replace(/"/g,"&quot;");}
+  /* ---------- 正文里的插图：换成 images/xxx，HTML 写法与裸链接都认 ---------- */
+  const IMG_PH="\u0000";
+  function picTag(href,alt){return '<img class="pic" src="'+href+'" alt="'+xmlEscAttr(alt)+'"/>';}
+  function dropUrlTags(s){
+    return String(s).replace(HTML_TAG_RE,function(t){return URL_RE.test(t)?"":t;});
+  }
+  /* 一行正文 → epub 里的 html；行内没有已打包的插图时返回 null，走普通段落 */
+  function paraWithImages(line,images){
+    if(!images||!images.size)return null;
+    const slots=[];
+    const put=function(url,alt){
+      const got=images.get(imgKey(url));
+      if(!got)return null;
+      slots.push([IMG_HREF_DIR+got.name,alt||""]);
+      return IMG_PH+(slots.length-1)+IMG_PH;
+    };
+    /* 先换 <img> 标签，再把指着原网址的残标签（外层 <a href>）删掉 ——
+       否则那个 href 会被当成第二条图链，同张图出现两次 */
+    let s=String(line).replace(/<img\b[^<>]*>/gi,function(tag){
+      const u=tagAttr(tag,"src");
+      if(!u)return tag;
+      const got=put(u,tagAttr(tag,"alt"));
+      return got===null?tag:got;
+    });
+    s=dropUrlTags(s);
+    const re=new RegExp(URL_BODY_SRC,"gi");
+    let out="",last=0,m;
+    while((m=re.exec(s))){
+      if(!m[0].length){re.lastIndex++;continue;}
+      const url=m[0].replace(IMG_TRAIL,"");
+      const got=put(url,"");
+      if(got===null)continue;
+      out+=s.slice(last,m.index)+got;
+      last=m.index+url.length;
+    }
+    if(last)s=out+s.slice(last);
+    if(!slots.length)return null;
+    const plain=s.replace(/\u0000\d+\u0000/g,"").replace(HTML_TAG_RE,"");
+    if(!slim(plain)){
+      /* 只剩「图片：」这类标签文字：让插图独占一段，HTML 写法的 alt 当图注放图下方 */
+      return slots.map(function(it){
+        const cap=it[1]?'<p class="cap">'+xmlEsc(it[1])+"</p>":"";
+        return '    <div class="pic">'+picTag(it[0],it[1])+cap+"</div>";
+      }).join("\n");
+    }
+    let esc=xmlEsc(s);
+    slots.forEach(function(it,i){esc=esc.split(IMG_PH+i+IMG_PH).join(picTag(it[0],it[1]));});
+    return "    <p>"+esc+"</p>";
+  }
+  async function buildEpub({title,author,chapters,cover,theme,images}){
     title=title||"未命名";author=author||"佚名";
     const uid="urn:uuid:"+cryptoRandomUuid();
-    const hasCover=!!(cover&&cover.data);
+    const hasCover=!!(cover&&cover.data&&cover.data.length);
+    /* epub 里的封面文件名按 MIME 归一（与桌面版一致）：封面可能是自选图、网图，
+       原名带书名或奇怪后缀（.webp/.bmp），装进 zip 容易被阅读器当成图片以外的东西 */
+    const COVER_EXT_BY_MIME={"image/png":".png","image/gif":".gif",
+      "image/webp":".webp","image/bmp":".bmp"};
+    const coverName=hasCover?"cover"+(COVER_EXT_BY_MIME[cover.mime]||".jpg"):"";
+    const hasImg=!!(images&&images.size);
     const manifest=[],spine=[],navpoints=[],pages=[];
     if(hasCover){
-      manifest.push('    <item id="cover-img" href="'+cover.name+'" media-type="'+cover.mime+'"/>');
+      manifest.push('    <item id="cover-img" href="'+coverName+'" media-type="'+cover.mime+'"/>');
       manifest.push('    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>');
+    }
+    if(hasImg){
+      let k=0;
+      images.forEach(function(it){
+        k++;
+        manifest.push('    <item id="im'+k+'" href="'+IMG_HREF_DIR+it.name+'" media-type="'+
+          (it.mime||"image/jpeg")+'"/>');
+      });
     }
     chapters.forEach((ch,i)=>{
       const n=i+1;
       let paras=ch.b.split(/\r\n|\r|\n/).map(x=>x.trim()).filter(Boolean)
-        .map(x=>"    <p>"+xmlEsc(x)+"</p>").join("\n");
+        .map(x=>paraWithImages(x,images)||("    <p>"+xmlEsc(x)+"</p>")).join("\n");
       if(!paras) paras="    <p>（本章无正文）</p>";
       pages.push({i:n,t:ch.t,html:paras});
       manifest.push('    <item id="c'+n+'" href="c'+pad4(n)+'.xhtml" media-type="application/xhtml+xml"/>');
@@ -1570,10 +3187,22 @@ const Core = (() => {
     entries.push({name:"META-INF/container.xml",data:CONTAINER});
     entries.push({name:"OEBPS/content.opf",data:opf});
     entries.push({name:"OEBPS/toc.ncx",data:ncx});
-    entries.push({name:"OEBPS/style.css",data:themeCss(theme)});
+    let css=themeCss(theme);
+    if(hasImg){
+      /* 主题自己写了插图规则就一字不动，只给没写的补最小兜底 */
+      if(css.indexOf("img.pic")<0)css+="\nimg.pic{max-width:100%;height:auto;}\n";
+      if(css.indexOf("div.pic")<0)css+="div.pic{margin:1em 0;text-align:center;}\n";
+      if(css.indexOf("p.cap")<0)css+="p.cap{font-size:.85em;color:#666666;margin:.3em 0 0;text-indent:0;}\n";
+    }
+    entries.push({name:"OEBPS/style.css",data:css});
     if(hasCover){
-      entries.push({name:"OEBPS/"+cover.name,data:cover.data});
-      entries.push({name:"OEBPS/cover.xhtml",data:COVER_PAGE.replace("__COVER_SRC__",cover.name)});
+      entries.push({name:"OEBPS/"+coverName,data:cover.data});
+      entries.push({name:"OEBPS/cover.xhtml",data:COVER_PAGE.replace("__COVER_SRC__",coverName)});
+    }
+    if(hasImg){
+      images.forEach(function(it){
+        entries.push({name:"OEBPS/"+IMG_HREF_DIR+it.name,data:it.data});
+      });
     }
     for(const pg of pages){
       entries.push({name:"OEBPS/c"+pad4(pg.i)+".xhtml",data:
@@ -1672,9 +3301,222 @@ const Core = (() => {
     for(const ch of chapters){parts.push(ch.t);parts.push(ch.b);}
     return parts.filter(Boolean).join("\n\n")+"\n";
   }
+  /* ---------- 清洗内容汇总（与桌面版 jzcore.summary_text 同一套格式） ----------
+     books: [{title,author,file,linesBefore,linesAfter,blank,entries,note}]
+     entries 直接取 cleanText 的 trace（kind/line/text/rule/label），
+     blank 是删掉的空行数，linesBefore/After 是原行数与清洗后行数。
+     opt: {rules:启用的规则 id, lang:"zh"|"en", custom:自定义规则, when:时间串} */
+  const SUM_KINDS={
+    zh:{drop:"整行删除",cut:"行尾裁剪",tag:"HTML 标签",custom:"自定义规则",jsdup:"简繁重复"},
+    en:{drop:"line removed",cut:"tail trimmed",tag:"HTML tag",custom:"custom rule",jsdup:"script duplicate"}};
+  const SUM_TEXT={
+    zh:{
+      head:"卷帙 DeShelf · 清洗内容汇总",
+      when:"生成时间：%s",
+      rules:"清洗规则：%s",
+      custom_rules:"自定义规则：%s",
+      none:"（未启用任何规则）",
+      doc:"说明：本文件按书籍分类汇总「开始处理」时被清洗掉的内容，用于回查误删。\n"
+        +"　　　原文行号 = 该内容在原文件里的行号（从 1 开始；开了「合并句中断行」按合并后的行算）；\n"
+        +"　　　清理原因 = 命中的那条规则（自定义规则给出规则名或正则）；\n"
+        +"　　　空格与空行不逐条列出，只统计删除数量。",
+      total:"共 %s 本书 · 清理 %s 条 · 删除空行 %s 行",
+      book:"[%s/%s] 《%s》%s",
+      author:" · %s",
+      file:"源文件：%s",
+      lines:"%s 行 → 清洗后 %s 行 · 清理 %s 条 · 删除空行 %s 行",
+      lines_na:"清理 %s 条 · 删除空行 %s 行",
+      col:["原文行号","清理原因","类型","被清理的内容"],
+      stat:"原因统计：%s",
+      stat_item:"%s %s 条",
+      stat_blank:"空行 %s 行",
+      custom:"自定义规则「%s」",
+      unknown:"（未标注原因）",
+      empty:"（无清理记录）",
+      skip:"（未记录明细：%s）"},
+    en:{
+      head:"卷帙 DeShelf · Cleanup Summary",
+      when:"Generated: %s",
+      rules:"Rules: %s",
+      custom_rules:"Custom rules: %s",
+      none:"(no rule enabled)",
+      doc:"Note: this file groups everything removed by \u201cStart\u201d, by book, so you can check whether real text was deleted by mistake.\n"
+        +"      Src line = line number in the ORIGINAL text (1-based; with \u201cjoin wrapped lines\u201d on, lines are counted after joining);\n"
+        +"      Reason = the rule that removed it (custom rules show their name or pattern);\n"
+        +"      blank lines and whitespace are not listed one by one, only counted.",
+      total:"%s book(s) · %s record(s) · %s blank line(s) removed",
+      book:"[%s/%s] %s%s",
+      author:" by %s",
+      file:"File: %s",
+      lines:"%s lines \u2192 %s after cleaning · %s record(s) · %s blank line(s) removed",
+      lines_na:"%s record(s) · %s blank line(s) removed",
+      col:["Src line","Reason","Kind","Removed content"],
+      stat:"By reason: %s",
+      stat_item:"%s \u00d7%s",
+      stat_blank:"blank lines \u00d7%s",
+      custom:"custom rule \u201c%s\u201d",
+      unknown:"(reason not recorded)",
+      empty:"(nothing removed)",
+      skip:"(detail not recorded: %s)"}};
+  const SUM_SEP="=".repeat(78),SUM_SUB="-".repeat(78);
+  const SUM_W_LINE=8,SUM_W_REASON=22,SUM_W_KIND=10;
+  function sumFmt(tpl){
+    const a=[].slice.call(arguments,1);let i=0;
+    return String(tpl).replace(/%s/g,()=>String(a[i++]));
+  }
+  /* 全角/中文按两格算，列才对得齐 */
+  function sumWidth(s){let w=0;for(const c of String(s==null?"":s))w+=(c.codePointAt(0)>0x2E80?2:1);return w;}
+  function sumPad(s,width,minSep){
+    s=String(s==null?"":s);
+    return s+" ".repeat(Math.max(minSep===undefined?1:minSep,width-sumWidth(s)));
+  }
+  function nowStamp(){
+    const d=new Date(),p=n=>String(n).padStart(2,"0");
+    return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+
+      p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+  }
+  /* 按行拆开，口径与桌面版 Python 的 splitlines() 对齐：
+     末尾的那个换行不额外产生一行空行（三条换行都认） */
+  function splitLines(s){
+    s=String(s==null?"":s);
+    if(!s)return [];
+    const parts=s.split(/\r\n|\r|\n/);
+    if(parts.length&&parts[parts.length-1]==="")parts.pop();
+    return parts;
+  }
+  function lineCount(s){return splitLines(s).length;}
+  function sumRuleName(rid,lang){
+    const r=RULES.find(x=>x.id===rid);
+    return r?(lang==="en"?r.name_en:r.name):"";
+  }
+  /* 一条明细的清理原因：自定义规则用规则名/正则，内置规则用规则名 */
+  function sumReasonText(e,lang,kinds,L){
+    const lab=String((e&&e.label)||"").trim();
+    if(lab)return sumFmt(L.custom,lab);
+    const rid=(e&&e.rule)||"";
+    if(rid==="custom")return kinds.custom||"";
+    const nm=rid?sumRuleName(rid,lang):"";
+    if(nm)return nm;
+    return kinds[e&&e.kind]||L.unknown;
+  }
+  function sumStats(entries,lang,kinds,L,blank){
+    const counts=new Map();
+    for(const e of (entries||[])){
+      const k=sumReasonText(e,lang,kinds,L);
+      counts.set(k,(counts.get(k)||0)+1);
+    }
+    const items=[...counts.entries()].sort((x,y)=>y[1]-x[1])
+      .map(it=>sumFmt(L.stat_item,it[0],it[1]));
+    if(blank)items.push(sumFmt(L.stat_blank,blank));
+    return items.join(" · ");
+  }
+  function buildCleanSummary(books,opt){
+    opt=opt||{};
+    const lang=opt.lang==="en"?"en":"zh";
+    const L=SUM_TEXT[lang],kinds=SUM_KINDS[lang];
+    const rules=opt.rules||[];
+    /* 抬头把规则标识一并列出：明细里的原因名能对回这里的 id */
+    const names=rules.map(id=>(sumRuleName(id,lang)||id)+" ("+id+")");
+    const custs=(opt.custom||[]).filter(r=>r&&r.enabled!==false&&String(r.pattern||"").trim())
+      .map(r=>{
+        const pat=String(r.pattern).trim();
+        return (String(r.name||"").trim()||pat)+" ("+pat+")";
+      });
+    const allEntries=[];
+    for(const b of (books||[]))for(const e of (b.entries||[]))allEntries.push(e);
+    const total=allEntries.length;
+    const blankAll=(books||[]).reduce((n,b)=>n+((b.blank||0)|0),0);
+    const out=[L.head,
+      sumFmt(L.when,opt.when||nowStamp()),
+      sumFmt(L.rules,names.length?names.join(", "):L.none)];
+    if(custs.length)out.push(sumFmt(L.custom_rules,custs.join(", ")));
+    out.push("",L.doc,"",sumFmt(L.total,(books||[]).length,total,blankAll));
+    if(total||blankAll)out.push(sumFmt(L.stat,sumStats(allEntries,lang,kinds,L,blankAll)));
+    out.push("");
+    (books||[]).forEach((b,i)=>{
+      const entries=b.entries||[];
+      const blank=(b.blank||0)|0;
+      out.push(SUM_SEP);
+      out.push(sumFmt(L.book,i+1,books.length,b.title||"",b.author?sumFmt(L.author,b.author):""));
+      if(b.file)out.push(sumFmt(L.file,b.file));
+      const lb=b.linesBefore,la=b.linesAfter;
+      if(lb===undefined||lb===null||la===undefined||la===null)
+        out.push(sumFmt(L.lines_na,entries.length,blank));
+      else out.push(sumFmt(L.lines,lb,la,entries.length,blank));
+      const st=sumStats(entries,lang,kinds,L,blank);
+      if(st)out.push(sumFmt(L.stat,st));
+      out.push(SUM_SUB);
+      if(b.note)out.push(sumFmt(L.skip,b.note));
+      if(!entries.length)out.push(L.empty);
+      else{
+        out.push("  "+sumPad(L.col[0],SUM_W_LINE,0)+"  "+
+          sumPad(L.col[1],SUM_W_REASON)+sumPad(L.col[2],SUM_W_KIND)+L.col[3]);
+        for(const e of entries){
+          const txt=String(e.text==null?"":e.text).replace(/[\r\n\t]/g," ");
+          out.push(String(e.line||1).padStart(SUM_W_LINE," ")+"  "+
+            sumPad(sumReasonText(e,lang,kinds,L),SUM_W_REASON)+
+            sumPad(kinds[e.kind]||e.kind||"",SUM_W_KIND)+txt);
+        }
+      }
+      out.push("");
+    });
+    return out.join("\n")+"\n";
+  }
+
   function safeFileName(s,maxlen,fallback){
     const x=String(s||"").replace(/[\\/:*?"<>|]/g,"_").slice(0,maxlen||60).trim();
     return x||fallback;
+  }
+
+  /* ---------- 导出文件名格式（对齐 python apply_name_format） ----------
+     book=书名、author=作者名：预设项与自定义格式共用同一套占位符解析。
+     占位符两侧不能紧贴 ASCII 字母数字（notebook 里的 book 不算），中文/标点/空白都算分隔；
+     用户写的连续空格原样保留，只有占位符取值为空时才把它的装饰一起摘掉。 */
+  const NAME_WORD=/[A-Za-z0-9_]/;
+  const NAME_ILLEGAL='\\/:*?"<>|';
+  const NAME_EDGE="[\\s\\-—_·|,，.。:：]";
+  /* 扫描出真正生效的 book / author 占位符（不用 lookbehind，老浏览器也能跑） */
+  function nameTokens(fmt){
+    const s=String(fmt||"");const out=[];const re=/book|author/g;let m;
+    while((m=re.exec(s))){
+      const i=m.index,tok=m[0];
+      if(i>0&&NAME_WORD.test(s[i-1])) continue;
+      if(i+tok.length<s.length&&NAME_WORD.test(s[i+tok.length])) continue;
+      out.push({start:i,end:i+tok.length,tok:tok});
+    }
+    return out;
+  }
+  function hasBookToken(fmt){
+    return nameTokens(fmt).some(t=>t.tok==="book");
+  }
+  function nameFmtBadChars(fmt){
+    const out=[];
+    for(const c of String(fmt||"")) if(NAME_ILLEGAL.indexOf(c)>=0&&out.indexOf(c)<0) out.push(c);
+    return out;
+  }
+  /* 取值为空时，占位符连同紧贴它的括号、「作者：」标签与分隔符整体删掉，
+     只删这一小段——不能在全文里压缩空白，否则用户写的多个空格会丢 */
+  function dropEmptyToken(fmt,token){
+    const pat=new RegExp("(^|[^A-Za-z0-9_])"+NAME_EDGE+"*(?:作者|著者|著|by)?"+NAME_EDGE+"*"+
+      "[\\[【《(（]?"+NAME_EDGE+"*"+token+"(?![A-Za-z0-9_])"+NAME_EDGE+"*"+
+      "[\\]】》）)]?"+NAME_EDGE+"*","gi");
+    return String(fmt||"").replace(pat,"$1");
+  }
+  function applyNameFormat(fmt,title,author,fallback){
+    const t=String(title||"").trim(),a=String(author||"").trim();
+    let f=String(fmt||"");
+    if(!a) f=dropEmptyToken(f,"author");
+    if(!t) f=dropEmptyToken(f,"book");
+    let out=f;
+    const toks=nameTokens(f);
+    for(let k=toks.length-1;k>=0;k--){
+      const sp=toks[k];
+      out=out.slice(0,sp.start)+(sp.tok==="book"?t:a)+out.slice(sp.end);
+    }
+    out=out.replace(/\[\s*\]|【\s*】|《\s*》|\(\s*\)|（\s*）/g,"");   /* 兜底：残留空括号 */
+    out=out.trim();                                                 /* 首尾空白在文件名里非法 */
+    out=out.replace(/^[\s\-—_·:：|/\\、,，.。]+|[\s\-—_·:：|/\\、,，.。]+$/g,"").trim();
+    return out||t||fallback||"";
   }
   function buildSplitZip(baseName,chapters){
     const width=Math.max(4,String(chapters.length).length);
@@ -1687,10 +3529,428 @@ const Core = (() => {
     return buildZip(entries);
   }
 
+  /* ---------- 章节树校验（对齐桌面版 jzcore 的序号解析 / 分层 / 复核） ---------- */
+  const CK_LABEL={
+    zh:{ok:"正常",fail:"第{0}章序号提取失败",gap:"第{0}章缺失/顺序错误",
+        gap2:"第{0}-{1}章缺失/顺序错误",dup:"章节重复（第{0}章）",
+        order:"第{0}章顺序错误",badnum:"章节号错误（第{0}章）",sum:"共{0}个异常"},
+    en:{ok:"OK",fail:"Chapter {0}: number not recognised",
+        gap:"Chapter {0} missing or out of order",
+        gap2:"Chapters {0}-{1} missing or out of order",
+        dup:"Duplicate chapter ({0})",order:"Chapter {0} out of order",
+        badnum:"Wrong chapter number ({0})",sum:"{0} issue(s)"}
+  };
+  const RP_LABEL={
+    zh:{title:"章节树导出",perLevel:"各级章节数：",level:"  第{0}级：{1} 章",
+        nolevel:"  无层级（序号提取失败 / 占位标题）：{0} 章",
+        hint:"章节树（缩进 = 层级；[n] 为参与编号的章序，无序号章记 0；"
+            +"← 后为标题里解析出的序号链 | 校验结果）：",
+        lv:"第{0}级",nochain:"无序号",ok:"正常"},
+    en:{title:"Chapter tree export",perLevel:"Chapters per level:",
+        level:"  Level {0}: {1} chapter(s)",
+        nolevel:"  No level (number not parsed / placeholder): {0} chapter(s)",
+        hint:"Chapter tree (indent = level; [n] = chapter index, 0 = unnumbered; "
+            +"← parsed number chain | check result):",
+        lv:"Level {0}",nochain:"no number",ok:"OK"}
+  };
+  const CN_DIGIT={"〇":0,"零":0,"○":0,"一":1,"二":2,"两":2,"兩":2,
+    "三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9};
+  const CN_UNIT={"十":10,"百":100,"千":1000,"万":10000,"亿":100000000};
+  const NUM_CHARS="0-9０-９〇零○一二三四五六七八九十百千万亿两兩";
+  const SEP_CHARS=new Set(" \t\r\n\u3000,，.。、：:；;!！?？·|/-\\—–~～#*_+=<>《》【】[]（）()「」『』\"'“”‘’");
+  const CHAP_LIKE=new Set("章节節回话話折");
+  const CHAP_NO_RE=new RegExp(
+    "第\\s*(["+NUM_CHARS+"]{1,12})\\s*(部(?!分)|[篇集卷章节節回话話折])"
+    +"|([部篇集卷])\\s*(["+NUM_CHARS+"]{1,12})"
+    +"|(Chapter|CHAPTER|chapter|Chap\\.?|CHAP\\.?)\\s*([0-9０-９]{1,6})","g");
+  const LEAD_NO_RE=/^\s*([0-9０-９]{1,6}|[〇零○一二三四五六七八九十百千]{1,8})\s*(?:[、.．,，:：\s]|$)/;
+  const EXTRA_NO_RE=new RegExp("(番外|外传|外傳|特别篇|特別篇|后记|後記)\\s*"
+    +"([0-9０-９]{1,6}|[〇零○一二三四五六七八九十百千]{1,8})");
+  const CHAPTER_EXTRA_RE=/番外|外传|外傳|特别篇|特別篇|后记|後記/;
+  const PART_HEAD_RE=/^\s*第\s*[0-9０-９〇零○一二三四五六七八九十百千万两]{1,12}\s*部分/;
+  const HOLD_TITLES=new Set(["开篇","全文"]);
+
+  function cnToInt(s){
+    s=String(s==null?"":s).trim();
+    if(!s)return null;
+    const half=s.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+    if(/^[0-9]+$/.test(half))return parseInt(half,10);
+    let total=0,section=0,num=0,seen=false;
+    for(const ch of s){
+      if(Object.prototype.hasOwnProperty.call(CN_DIGIT,ch)){num=CN_DIGIT[ch];seen=true;}
+      else if(Object.prototype.hasOwnProperty.call(CN_UNIT,ch)){
+        const u=CN_UNIT[ch];
+        if(u>=10000){section+=num;total+=(section||1)*u;section=0;num=0;}
+        else{if(!num&&!seen)num=1;section+=num*u;num=0;}
+        seen=true;
+      }else if(ch>="0"&&ch<="9"){num=num*10+parseInt(ch,10);seen=true;}
+      else return null;
+    }
+    if(!seen)return null;
+    return total+section+num;
+  }
+  /* 序号只认结构位置上的：标题开头、分隔符之后、或紧接上一个序号；
+     「卷册」类量词（部/卷/集/篇）右侧还必须是分隔符或结尾，否则整句正文会被当上级 */
+  function parseChapNumbers(title){
+    const s=String(title||"").replace(LITERAL_ESC,"").trim();
+    if(!s)return [];
+    const head=s.slice(0,40);
+    const em=head.match(EXTRA_NO_RE);
+    if(em&&(em.index===0||SEP_CHARS.has(head[em.index-1]))){
+      const v=cnToInt(em[2]);
+      if(v!==null)return [[v,em[1]]];
+    }
+    const cands=[];
+    CHAP_NO_RE.lastIndex=0;
+    let m;
+    while((m=CHAP_NO_RE.exec(head))!==null){
+      let v,u;
+      if(m[2]){v=cnToInt(m[1]);u=m[2];}
+      else if(m[4]){v=cnToInt(m[3]);u=m[4];}
+      else{v=cnToInt(m[6]);u="章";}
+      if(v!==null)cands.push([m.index,m.index+m[0].length,v,u]);
+      if(m[0].length===0)CHAP_NO_RE.lastIndex++;
+    }
+    const out=[];let last=-1;
+    for(let i=0;i<cands.length;i++){
+      const st=cands[i][0],en=cands[i][1],v=cands[i][2],u=cands[i][3];
+      if(!(st===0||st===last||SEP_CHARS.has(head[st-1])))continue;
+      const rightOk=(en>=head.length||SEP_CHARS.has(head[en])
+        ||(i+1<cands.length&&cands[i+1][0]===en));
+      if(!rightOk&&!(st===0&&CHAP_LIKE.has(u)))continue;
+      out.push([v,u]);last=en;
+    }
+    if(!out.length){
+      const lm=head.match(LEAD_NO_RE);
+      if(lm){const v=cnToInt(lm[1]);if(v!==null)out.push([v,"章"]);}
+    }
+    return out;
+  }
+  function isExtraTitle(title){return CHAPTER_EXTRA_RE.test(String(title||""));}
+
+  function newLv(unit,parent,inline){
+    return {unit:unit,parent:parent||null,last:null,nodes:0,inline:!!inline};
+  }
+  function lvCtx(lv){
+    const keys=[];let p=lv?lv.parent:null;
+    while(p&&keys.length<8){keys.push(p.unit+"#"+p.last);p=p.parent;}
+    return keys.join("|");
+  }
+  function lvHasChild(levels,lv){
+    for(const x of levels.values())if(x&&x.parent===lv)return true;
+    return false;
+  }
+  function inferAndCheck(items,marks,holes,L,skip,expect){
+    const nodes=[];const levels=new Map();let leaf=null;
+    const breaks=[];const quiet=new Set(skip||[]);
+    const add=function(ch,value,lv,vals){
+      if(lv)lv.nodes++;
+      const nd={ch:ch,value:value,level:lv,ctx:lvCtx(lv),
+        vals:(vals||(value===null||value===undefined?[]:[value]))};
+      nodes.push(nd);return nd;
+    };
+    let failRun=0;
+    for(let idx=0;idx<items.length;idx++){
+      const ch=items[idx][0],toks=items[idx][1];
+      if(!toks.length){
+        const nd=add(ch,null,null);
+        if(leaf&&leaf.last!==null)nd.expect=leaf.last+1+failRun;
+        failRun++;continue;
+      }
+      failRun=0;
+      if(toks.length>1){
+        let prevLv=null;
+        for(const tk of toks){
+          const v=tk[0],u=tk[1];
+          let lv=levels.get(u);
+          if(!lv){lv=newLv(u,prevLv,false);levels.set(u,lv);}
+          else if(prevLv&&lv!==prevLv&&!lv.parent&&lv.nodes&&!lvHasChild(levels,lv))lv.parent=prevLv;
+          lv.last=v;prevLv=lv;
+        }
+        leaf=prevLv;
+        for(let k=0;k<toks.length-1;k++){
+          const lv2=levels.get(toks[k][1]);
+          if(lv2&&lv2!==leaf)lv2.inline=true;
+        }
+        add(ch,toks[toks.length-1][0],leaf,toks.map(t=>t[0]));
+        continue;
+      }
+      const v=toks[0][0],u=toks[0][1];
+      if(!leaf){leaf=newLv(u,null,false);levels.set(u,leaf);leaf.last=v;add(ch,v,leaf);continue;}
+      let known=levels.get(u);
+      if(known&&known!==leaf){known.last=v;add(ch,v,known);continue;}
+      if(leaf.last!==null&&v===leaf.last+1){leaf.last=v;add(ch,v,leaf);continue;}
+      if(known){known.last=v;add(ch,v,known);continue;}
+      const nxt=items[idx+1]?items[idx+1][1]:[];
+      const nxtV=nxt.length?nxt[0][0]:null;
+      const nxtU=nxt.length?nxt[0][1]:null;
+      if(v===0||v===1){
+        if(leaf.nodes>=5&&leaf.last!==null&&v<=Math.max(3,Math.floor(leaf.last/2))){
+          const lv=newLv(u,leaf.parent,false);leaf.parent=lv;levels.set(u,lv);lv.last=v;
+          add(ch,v,lv);breaks.push([nodes.length-1,lv,true]);continue;
+        }
+        const okNext=(nxtV!==null)&&((nxtU===u&&nxtV===v+1)||(nxtU!==u&&(nxtV===0||nxtV===1)));
+        if(!okNext){quiet.add(ch);add(ch,null,null);continue;}
+        const lv=newLv(u,leaf,false);levels.set(u,lv);lv.last=v;leaf=lv;add(ch,v,lv);continue;
+      }
+      if(leaf.last!==null&&(v<=Math.max(3,Math.floor(leaf.last/2))
+          ||(nxtV!==null&&nxtV===v+1))){
+        const lv=newLv(u,leaf.parent,false);leaf.parent=lv;levels.set(u,lv);lv.last=v;
+        add(ch,v,lv);breaks.push([nodes.length-1,lv,false]);continue;
+      }
+      leaf.last=v;add(ch,v,leaf);
+    }
+    /* 空层回退：判为「上级」的层要站得住脚，否则按 fail 处理并把这一层摘掉 */
+    const dropLevel=function(lv){
+      for(const nd of nodes){
+        if(nd.level===lv){
+          for(const x of (nd.vals||[]))holes.add(x);
+          nd.value=null;nd.level=null;marks[nd.ch]=null;delete marks[nd.ch];
+        }
+      }
+      for(const x of levels.values())if(x&&x.parent===lv)x.parent=lv.parent;
+      for(const kv of Array.from(levels.entries()))if(kv[1]===lv)levels.delete(kv[0]);
+    };
+    for(const br of breaks){
+      const pos=br[0],lv=br[1],strict=br[2];
+      let cnt=0;
+      for(const nd of nodes)if(nd.level===lv)cnt++;
+      let keep;
+      if(strict)keep=cnt>=2;
+      else{
+        keep=false;
+        for(let i=pos+1;i<nodes.length;i++){
+          let p=nodes[i].level?nodes[i].level.parent:null,hop=0;
+          while(p&&hop<8){if(p===lv){keep=true;break;}p=p.parent;hop++;}
+          if(keep)break;
+        }
+      }
+      if(!keep)dropLevel(lv);
+    }
+    /* 金字塔兜底：某层比上级还少一个数量级 → 这些「子章节」判 fail 并摘层 */
+    for(let round=0;round<3;round++){
+      const counts=new Map();
+      for(const nd of nodes)if(nd.level)counts.set(nd.level,(counts.get(nd.level)||0)+1);
+      const badLv=[];
+      for(const kv of counts.entries()){
+        const lv=kv[0],c=kv[1];
+        if(lv.parent&&counts.get(lv.parent)&&c*10<=counts.get(lv.parent))badLv.push(lv);
+      }
+      if(!badLv.length)break;
+      for(const lv of badLv)dropLevel(lv);
+    }
+    /* 空层剪枝：没有任何章节挂着的层（标题里写明的除外） */
+    for(let round=0;round<4;round++){
+      const counts=new Map();
+      for(const nd of nodes)if(nd.level)counts.set(nd.level,(counts.get(nd.level)||0)+1);
+      const empt=[];
+      for(const lv of levels.values())if(!counts.get(lv)&&!lv.inline)empt.push(lv);
+      if(!empt.length)break;
+      for(const lv of empt){
+        for(const x of levels.values())if(x&&x.parent===lv)x.parent=lv.parent;
+        for(const kv of Array.from(levels.entries()))if(kv[1]===lv)levels.delete(kv[0]);
+      }
+    }
+    /* 上级章节必须真挂着子章节 */
+    const kidLevels=new Map();
+    for(const lv of levels.values()){
+      if(lv.parent){
+        if(!kidLevels.has(lv.parent))kidLevels.set(lv.parent,[]);
+        kidLevels.get(lv.parent).push(lv);
+      }
+    }
+    const waiting=new Map();
+    for(const nd of nodes){
+      const lv=nd.level;
+      if(!lv)continue;
+      let p=lv.parent,hop=0;
+      while(p&&hop<8){
+        const wp=waiting.get(p);
+        if(wp){wp.kids=(wp.kids||0)+1;waiting.delete(p);}
+        p=p.parent;hop++;
+      }
+      const prevNd=waiting.get(lv);
+      if(prevNd){
+        waiting.delete(lv);
+        for(const x of (prevNd.vals||[]))holes.add(x);
+        prevNd.value=null;prevNd.level=null;delete marks[prevNd.ch];
+      }
+      if(kidLevels.get(lv))waiting.set(lv,nd);
+    }
+    for(const nd of waiting.values()){
+      for(const x of (nd.vals||[]))holes.add(x);
+      nd.value=null;nd.level=null;delete marks[nd.ch];
+    }
+    /* 逐层复核 */
+    const byLevel=new Map();
+    for(const nd of nodes)if(nd.level){
+      if(!byLevel.has(nd.level))byLevel.set(nd.level,[]);
+      byLevel.get(nd.level).push(nd);
+    }
+    for(const seq of byLevel.values()){
+      /* 章号写错：差得离谱、且下一章接着上一章往下数 */
+      for(let i=1;i<seq.length-1;i++){
+        const cur=seq[i],prev=seq[i-1],nxt=seq[i+1];
+        const cv=cur.value,pv=prev.value,nv=nxt.value;
+        if(cv===null||pv===null||nv===null||cv===0||cv===1)continue;
+        if(Math.abs(cv-pv-1)>=3&&nv-pv-1>=0&&nv-pv-1<=3){
+          if(!(cur.ch in marks))marks[cur.ch]=fill(L.badnum,{0:cv});
+          cur.value=null;cur.prevGood=pv;
+        }
+      }
+      /* 重号：同层同上级下号只能出现一次（0/1 交给顺序错误规则） */
+      const seen=new Map();
+      for(const nd of seq){
+        const v=nd.value;
+        if(v===null||v===0||v===1)continue;
+        const k=nd.ctx+"#"+v;
+        if(seen.has(k)){
+          if(!(nd.ch in marks))marks[nd.ch]=fill(L.dup,{0:v});
+          nd.value=null;
+        }else seen.set(k,nd.ch);
+      }
+      for(let i=seq.length-1;i>0;i--){
+        const cur=seq[i],prev=seq[i-1];
+        const cv=cur.value;let pv=prev.value;
+        if(pv===null){
+          pv=(prev.prevGood===undefined?null:prev.prevGood);
+          if(pv===null)continue;
+        }
+        if(cv===null)continue;
+        if(cv===pv+1)continue;
+        if(cur.ctx!==prev.ctx&&(cv===0||cv===1))continue;
+        if(cv===pv){marks[cur.ch]=fill(L.dup,{0:cv});continue;}
+        if(cv===0||cv===1){marks[cur.ch]=fill(L.order,{0:cv});continue;}
+        if(cv>pv+1){
+          let allHole=true;
+          for(let x=pv+1;x<cv;x++)if(!holes.has(x)){allHole=false;break;}
+          if(allHole)continue;
+          const lo=pv+1,hi=cv-1;
+          marks[cur.ch]=(hi>lo)?fill(L.gap2,{0:lo,1:hi}):fill(L.gap,{0:lo});
+        }else marks[cur.ch]=fill(L.gap,{0:cv});
+      }
+    }
+    /* 仍没号的章：报「本该是第几章」 */
+    for(const nd of nodes){
+      if(nd.value!==null)continue;
+      if(nd.ch in marks)continue;
+      if(quiet.has(nd.ch))continue;
+      const vals=nd.vals||[];
+      let n=vals.length?vals[0]:(nd.expect!==undefined?nd.expect:(expect?expect[nd.ch]:undefined));
+      if(n===undefined)n=null;
+      marks[nd.ch]=fill(L.fail,{0:(n===null?nd.ch:n)});
+    }
+    /* 层级：只数前面真出现过的上级层，标题里写明的也算一级 */
+    let levelsN=1;const depths={},seenLv=new Map(),parents=new Set();
+    for(const nd of nodes){
+      const lv=nd.level;
+      if(!lv)continue;
+      let d=1,p=lv.parent,hop=0;
+      while(p&&hop<8){if(p.inline||seenLv.has(p))d++;p=p.parent;hop++;}
+      depths[nd.ch]=d;
+      if(nd.kids)parents.add(nd.ch);
+      seenLv.set(lv,nd);
+      if(d>levelsN)levelsN=d;
+    }
+    return {levels:levelsN,depths:depths,parents:parents};
+  }
+  function checkChapters(titles,lang){
+    const L=CK_LABEL[lang]||CK_LABEL.zh;
+    titles=Array.from(titles||[]);
+    if(titles.length<=1)
+      return {total:titles.length,marks:{},bad:0,ok:L.ok,summary:L.ok,
+              tree:titles.length,levels:1,lv:{},depths:{}};
+    const main=[],extra=[],holes=new Set(),skip=new Set(),toksOf={};
+    for(let i=1;i<=titles.length;i++){
+      const raw=titles[i-1],st=String(raw||"").trim();
+      if(HOLD_TITLES.has(st)||PART_HEAD_RE.test(st)){
+        skip.add(i);main.push([i,[]]);toksOf[i]=[];continue;
+      }
+      const toks=parseChapNumbers(raw);
+      toksOf[i]=toks;
+      if(isExtraTitle(raw)){
+        extra.push([i,toks]);
+        if(toks.length)holes.add(toks[toks.length-1][0]);
+      }else main.push([i,toks]);
+    }
+    const expect={};let lastNo=null,run=0;
+    for(let i=1;i<=titles.length;i++){
+      if(skip.has(i))continue;
+      const toks=toksOf[i]||[];
+      if(toks.length){lastNo=toks[toks.length-1][0];run=0;}
+      else if(lastNo!==null){expect[i]=lastNo+1+run;run++;}
+    }
+    const marks={};
+    const extraSkip=new Set(extra.filter(it=>!it[1].length).map(it=>it[0]));
+    const r1=inferAndCheck(main,marks,holes,L,skip,expect);
+    const r2=inferAndCheck(extra,marks,new Set(),L,extraSkip,expect);
+    const lv={};
+    for(const ch of r1.parents)if((r1.depths[ch]||0)<r1.levels)lv[ch]=r1.depths[ch];
+    for(const ch of r2.parents)if((r2.depths[ch]||0)<r2.levels)lv[ch]=r2.depths[ch];
+    const depths=Object.assign({},r1.depths,r2.depths);
+    const bad=Object.keys(marks).length;
+    return {total:titles.length,marks:marks,bad:bad,ok:L.ok,
+      summary:bad?fill(L.sum,{0:bad}):L.ok,
+      tree:main.length+extra.length,levels:Math.max(r1.levels,r2.levels),
+      lv:lv,depths:depths};
+  }
+  function chapterTreeReport(titles,ck,head,lang){
+    const R=RP_LABEL[lang]||RP_LABEL.zh;
+    titles=Array.from(titles||[]);
+    if(!ck)ck=checkChapters(titles,lang);
+    const marks=ck.marks||{},lvmap=ck.lv||{},depths=ck.depths||{};
+    const okText=ck.ok||R.ok;
+    const meta=[];
+    let seq=0;
+    for(let i=1;i<=titles.length;i++){
+      const toks=parseChapNumbers(titles[i-1]);
+      const d=depths[i];
+      if(d===undefined)meta.push([0,0,toks]);
+      else{seq++;meta.push([Math.max(1,d-Math.max(0,toks.length-1)),seq,toks]);}
+    }
+    const lines=[R.title];
+    for(const h of (head||[]))lines.push(String(h));
+    lines.push("");
+    const counts={};let nolevel=0;
+    for(const it of meta){
+      if(!it[0])nolevel++;
+      else counts[it[0]]=(counts[it[0]]||0)+1;
+    }
+    lines.push(R.perLevel);
+    Object.keys(counts).map(Number).sort((a,b)=>a-b)
+      .forEach(d=>lines.push(fill(R.level,{0:d,1:counts[d]})));
+    if(nolevel)lines.push(fill(R.nolevel,{0:nolevel}));
+    lines.push("");
+    lines.push(R.hint);
+    let prev=null;
+    for(let i=1;i<=meta.length;i++){
+      const disp=meta[i-1][0],num=meta[i-1][1],toks=meta[i-1][2];
+      if(prev!==null&&disp<prev)lines.push("");
+      prev=disp;
+      const chain=toks.length?toks.map(t=>t[0]+t[1]).join(" / "):R.nochain;
+      const msg=marks[i];
+      let state;
+      if(msg)state=((i in lvmap)?fill(R.lv,{0:lvmap[i]})+" ":"")+msg;
+      else if(i in lvmap)state=fill(R.lv,{0:lvmap[i]})+" "+okText;
+      else state=okText;
+      lines.push("    ".repeat(Math.max(0,disp-1))+"["+num+"] "
+        +String(titles[i-1]||"").trim()+"  ← "+chain+" | "+state);
+    }
+    return lines.join("\n")+"\n";
+  }
+
   return {detectEnc,decodeBytes,countChars,humanSize,guessMeta,cleanName,
-    RULES,DEFAULT_ON,cleanText,toHalfwidth,splitChapters,scanParaIssues,
+    RULES,DEFAULT_ON,cleanText,cleanTextAsync,verifyImageLinks,findImageLinks,
+    imageLinksInText,fetchImages,imagesForEpub,
+    imgWorthTrying,imgFullUrl,probeImage,fetchImageBytes,
+    toHalfwidth,splitChapters,scanParaIssues,
+    cnToInt,parseChapNumbers,isExtraTitle,checkChapters,chapterTreeReport,
     buildZip,deflateRawBytes,buildEpub,buildMergedTxt,buildSplitZip,safeFileName,
-    THEMES,themeCss,themeById,makeCover,prepareCoverFile,
+    applyNameFormat,hasBookToken,nameFmtBadChars,
+    buildCleanSummary,lineCount,nowStamp,SUM_KINDS,SUM_TEXT,
+    THEMES,DEFAULT_THEME,THEME_CSS,themeCss,themeById,themeTitle,addTheme,
+parseThemeCss,themePreviewHtml,isCustomTheme,makeCover,prepareCoverFile,
+    COVER_STYLES,DEFAULT_COVER_STYLE,coverStyleIds,coverStyleName,coverStyleId,
     exportRulesPack,parseRulesPack,customToText,textToCustom,
     xmlEsc,crc32,sha256hex};
 })();
@@ -1715,6 +3975,13 @@ const St={
   books:[], mode:null, busy:false, curStep:0,
   rootName:"", rootHandle:null, saveDir:null, saveDirName:"",
   rulesOn:new Set(Core.DEFAULT_ON), customRe:"",
+  /* 封面设置窗里定过的封面：书籍键 → {data,name,mime,w,h}，只在本页有效 */
+  coverMap:new Map(),
+  /* 内置封面：全局默认风格 + 哪几本用的是内置封面（键 → 风格 id）。
+     重开封面窗时据此还原「这本是内置画出来的」，与桌面版 cover_style /
+     cover_pins 一致；风格本身进 localStorage，pins 只在本次会话里有效 */
+  coverStyle:Core.DEFAULT_COVER_STYLE,
+  coverPins:new Map(),
 };
 
 /* ================= 编码显示名 ================= */
@@ -1913,7 +4180,7 @@ function renderLib(){
         +'<td><input type="checkbox" data-sel="1" '+(b.sel?"checked":"")+'></td>'
         +'<td class="name" title="'+esc(b.rel)+'">'+esc(b.title||b.name)+'</td>'
         +'<td class="auth">'+esc(b.author||"")+'</td>'
-        +'<td class="num">'+(b.chars>0?fmtNum(b.chars):"—")+'</td>'
+        +'<td class="num">'+fmtChars(b.chars)+'</td>'
         +'<td class="num">'+Core.humanSize(b.size)+'</td>'
         +'<td>'+encName(b.enc)+'</td>'
         +'<td class="num">'+cn+'</td>'
@@ -1963,8 +4230,96 @@ function dlBytes(name,data,mime,bom){
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
+/* ================= 导出文件名格式 ================= */
+/* 下拉项与模板一一对应：空串=保持原样，null=自定义（用下面存着的模板） */
+function namePats(){
+  return ["", "author - book", "[author] book", T("namePatBookAuthor"), null];
+}
+let _nameFmt = cfgKey("nameFmt")||"";    // 当前生效的模板
+let _nameIdx = 0;                        // 上一次有效选项：自定义弹窗取消时退回
+function refreshNameSelect(){
+  const el=$("selNameFmt"); if(!el) return;
+  const custom=cfgKey("nameFmtCustom")||"";
+  const labels=[T("nameKeep"),T("nameAuthorTitle"),T("nameBracket"),T("nameBookAuthor"),
+                custom||T("nameCustom")];
+  el.innerHTML=labels.map((t,i)=>'<option value="'+i+'">'+esc(t)+'</option>').join("");
+  const pats=namePats();
+  let idx=0;
+  if(_nameFmt){
+    const i=pats.indexOf(_nameFmt);
+    idx = i<0 ? labels.length-1 : i;     // 认不出是预设 = 自定义
+  }
+  el.selectedIndex=idx; _nameIdx=idx;
+}
+function onNameFmtChange(){
+  const el=$("selNameFmt"); if(!el) return;
+  const i=el.selectedIndex,pats=namePats();
+  if(i<0||i>=pats.length) return;
+  if(pats[i]===null){
+    askNameFmt(fmt=>{
+      if(fmt===null){ el.selectedIndex=_nameIdx; return; }   // 取消：退回上一次的选择
+      _nameFmt=fmt; cfgSet("nameFmt",fmt); cfgSet("nameFmtCustom",fmt);
+      refreshNameSelect();                                   // 下拉框里直接显示用户填的模板
+    });
+    return;
+  }
+  _nameFmt=pats[i]||"";
+  cfgSet("nameFmt",_nameFmt);
+  _nameIdx=i;
+}
+/* 自定义格式弹窗：不能有非法文件名（/ 等），必须含 book 占位符；取消回 null */
+function askNameFmt(cb){
+  const id=openModal(T("nameCustomTitle"),
+    '<p class="hint" style="margin:0 0 8px">'+esc(T("nameCustomHint"))+'</p>'
+    +'<label class="lab" style="display:block;margin-bottom:4px">'+esc(T("nameFmtLabel"))+'</label>'
+    +'<input class="inp" id="nameFmtInp" spellcheck="false" autocomplete="off">'
+    +'<div class="hint" id="nameFmtMsg" style="min-height:18px"></div>',
+    '<button class="btn ghost" data-c="1">'+esc(T("dCancel"))+'</button>'
+    +'<button class="btn b2" data-ok="1">'+esc(T("dOk"))+'</button>');
+  const d=document.getElementById(id);
+  const inp=document.getElementById("nameFmtInp");
+  const msg=document.getElementById("nameFmtMsg");
+  inp.value=cfgKey("nameFmtCustom")||T("nameCustomDemo");
+  let done=false;
+  function errOf(v){
+    const bad=Core.nameFmtBadChars(v);
+    if(bad.length) return fill(T("nameCustomBadChar"),{c:bad.join(" ")});
+    if(!Core.hasBookToken(v)) return T("nameCustomBad");
+    return "";
+  }
+  function refresh(){
+    const v=inp.value.trim(),e=errOf(v);
+    if(e){ msg.style.color="var(--red)"; msg.textContent=e; }
+    else if(!v){ msg.style.color=""; msg.textContent=""; }
+    else{
+      msg.style.color="var(--green)";
+      msg.textContent=fill(T("namePreview"),
+        {n:Core.applyNameFormat(v,T("namePreviewTitle"),T("namePreviewAuthor"),"")});
+    }
+  }
+  function ok(){
+    const v=inp.value.trim(),e=errOf(v);
+    if(e){ msg.style.color="var(--red)"; msg.textContent=e; inp.focus(); return; }
+    done=true; closeModal(id); cb(v);
+  }
+  d.addEventListener("click",ev=>{
+    if(ev.target.dataset.ok) ok();
+    else if(ev.target.dataset.c){ done=true; closeModal(id); cb(null); }
+  });
+  inp.addEventListener("input",refresh);
+  inp.addEventListener("keydown",ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); ok(); } });
+  /* ✕ / 点遮罩关窗也算取消：把下拉框退回上一次的选择 */
+  const obs=new MutationObserver(()=>{
+    if(document.getElementById(id)) return;
+    obs.disconnect(); if(!done) cb(null);
+  });
+  obs.observe($("modalRoot"),{childList:true});
+  refresh(); inp.focus(); inp.select();
+}
 function fileNameBase(book){
-  const stem=Core.safeFileName(book.title||book.name.replace(/\.(txt|text)$/i,""),70,T("kNone"));
+  const title=book.title||book.name.replace(/\.(txt|text)$/i,"");
+  const stem0=_nameFmt?Core.applyNameFormat(_nameFmt,title,book.author||"",T("kNone")):title;
+  const stem=Core.safeFileName(stem0,_nameFmt?80:70,T("kNone"));
   const sufEl=$("savSuffix");
   const suf=Core.safeFileName((sufEl?sufEl.value:"").trim().replace(/^\.+/,""),12,"");
   return stem+suf;
@@ -1991,6 +4346,11 @@ function applyStatic(){
   const langBtn=$("btnLang");
   langBtn.textContent = CUR==="zh" ? "EN" : "中文";
   langBtn.title = CUR==="zh" ? "Switch to English" : "切换到中文";
+  /* 「下载插图链接」：网页端有跨域上限，鼠标停上去就说明白 */
+  const imgDl=$("imgDlWrap");
+  if(imgDl) imgDl.title=T("optImgDlTip");
+  const sumWrap=$("sumWrap");
+  if(sumWrap) sumWrap.title=T("optSumTip");
   document.documentElement.lang = CUR==="zh"?"zh-CN":"en";
   applyCapability();
 }
@@ -2141,6 +4501,9 @@ function buildRules(){
     const on=St.rulesOn.has(r.id);
     const lab=document.createElement("label");
     lab.className="rule"+(on?" on":"");
+    lab.dataset.rid=r.id;
+    if(r.sub) lab.dataset.sub=r.sub;
+    if(r.need) lab.dataset.need=r.need;
     lab.innerHTML='<input type="checkbox" data-rid="'+r.id+'"'+(on?" checked":"")+'>'
       +'<span class="t">'+esc(zh?r.name:r.name_en)+'</span>'
       +'<div class="d">'+esc(zh?r.tip:r.tip_en)+'</div>';
@@ -2148,11 +4511,28 @@ function buildRules(){
       const rid=ev.target.dataset.rid;
       if(ev.target.checked){St.rulesOn.add(rid);lab.classList.add("on");}
       else{St.rulesOn.delete(rid);lab.classList.remove("on");}
+      syncRuleGates();
       refreshCleanInfo();
     });
     box.appendChild(lab);
   }
+  syncRuleGates();
   refreshCleanInfo();
+}
+/* 子规则联动：「含网址的行」没勾 → 插图两条不显示；
+   「保留插图链接」没勾 → 「插图链接校验」禁用（勾选状态保留，父项重新勾上即可用） */
+function syncRuleGates(){
+  const box=$("ruleBox");if(!box)return;
+  const urlOn=St.rulesOn.has("url"),keepOn=St.rulesOn.has("imgkeep");
+  box.querySelectorAll("label.rule").forEach(lab=>{
+    const inp=lab.querySelector("input");if(!inp)return;
+    if(lab.dataset.sub){lab.style.display=urlOn?"":"none";}
+    if(lab.dataset.need==="imgkeep"){
+      inp.disabled=!keepOn;
+      lab.classList.toggle("locked",!keepOn);
+    }
+  });
+  refreshImgDlState();
 }
 function refreshCleanInfo(){
   const box=$("ruleBox");
@@ -2172,9 +4552,11 @@ async function previewClean(){
   const b=await firstSelectedWithText();
   if(!b){setMsgHint($("cleanInfo"),T("cleanNeedSel"));return;}
   $("btnCleanPrev").disabled=true;
+  if(rules.includes("imgkeep")&&rules.includes("imgcheck")&&rules.includes("url"))
+    setMsgHint($("cleanInfo"),T("imgChecking"));
   try{
     const raw=await bookText(b);
-    const r=Core.cleanText(raw,rules,true,St.customRules);
+    const r=await Core.cleanTextAsync(raw,rules,true,St.customRules);
     /* 两条段落修复默认关，关着的时候也要提示“文件里有几处”，否则用户以为没事 */
     let tip='';
     if(!rules.includes("punct")||!rules.includes("unwrap")){
@@ -2188,12 +4570,26 @@ async function previewClean(){
     for(const line of headRaw){
       if(r.del.has(line)){
         a+='<span class="del">'+esc(line)+'</span>'+"\n";c++;
-      }else if(r.cut&&r.cut.has(line)){
-        const k=r.cut.get(line);
-        a+=esc(line.slice(0,k))+'<span class="del">'+esc(line.slice(k))+'</span>'+"\n";
-      }else{
-        a+=esc(line)+"\n";
+        continue;
       }
+      /* 行内被删的片段：整块 HTML 标签（mark）、行尾网址（cut）—— 都按区间标红，
+         既不在行首也不一定到行尾，所以不能只按“从某处切到行尾”画 */
+      const rs=[];
+      const mk=r.mark&&r.mark.get(line);
+      if(mk) for(const rg of mk) rs.push(rg);
+      const k=r.cut&&r.cut.get(line);
+      if(k!==undefined) rs.push([k,line.length]);
+      if(!rs.length){a+=esc(line)+"\n";continue;}
+      rs.sort((p,q)=>p[0]-q[0]);
+      let pos=0,h='';
+      for(const rg of rs){
+        const from=Math.min(Math.max(rg[0],pos),line.length);
+        const to=Math.min(Math.max(rg[1],from),line.length);
+        if(from>pos) h+=esc(line.slice(pos,from));
+        if(to>from) h+='<span class="del">'+esc(line.slice(from,to))+'</span>';
+        pos=to;
+      }
+      a+=h+esc(line.slice(pos))+"\n";
     }
     $("cleanPane").innerHTML=
       '<div class="pane"><div class="pt"><span>'+esc(T("rPrev"))+' · '+esc(b.title||b.name)+'</span>'
@@ -2204,7 +4600,8 @@ async function previewClean(){
       +(r.jsdup?(' · '+(T("jsdupStat")||"其中简繁重复 {n} 行").replace(/\{n\}/,r.jsdup)):'')
       +(r.merged?(' · '+(T("mergeStat")||"合并断行 {n} 处").replace(/\{n\}/,r.merged)):'')
       +(r.glued?(' · '+(T("glueStat")||"标点接回上一行 {n} 处").replace(/\{n\}/,r.glued)):'')
-      +(r.wrapSkip?(' · '+(T("wrapSkipStat")||"{n} 段过长未合并").replace(/\{n\}/,r.wrapSkip)):'')+tip+'</span></div>'
+      +(r.wrapSkip?(' · '+(T("wrapSkipStat")||"{n} 段过长未合并").replace(/\{n\}/,r.wrapSkip)):'')
+      +(r.img?(' · '+(T("imgStat")||"保留插图链接 {n} 行").replace(/\{n\}/,r.img)):'')+tip+'</span></div>'
       +'<pre>'+(headNew.map(esc).join("\n")||esc(T("cleanEmpty")))+'</pre></div>';
     $("cleanInfo").textContent=fill(T("prevHint"),{});
   }catch(e){setMsgHint($("cleanInfo"),T("noEpubErr").replace("{e}",e.message));}
@@ -2218,9 +4615,14 @@ async function applyClean(){
   let done=0,totalRm=0;
   for(const b of sel){
     try{
+      if(rules.includes("imgkeep")&&rules.includes("imgcheck")&&rules.includes("url"))
+        setMsgHint($("cleanInfo"),T("imgChecking"));
       const raw=await bookText(b);
-      const r=rules.length?Core.cleanText(raw,rules,false,St.customRules):{text:raw,removed:0};
+      const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules,null,true)
+                          :{text:raw,removed:0,trace:[],blank:0};
       b._clean=r.text;b.chars=Core.countChars(r.text);b._chap=null;b.chapters=-1;
+      /* 清理明细随清洗快照一起留着：「导出」的清洗内容汇总直接复用它 */
+      b._cleanTrace=r.trace||[];b._cleanBlank=r.blank||0;b._cleanBefore=Core.lineCount(raw);
       totalRm+=r.removed;done++;
     }catch(e){log("清洗失败："+b.name+" "+e.message);}
   }
@@ -2320,6 +4722,19 @@ function refreshChapMsg(){
   if(b._chap)t+=" · "+b._chap.length+" "+T("chHead").replace(/\{n\}/,b._chap.length).split("·")[0].trim();
   $("chapInfo").textContent=t;
 }
+/* 取一本书的试分结果（切章 + 章节树校验），试分与导出章节树共用 */
+async function chapDataFor(b,custom){
+  let raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
+  /* 与 EXE 版及导出逻辑一致：未应用清洗时按当前规则临时清洗一份再分章
+     （不写入 b._clean，避免影响清洗页的统计与“应用清洗”流程） */
+  if(b._clean===undefined){
+    const rules=activeRuleIds();
+    if(rules.length) raw=(await Core.cleanTextAsync(raw,rules,false,St.customRules)).text;
+  }
+  const chs=Core.splitChapters(raw,custom);
+  const ck=Core.checkChapters(chs.map(c=>c.t),CUR);
+  return {chs:chs,ck:ck,raw:raw};
+}
 async function tryChapters(){
   const b=chapBookObj();
   if(!b){setMsgHint($("chapInfo"),T("chApplyNeed"));return;}
@@ -2328,30 +4743,87 @@ async function tryChapters(){
   let reOk=true;
   if(custom){try{new RegExp(custom);}catch(e){reOk=false;}}
   if(!reOk){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
-  let raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
-  /* 与 EXE 版及导出逻辑一致：未应用清洗时按当前规则临时清洗一份再分章
-     （不写入 b._clean，避免影响清洗页的统计与“应用清洗”流程） */
-  if(b._clean===undefined){
-    const rules=activeRuleIds();
-    if(rules.length) raw=Core.cleanText(raw,rules,false,St.customRules).text;
-  }
-  let chs;
-  try{chs=Core.splitChapters(raw,custom);}catch(e){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
-  window._lastTry={chs,b};
-  renderChapList(chs);
-  $("chapInfo").textContent=fill(T("chTryDone"),{n:chs.length,c:fmtNum(Core.countChars(raw))});
-  log(fill(T("logChapped"),{name:b.title||b.name,n:chs.length})+"（试分）");
+  let data;
+  try{data=await chapDataFor(b,custom);}catch(e){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
+  window._lastTry={chs:data.chs,b:b,ck:data.ck,custom:custom};
+  renderChapList(data.chs,data.ck);
+  let info=fill(T("chTryDone"),{n:data.chs.length,c:fmtNum(Core.countChars(data.raw))});
+  if(data.ck.bad)info+=" · "+fill(T("chkBad"),{n:data.ck.bad});
+  $("chapInfo").textContent=info;
+  log(fill(T("logChapped"),{name:b.title||b.name,n:data.chs.length})+"（试分）");
 }
-function renderChapList(chs){
+/* 章节列表：序号 / 标题 / 字数 / 校验；上级章节带「第N级」，异常整行标红 */
+function renderChapList(chs,ck){
   const box=$("chapList");box.innerHTML="";
   if(!chs||!chs.length){box.innerHTML='<div class="hint">'+esc(T("chEmpty"))+'</div>';return;}
+  if(!ck)ck=Core.checkChapters(chs.map(c=>c.t),CUR);
   chs.slice(0,400).forEach((c,i)=>{
-    const d=document.createElement("div");d.className="ch";
-    d.textContent=(i+1)+". "+c.t+"（"+fmtNum(Core.countChars(c.b))+"字）";
-    d.title=c.t;box.appendChild(d);
+    const no=i+1;
+    const msg=ck.marks[no];
+    const lv=ck.lv[no];
+    let state=msg||ck.ok;
+    if(lv)state=fill(T("chkLv"),{0:lv})+" "+state;
+    const d=document.createElement("div");
+    d.className="ch"+(msg?" bad":"")+(lv?" lv":"");
+    d.innerHTML='<span class="no">'+no+'</span>'
+      +'<span class="ti">'+esc(c.t)+'</span>'
+      +'<span class="ct">'+fmtNum(Core.countChars(c.b))+'</span>'
+      +'<span class="ck">'+esc(state)+'</span>';
+    d.title=c.t+(state?"  |  "+state:"");
+    box.appendChild(d);
   });
   if(chs.length>400){const d=document.createElement("div");d.className="hint";
     d.textContent="… 共 "+chs.length+" 章，仅展示前 400";box.appendChild(d);}
+}
+/* 批量分章结果：一行一本书，只给汇总；双击进入该书单本试分 */
+function renderChapBatch(rows){
+  const box=$("chapList");box.innerHTML="";
+  if(!rows||!rows.length){box.innerHTML='<div class="hint">'+esc(T("chEmpty"))+'</div>';return;}
+  rows.forEach((r,i)=>{
+    const d=document.createElement("div");
+    d.className="ch bk"+(r.ck.bad?" bad":"");
+    d.innerHTML='<span class="no">'+(i+1)+'</span>'
+      +'<span class="ti">'+esc(r.b.title||r.b.name)+'</span>'
+      +'<span class="ct">'+r.n+'</span>'
+      +'<span class="ck">'+esc(r.ck.summary)+'</span>';
+    d.title=(r.b.title||r.b.name)+"  |  "+r.ck.summary+"  "+T("chDblHint");
+    d.addEventListener("dblclick",async()=>{
+      const idx=St.books.indexOf(r.b);
+      if(idx<0)return;
+      $("chapBook").value=String(idx);
+      syncBookRegex();
+      await tryChapters();
+    });
+    box.appendChild(d);
+  });
+}
+/* 导出章节树：下载 <书名>_章节树.txt（英文界面为 _chapter_tree.txt） */
+async function exportChapTree(){
+  const b=chapBookObj();
+  if(!b){setMsgHint($("chapInfo"),T("chkNoBook"));return;}
+  storeBookRegex();
+  const custom=(b.chapRe||$("chapRegex").value).trim();
+  let reOk=true;
+  if(custom){try{new RegExp(custom);}catch(e){reOk=false;}}
+  if(!reOk){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
+  let data=window._lastTry;
+  if(!(data&&data.b===b&&data.custom===custom)){
+    try{data=await chapDataFor(b,custom);}catch(e){setMsgHint($("chapInfo"),T("chBadRegex"));return;}
+  }
+  const titles=data.chs.map(c=>c.t);
+  const ck=data.ck;
+  let total=0;
+  for(const c of data.chs)total+=Core.countChars(c.b);
+  const head=[
+    fill(T("trBook"),{0:b.title||b.name}),
+    fill(T("trSplit"),{n:titles.length,c:fmtNum(total),l:ck.levels}),
+    fill(T("trCheck"),{0:ck.summary})
+  ];
+  const body=Core.chapterTreeReport(titles,ck,head,CUR);
+  const name=Core.safeFileName(b.title||b.name,60,"book")+T("treeSuffix")+".txt";
+  dlBytes(name,body,"text/plain;charset=utf-8",false);
+  log(fill(T("chkDl"),{name:name}));
+  setMsgHint($("chapInfo"),fill(T("chkDl"),{name:name}));
 }
 function applyChapters(){
   const t=window._lastTry;
@@ -2369,7 +4841,7 @@ async function chapAll(){
   const custom=$("chapRegex").value.trim();
   if(custom){try{new RegExp(custom);}catch(e){$("chapInfo").textContent=T("chBadRegex");return;}}
   btn.disabled=true;info.textContent="";
-  const n=St.books.length;let done=0,sum=0;
+  const n=St.books.length;let done=0,sum=0,ckBad=0;const rows=[];
   for(let i=0;i<n;i++){
     const b=St.books[i];
     info.textContent=fill(T("chAllDoing"),{i:i+1,n,name:(b.title||b.name).slice(0,24)});
@@ -2377,19 +4849,25 @@ async function chapAll(){
       let raw=(bookSource(b)!==undefined?bookSource(b):await bookText(b))||"";
       if(b._clean===undefined){
         const rules=activeRuleIds();
-        if(rules.length) raw=Core.cleanText(raw,rules,false,St.customRules).text;
+        if(rules.length) raw=(await Core.cleanTextAsync(raw,rules,false,St.customRules)).text;
       }
       // 这本书自己设了规则就用自己的，否则用全局
       let own=(b.chapRe||custom||"").trim()||undefined;
       if(own){try{new RegExp(own);}catch(e){own=undefined;}}
       const chs=Core.splitChapters(raw,own);
       b._chap=chs;b.chapters=chs.length;sum+=chs.length;done++;
+      const ck=Core.checkChapters(chs.map(c=>c.t),CUR);
+      if(ck.bad)ckBad++;
+      rows.push({b:b,n:chs.length,ck:ck});
     }catch(e){log("分章失败："+b.name+" "+e.message);}
     if(i%5===4||i===n-1){renderLib();fillChapBook();}
   }
   renderLib();fillChapBook();
   btn.disabled=false;
-  const msg=fill(T("chAllDone"),{n:done,m:sum});
+  renderChapBatch(rows);          // 一行一本书：只给校验汇总，双击进入单本
+  let msg=fill(T("chAllDone"),{n:done,m:sum});
+  if(ckBad)msg+=" · "+fill(T("chkBooks"),{n:ckBad});
+  msg+=T("chDblHint");
   info.textContent=msg;
   log(msg);
 }
@@ -2464,23 +4942,219 @@ const IMG_RE=/\.(jpe?g|png|webp|bmp|gif)$/i;
 function relDir(rel){const s=String(rel||"");const i=s.lastIndexOf("/");return i<0?"":s.slice(0,i+1).toLowerCase();}
 function relStem(rel){const s=String(rel||"");const b=s.slice(s.lastIndexOf("/")+1);
   return b.replace(/\.[^.]+$/,"").trim().toLowerCase();}
-function themeId(){const el=$("selTheme");return el&&el.value?el.value:"classic";}
-function coverMode(){const el=$("selCover");return el&&el.value?el.value:"auto";}
-function refreshThemeSelect(){
-  const el=$("selTheme");if(!el)return;
-  const cur=el.value||cfgKey("theme")||"classic";
-  const en=CUR==="en";
-  el.innerHTML=Core.THEMES.map(t=>'<option value="'+esc(t.id)+'" title="'+
-    esc(en?(t.desc_en||""):(t.desc||""))+'">'+esc(en?t.name_en:t.name)+'</option>').join("");
-  el.value=Core.THEMES.some(t=>t.id===cur)?cur:"classic";
+/* ---------- 主题：当前选择 / 按钮 / 选择器（卡片 + 大图预览） ---------- */
+function themeValid(tid){const s=String(tid||"");return Core.THEME_CSS[s]?s:Core.DEFAULT_THEME;}
+function themeId(){return themeValid(St.theme);}
+function themeObj(tid){return Core.themeById(themeValid(tid));}
+/* 显示名：导入的 CSS 没写 @theme-name 时用通用名「自定义CSS」 */
+function themeLabel(t){
+  if(!t)return T("themeCustom");
+  if(t.custom&&!t.named)return T("themeCustom");
+  return Core.themeTitle(t,CUR==="en")||T("themeCustom");
 }
-function refreshCoverSelect(){
-  const el=$("selCover");if(!el)return;
-  const cur=el.value||cfgKey("cover")||"auto";
-  el.innerHTML='<option value="auto">'+esc(T("coverAuto"))+'</option>'+
-    '<option value="default">'+esc(T("coverDefault"))+'</option>'+
-    '<option value="none">'+esc(T("coverNone"))+'</option>';
-  el.value=(cur==="default"||cur==="none")?cur:"auto";
+function refreshThemeBtn(){
+  const el=$("btnTheme");if(!el)return;
+  St.theme=themeValid(St.theme);
+  const nm=themeLabel(themeObj(St.theme));
+  el.textContent=nm;el.title=nm;
+}
+const TP={id:"",modal:null,vp:{w:540,h:880}};
+/* 预览用真 iframe 渲染：大图按视口尺寸排版后整体缩放，卡片按列宽缩放 */
+function tpFit(wrap,vw,vh){
+  const fr=wrap.querySelector("iframe");if(!fr)return;
+  const k=Math.min(wrap.clientWidth/vw,wrap.clientHeight/vh)||0.1;
+  fr.style.width=vw+"px";fr.style.height=vh+"px";
+  fr.style.transform="scale("+k+")";
+  fr.style.left=Math.round((wrap.clientWidth-vw*k)/2)+"px";
+  fr.style.top=Math.round((wrap.clientHeight-vh*k)/2)+"px";
+}
+function tpLayout(){
+  const grid=$("tpGrid");
+  if(grid){
+    grid.querySelectorAll(".tp-card").forEach(card=>{
+      const shot=card.querySelector(".tp-shot2");
+      const k=(shot.clientWidth||180)/540;
+      shot.style.height=Math.round(880*k)+"px";
+      const fr=shot.querySelector("iframe");
+      fr.style.width="540px";fr.style.height="880px";
+      fr.style.transform="scale("+k+")";
+    });
+  }
+  const big=$("tpShot");if(big)tpFit(big,TP.vp.w,TP.vp.h);
+}
+function tpBuildCards(){
+  const grid=$("tpGrid");if(!grid)return;
+  grid.title=T("themeHint");
+  grid.innerHTML="";
+  Core.THEMES.forEach(t=>{
+    const card=document.createElement("div");
+    card.className="tp-card";card.dataset.id=t.id;
+    const shot=document.createElement("div");shot.className="tp-shot2";
+    const fr=document.createElement("iframe");
+    fr.setAttribute("scrolling","no");fr.setAttribute("tabindex","-1");
+    fr.srcdoc=Core.themePreviewHtml(t.css,false);
+    shot.appendChild(fr);card.appendChild(shot);
+    const nm=document.createElement("div");nm.className="tp-name";
+    nm.textContent=themeLabel(t);
+    const ds=document.createElement("div");ds.className="tp-desc";
+    ds.textContent=t.desc||"";
+    card.appendChild(nm);card.appendChild(ds);
+    card.addEventListener("click",()=>tpSelect(t.id));
+    grid.appendChild(card);
+  });
+}
+function tpSelect(tid){
+  const t=Core.themeById(tid);if(!t)return;
+  TP.id=tid;
+  const d=TP.modal&&document.getElementById(TP.modal);
+  if(d){
+    let hit=null;
+    d.querySelectorAll(".tp-card").forEach(c=>{
+      const on=c.dataset.id===tid;
+      c.classList.toggle("on",on);
+      if(on)hit=c;
+    });
+    const dh=d.querySelector(".dh");
+    if(dh&&dh.firstChild)dh.firstChild.nodeValue=themeLabel(t);
+    /* 上次选的主题可能排在列表下面：滚到能看见的位置 */
+    if(hit&&hit.scrollIntoView)hit.scrollIntoView({block:"nearest"});
+  }
+  const fr=$("tpFrame");
+  if(fr)fr.srcdoc=Core.themePreviewHtml(Core.themeCss(tid),true);
+  tpLayout();
+}
+function tpApplyVp(){
+  const wEl=$("tpW"),hEl=$("tpH");
+  const w=parseInt(wEl&&wEl.value,10),h=parseInt(hEl&&hEl.value,10);
+  TP.vp.w=Math.max(200,Math.min(3000,isNaN(w)?540:w));
+  TP.vp.h=Math.max(200,Math.min(3000,isNaN(h)?880:h));
+  if(wEl)wEl.value=TP.vp.w;
+  if(hEl)hEl.value=TP.vp.h;
+  const fr=$("tpFrame");
+  if(fr)fr.srcdoc=Core.themePreviewHtml(Core.themeCss(TP.id),true);
+  tpLayout();
+}
+/* 导入自定义 CSS：兼容 UTF-8(BOM) / GBK，读不到名字就用「自定义CSS」 */
+function tpImport(){
+  const inp=document.createElement("input");
+  inp.type="file";inp.accept=".css,text/css";
+  inp.onchange=async()=>{
+    const f=inp.files&&inp.files[0];if(!f)return;
+    let css="";
+    try{
+      const buf=await f.arrayBuffer();
+      try{css=new TextDecoder("utf-8",{fatal:true}).decode(buf);}
+      catch(e){css=new TextDecoder("gbk").decode(buf);}
+    }catch(e){css="";}
+    if(css&&css.charCodeAt(0)===0xFEFF)css=css.slice(1);
+    if(!css||!css.trim()){
+      askConfirm(T("themeBad").replace("{msg}",f.name),T("closeX"),()=>{});
+      return;
+    }
+    const t=Core.addTheme(Core.parseThemeCss(css,f.name));
+    if(!t)return;
+    try{cfgSet("themeCss",JSON.stringify({id:t.id,name:t.name,named:t.named,
+      desc:t.desc,version:t.version,css:t.css,custom:true}));}catch(e){}
+    tpBuildCards();
+    tpSelect(t.id);
+  };
+  inp.click();
+}
+/* 中间那条竖线可以左右拖，调整左右两栏的宽度比例 */
+function tpBindSplit(d){
+  const sp=d.querySelector("#tpSplit"),L=d.querySelector("#tpL"),
+        box=d.querySelector(".tpick");
+  let drag=null;
+  sp.addEventListener("pointerdown",ev=>{
+    drag={x:ev.clientX,w:L.getBoundingClientRect().width};
+    sp.classList.add("on");
+    try{sp.setPointerCapture(ev.pointerId);}catch(e){}
+    ev.preventDefault();
+  });
+  sp.addEventListener("pointermove",ev=>{
+    if(!drag)return;
+    const max=Math.max(220,box.getBoundingClientRect().width-280);
+    L.style.flex="0 0 "+Math.round(Math.max(190,Math.min(max,drag.w+(ev.clientX-drag.x))))+"px";
+    tpLayout();
+  });
+  const stop=()=>{drag=null;sp.classList.remove("on");};
+  sp.addEventListener("pointerup",stop);
+  sp.addEventListener("pointercancel",stop);
+}
+/* 版面主题 / 封面只作用于 EPUB：没勾「导出 EPUB」时整组置灰（值保留） */
+function syncEpubOpts(){
+  const on=!!($("fmtEpub")&&$("fmtEpub").checked);
+  ["btnTheme","btnCover"].forEach(id=>{
+    const el=$(id);if(!el)return;
+    el.disabled=!on;
+  });
+  document.querySelectorAll('[data-k="outTheme"]').forEach(el=>{
+    el.classList.toggle("off",!on);
+  });
+}
+function openThemePicker(){
+  TP.vp={w:540,h:880};
+  const body='<div class="tpick">'
+    +'<div class="tp-l" id="tpL">'
+    +'<div class="tp-shot" id="tpShot"><iframe id="tpFrame" scrolling="no" tabindex="-1"></iframe></div>'
+    +'<div class="tp-row"><span>'+esc(T("themeVpW"))+'</span>'
+    +'<input id="tpW" value="540" inputmode="numeric">'
+    +'<span>×</span>'
+    +'<input id="tpH" value="880" inputmode="numeric">'
+    +'<span>px</span>'
+    +'<button class="btn ghost sm" id="tpApply">'+esc(T("themeApply"))+'</button>'
+    +'</div></div>'
+    +'<div class="tp-split" id="tpSplit" title="↔"></div>'
+    +'<div class="tp-r"><div class="tp-grid" id="tpGrid"></div></div>'
+    +'</div>';
+  const id=openModal(T("themePick"),body,
+    '<button class="btn ghost" data-imp="1">'+esc(T("themeImport"))+'</button>'
+    +'<button class="btn ghost" data-c="1">'+esc(T("dCancel"))+'</button>'
+    +'<button class="btn b2" data-ok="1">'+esc(T("dOk"))+'</button>');
+  TP.modal=id;
+  const d=document.getElementById(id);
+  const dlg=d.querySelector(".dlg");
+  dlg.style.width="min(1080px,95vw)";dlg.style.maxHeight="92vh";
+  d.querySelector(".db").style.overflow="hidden";
+  tpBuildCards();
+  tpBindSplit(d);
+  d.addEventListener("click",ev=>{
+    if(ev.target.dataset.imp){tpImport();return;}
+    if(ev.target.dataset.ok){
+      St.theme=TP.id;cfgSet("theme",St.theme);refreshThemeBtn();
+      closeModal(id);TP.modal=null;return;
+    }
+    if(ev.target.dataset.c||ev.target.dataset.x||ev.target===d)TP.modal=null;
+  });
+  const ap=d.querySelector("#tpApply");
+  if(ap)ap.onclick=tpApplyVp;
+  ["tpW","tpH"].forEach(k=>{
+    const el=d.querySelector("#"+k);
+    if(el)el.addEventListener("keydown",e=>{if(e.key==="Enter")tpApplyVp();});
+  });
+  tpSelect(themeId());
+  setTimeout(tpLayout,30);
+}
+window.addEventListener("resize",()=>{if(TP.modal)tpLayout();});
+/* 「下载插图链接」跟随清洗页的「保留插图链接」：没开就置灰且强制不勾 */
+function refreshImgDlState(){
+  const el=$("optImgDl");if(!el)return;
+  const on=St.rulesOn.has("imgkeep");
+  el.disabled=!on;
+  if(!on&&el.checked)el.checked=false;
+}
+function imgDownloadOn(){
+  const el=$("optImgDl");
+  return !!(el&&el.checked&&!el.disabled&&St.rulesOn.has("imgkeep"));
+}
+/* 封面按钮：定过几本就显示「封面（已设 N 本）」，一眼看出配好没有 */
+function bookKey(b){return String((b&&(b.rel||b.name))||"");}
+function coverCount(){return selectedBooks().filter(b=>St.coverMap.has(bookKey(b))).length;}
+function refreshCoverBtn(){
+  const el=$("btnCover");if(!el)return;
+  const n=coverCount();
+  el.textContent=n?fill(T("btnCoverN"),{n}):T("btnCover");
+  el.title=T("coverHint");
 }
 /* 把同目录的同名图片挂到书上（目录模式与拖拽模式共用一套匹配规则） */
 function attachCovers(books,imgs){
@@ -2498,11 +5172,10 @@ function attachCovers(books,imgs){
   }
   return hit;
 }
-/* 这本书要用的封面：同名图片优先，退回画布生成的默认封面 */
-async function bookCover(b){
-  const mode=coverMode();
-  if(mode==="none")return null;
-  if(mode!=="default"&&b.coverEnt){
+/* 同名本地图：书旁边的图优先，其次是输出目录里那张。
+   与桌面版 find_cover_image 一个顺序：书旁边的图最准，输出目录里多是下载来的图 */
+async function coverLocal(b){
+  if(b.coverEnt){
     try{
       const ent=b.coverEnt;
       const f=ent.handle?await ent.handle.getFile():ent.file;
@@ -2510,7 +5183,325 @@ async function bookCover(b){
       if(c)return c;
     }catch(e){log("⚠ 封面图读取失败："+(e&&e.message||e));}
   }
-  return await Core.makeCover(b.title||fileBaseName(b),b.author||"");
+  return await coverFromSaveDir(b);
+}
+/* 自动封面：同名图片优先，都没有就按当前默认风格画一张（styles 见 Core） */
+async function autoCover(b,style){
+  const local=await coverLocal(b);
+  if(local)return local;
+  return await Core.makeCover(b.title||fileBaseName(b),b.author||"",600,800,
+                              style||St.coverStyle);
+}
+/* 输出目录里的图片清单（一次性列目录，等于桌面版的一次 listdir）：
+   同一批书反复找封面时不必逐个 getFileHandle 试探。 */
+let _saveDirImgs=null;
+async function saveDirImageMap(){
+  if(!St.saveDir)return null;
+  if(_saveDirImgs&&_saveDirImgs.dir===St.saveDir)return _saveDirImgs.map;
+  const map=new Map();
+  try{
+    for await(const ent of St.saveDir.entries()){
+      if(!ent[1]||ent[1].kind!=="file")continue;
+      if(!/\.(jpe?g|png|webp|gif|bmp)$/i.test(ent[0]))continue;
+      map.set(ent[0].toLowerCase(),ent[1]);
+    }
+  }catch(e){ return null; }
+  _saveDirImgs={dir:St.saveDir,map:map};
+  return map;
+}
+/* 输出目录里的同名图：桌面版也会扫导出目录（书籍目录优先） */
+async function coverFromSaveDir(b){
+  const map=await saveDirImageMap();
+  if(!map)return null;
+  const stem=String(b.name||"").replace(/(?:\.(?:txt|text))+$/i,"").trim();
+  const title=String(b.title||"").trim();
+  const cands=[stem,stem+".cover",stem+"-cover",stem+"_cover"];
+  if(title&&title!==stem)cands.push(title,title+".cover",title+"-cover",title+"_cover");
+  const exts=[".jpg",".jpeg",".png",".webp"];
+  for(const c of cands){
+    if(!c)continue;
+    for(const ext of exts){
+      const h=map.get((c+ext).toLowerCase());
+      if(!h)continue;
+      try{
+        const cov=await Core.prepareCoverFile(await h.getFile());
+        if(cov)return cov;
+      }catch(e){/* 读不出来就试下一个候选 */}
+    }
+  }
+  return null;
+}
+/* 导出这本书时用的封面：封面窗里定过的直接用，没定过才回退到自动 */
+async function coverFor(b){
+  const got=St.coverMap.get(bookKey(b));
+  if(got)return got;
+  return await autoCover(b);
+}
+
+/* ---------- 封面设置窗（网格卡片 + 右键菜单，与桌面版同款） ----------
+   CP.tmp / CP.pins / CP.style 是本次窗口的工作副本：点确定才提交，取消保持原样。
+   CP.gen 是「统一换风格」的批次号，旧批次算完的封面不会盖掉新风格。 */
+const CP={modal:null,tmp:null,pins:null,style:"",gen:0};
+function cpPaint(card,cov){
+  const shot=card.querySelector(".cv-shot");if(!shot)return;
+  if(card._url){try{URL.revokeObjectURL(card._url);}catch(e){}card._url=null;}
+  if(!cov||!cov.data){
+    shot.innerHTML='<span class="ph">'+esc(T("coverNone"))+'</span>';return;
+  }
+  const url=URL.createObjectURL(new Blob([cov.data],{type:cov.mime||"image/jpeg"}));
+  card._url=url;
+  shot.innerHTML='<img alt="">';
+  shot.firstElementChild.src=url;
+}
+let _cpMenuDown=null;
+function cpCloseMenu(){
+  const m=document.getElementById("cvMenu");if(m)m.remove();
+  if(_cpMenuDown){document.removeEventListener("mousedown",_cpMenuDown,true);_cpMenuDown=null;}
+}
+/* 有没有同名本地封面：有的话就不给「更换默认封面」，本地图永远优先 */
+function cpCanDefault(card){
+  return card._origin!=="local";
+}
+function cpOpenMenu(x,y,card){
+  cpCloseMenu();
+  const m=document.createElement("div");
+  m.className="cv-menu";m.id="cvMenu";
+  const en=CUR==="en";
+  const mainHtml=()=>'<div data-a="pick">'+esc(T("coverPickImg"))+'</div>'
+    +'<div data-a="url">'+esc(T("coverDl"))+'</div>'
+    +(cpCanDefault(card)
+      ?'<div data-a="more">'+esc(T("coverNewDefault"))+' ▸</div>'
+      :'');
+  /* 第二层：内置风格列表（桌面版是子菜单，网页版用同一个菜单换一页，
+     触屏/鼠标都点得到，也不用处理子菜单的悬停定位） */
+  const styleHtml=()=>'<div data-a="back" class="back">'+esc(T("coverBack"))+'</div>'
+    +Core.COVER_STYLES.map(s=>'<div data-a="style" data-s="'+s[0]+'"'
+        +(card._pin===s[0]?' class="on"':'')+'>'
+        +esc(Core.coverStyleName(s[0],en))+'</div>').join("");
+  m.innerHTML=mainHtml();
+  document.body.appendChild(m);
+  const place=()=>{                            /* 贴着鼠标弹出，别越出可视区 */
+    const w=m.offsetWidth,h=m.offsetHeight;
+    m.style.left=Math.max(4,Math.min(x,window.innerWidth-w-6))+"px";
+    m.style.top=Math.max(4,Math.min(y,window.innerHeight-h-6))+"px";
+  };
+  place();
+  m.addEventListener("click",ev=>{
+    const t=ev.target.closest("[data-a]");if(!t)return;
+    const a=t.dataset.a;
+    if(a==="more"){m.innerHTML=styleHtml();place();return;}
+    if(a==="back"){m.innerHTML=mainHtml();place();return;}
+    if(a==="style"){
+      cpCloseMenu();
+      cpSetDefault(card,t.dataset.s).catch(e=>log("⚠ 换内置封面失败："+(e&&e.message||e)));
+      return;
+    }
+    cpCloseMenu();
+    if(a==="pick")cpPickFile(card);
+    else cpAskUrl(card);
+  });
+  /* 点菜单外面关掉；菜单内部的按下不能关，否则 click 还没到菜单就被删了 */
+  _cpMenuDown=ev=>{if(!m.contains(ev.target))cpCloseMenu();};
+  setTimeout(()=>document.addEventListener("mousedown",_cpMenuDown,true),0);
+}
+/* 换成本地图片：转成 JPEG 记住并刷新卡片；失败提示换一张 */
+async function cpSetCoverFile(card,file){
+  if(!file)return false;
+  const cov=await Core.prepareCoverFile(file);
+  if(!cov){askConfirm(T("coverImgBad"),T("closeX"),()=>{});return false;}
+  CP.tmp.set(card.dataset.k,cov);
+  CP.pins.delete(card.dataset.k);      /* 用户自己挑的图：不再算内置封面 */
+  card._origin="user";card._pin=null;
+  cpPaint(card,cov);
+  return true;
+}
+/* 算一本书这次该用的封面：同名本地图 > 单本定的内置风格 > 用户挑过的图 >
+   默认风格（同桌面版 CoverPicker._prepare 的顺序） */
+async function cpLoad(card,forceStyle){
+  const b=card._book,key=card.dataset.k;
+  const local=await coverLocal(b);
+  if(local)return {cov:local,origin:"local"};
+  const pin=CP.pins.get(key);
+  if(pin){
+    if(!forceStyle){
+      const got=CP.tmp.get(key);
+      if(got)return {cov:got,origin:"builtin",style:pin};
+    }
+    const used=forceStyle||pin;
+    return {cov:await Core.makeCover(b.title||fileBaseName(b),b.author||"",600,800,used),
+            origin:"builtin",style:used};
+  }
+  const got=CP.tmp.get(key);
+  if(got)return {cov:got,origin:"user"};
+  const used=forceStyle||CP.style;
+  return {cov:await Core.makeCover(b.title||fileBaseName(b),b.author||"",600,800,used),
+          origin:"builtin",style:used};
+}
+/* 算好并贴到卡片上；gen 传了就只在批次没变时生效（换风格时旧结果作废） */
+async function cpFill(card,forceStyle,gen){
+  const r=await cpLoad(card,forceStyle);
+  if(gen!=null&&gen!==CP.gen)return;
+  if(!card.isConnected||CP.modal!==card._modal)return;
+  card._origin=r.origin;card._pin=r.style||null;
+  const key=card.dataset.k;
+  if(r.cov)CP.tmp.set(key,r.cov);
+  if(r.origin==="builtin"&&r.style)CP.pins.set(key,r.style);
+  else CP.pins.delete(key);
+  cpPaint(card,r.cov);
+}
+/* 右键「更换默认封面」：只改这一本 */
+async function cpSetDefault(card,sid){
+  if(!sid||card._origin==="local")return;
+  const b=card._book;
+  const cov=await Core.makeCover(b.title||fileBaseName(b),b.author||"",600,800,sid);
+  if(!cov||!card.isConnected||CP.modal!==card._modal)return;
+  card._origin="builtin";card._pin=sid;
+  CP.pins.set(card.dataset.k,sid);
+  CP.tmp.set(card.dataset.k,cov);
+  cpPaint(card,cov);
+}
+/* 底栏下拉框：所有内置封面的书统一换风格，用户挑的图/本地图不动 */
+async function cpApplyStyle(sid){
+  if(!sid||sid===CP.style)return;
+  CP.style=sid;
+  CP.gen++;
+  const my=CP.gen;                     /* 连点两下下拉框：后一次作废前一次 */
+  const cards=[...document.querySelectorAll("#cvGrid .cv-card")];
+  for(const card of cards){
+    if(CP.gen!==my)return;
+    if(card._origin==="local"||card._origin==="user")continue;
+    /* 不先删 pins：cpLoad 靠它认出「这本是内置封面」，重画后 pin 就是新风格，
+       单本的单独设置自然被统一值覆盖（与桌面版一致） */
+    await cpFill(card,sid,my);
+    if(!card.isConnected)return;
+  }
+}
+/* 选择本地图片：只把转好的字节留在内存里，不落盘 */
+function cpPickFile(card){
+  const inp=document.createElement("input");
+  inp.type="file";inp.accept="image/*,.jpg,.jpeg,.png,.gif,.webp,.bmp";
+  inp.onchange=()=>cpSetCoverFile(card,inp.files&&inp.files[0]);
+  inp.click();
+}
+function cpAskUrl(card){
+  const id=openModal(T("coverUrlTitle"),
+    '<div class="cv-tip">'+esc(T("coverUrlHint"))+'</div>'
+    +'<input class="inp" id="cvUrl" placeholder="https://…/cover.jpg" spellcheck="false">',
+    '<button class="btn ghost" data-c="1">'+esc(T("dCancel"))+'</button>'
+    +'<button class="btn b2" data-ok="1">'+esc(T("dOk"))+'</button>');
+  const d=document.getElementById(id);
+  const inp=d.querySelector("#cvUrl");
+  if(inp)setTimeout(()=>inp.focus(),30);
+  const submit=()=>{
+    const url=((inp&&inp.value)||"").trim();
+    if(!url){askConfirm(T("coverUrlBad"),T("closeX"),()=>{});return;}
+    closeModal(id);
+    cpDownload(card,url);
+  };
+  d.addEventListener("click",ev=>{
+    if(ev.target.dataset.ok){ev.preventDefault();submit();}
+    else if(ev.target.dataset.c)closeModal(id);
+  });
+  if(inp)inp.addEventListener("keydown",e=>{if(e.key==="Enter")submit();});
+}
+/* 下载网络封面：拿到字节就转 JPEG 换上去；被跨域挡下时明确说清原因并引导用桌面版 */
+async function cpDownload(card,url){
+  log(T("coverDlWait")+" "+url);
+  let got=null;
+  try{ got=await Core.fetchImageBytes(url,20000); }catch(e){ got=null; }
+  if(!got){
+    /* 抓不到字节分两种：图确实存在（站点没给跨域许可），或者链接根本不是图 */
+    let alive="";
+    try{ alive=await Core.probeImage(Core.imgFullUrl(url)||url,6000); }catch(e){ alive=""; }
+    if(alive){
+      log("⚠ 封面下载被跨域（CORS）限制拦下："+url);
+      const mid=openModal(T("coverDlFailCorsTitle"),
+        '<div class="cv-tip">'+T("coverDlFailCors")+'</div>',
+        '<button class="btn b2" data-ok="1">'+esc(T("closeX"))+'</button>');
+      const md=document.getElementById(mid);
+      md.addEventListener("click",ev=>{if(ev.target.dataset.ok)closeModal(mid);});
+    }else{
+      askConfirm(T("coverDlFailNotImg"),T("closeX"),()=>{});
+    }
+    return;
+  }
+  const file=new File([got.data],"cover"+(got.ext||".jpg"),{type:got.mime||"image/jpeg"});
+  if(!await cpSetCoverFile(card,file))return;
+  const cov=CP.tmp.get(card.dataset.k);
+  /* 落到输出目录（授权过才有）：文件名按书籍文件名，与桌面版一致 */
+  const b=card._book||{};
+  const stem=Core.safeFileName(String(b.name||"").replace(/\.[^.]+$/,""),80,T("kNone"));
+  let saved="";
+  if(St.saveDir){
+    try{
+      const h=await St.saveDir.getFileHandle(stem+".jpg",{create:true});
+      const w=await h.createWritable();
+      await w.write(cov.data);await w.close();
+      saved=(St.saveDirName?St.saveDirName+"/":"")+stem+".jpg";
+      _saveDirImgs=null;              /* 目录里多了一张图：清单缓存作废 */
+    }catch(e){log("⚠ 封面写入输出目录失败："+(e&&e.message||e));}
+  }
+  log(saved?fill(T("coverDlSaved"),{f:saved}):T("coverDlOnlyEpub"));
+}
+/* 打开封面设置窗：网格列出本次要导出的书，逐本算自动封面，右键（或点卡片）换图。
+   底栏「默认封面」下拉框统一换内置风格；右键「更换默认封面」只改一本。 */
+function openCoverPicker(){
+  const sel=selectedBooks();
+  if(!sel.length){askConfirm(T("coverNoBooksMsg"),T("closeX"),()=>{});return;}
+  const en=CUR==="en";
+  const styleOpts=Core.COVER_STYLES.map(s=>'<option value="'+s[0]+'">'
+    +esc(Core.coverStyleName(s[0],en))+'</option>').join("");
+  const id=openModal(T("coverPick"),
+    '<div class="cv-tip">'+esc(T("coverHint"))+'</div><div class="cv-grid" id="cvGrid"></div>',
+    '<label class="cv-style"><span>'+esc(T("coverDefault"))+'</span>'
+    +'<select class="select" id="cvStyle">'+styleOpts+'</select></label>'
+    +'<button class="btn ghost" data-c="1">'+esc(T("dCancel"))+'</button>'
+    +'<button class="btn b2" data-ok="1">'+esc(T("dOk"))+'</button>');
+  CP.modal=id;
+  CP.tmp=new Map(St.coverMap);          /* 确定才提交：取消保持原样 */
+  CP.pins=new Map(St.coverPins);
+  CP.style=Core.coverStyleIds().includes(St.coverStyle)
+    ?St.coverStyle:Core.DEFAULT_COVER_STYLE;
+  CP.gen++;
+  const gen=CP.gen;
+  const d=document.getElementById(id);
+  d.querySelector(".dlg").style.width="min(1000px,95vw)";
+  const sel_el=d.querySelector("#cvStyle");
+  if(sel_el){
+    sel_el.value=CP.style;
+    sel_el.onchange=()=>cpApplyStyle(sel_el.value)
+      .catch(e=>log("⚠ 统一换封面风格失败："+(e&&e.message||e)));
+  }
+  const grid=d.querySelector("#cvGrid");
+  sel.forEach(b=>{
+    const card=document.createElement("div");
+    card.className="cv-card";card.dataset.k=bookKey(b);card._book=b;
+    card._modal=id;
+    card.innerHTML='<div class="cv-shot"><span class="ph">'+esc(T("coverPreparing"))+'</span></div>'
+      +'<div class="cv-name">'+esc(b.title||b.name||"")+'</div>'
+      +'<div class="cv-auth">'+esc(b.author||"")+'</div>';
+    grid.appendChild(card);
+    card.addEventListener("contextmenu",ev=>{
+      ev.preventDefault();cpOpenMenu(ev.clientX,ev.clientY,card);});
+    card.addEventListener("click",()=>{      /* 触屏没有右键：点卡片也能出菜单 */
+      const r=card.getBoundingClientRect();
+      cpOpenMenu(r.left+14,r.top+14,card);});
+    cpFill(card,null,gen).catch(e=>log("⚠ 封面准备失败："+(e&&e.message||e)));
+  });
+  d.addEventListener("click",ev=>{
+    if(ev.target.dataset.ok){
+      if(CP.modal!==id)return;
+      St.coverMap=CP.tmp;               /* 窗口里看到的字节原样交回去 */
+      St.coverPins=CP.pins;
+      St.coverStyle=CP.style;
+      cfgSet("coverStyle",CP.style);
+      CP.modal=null;closeModal(id);
+      refreshCoverBtn();
+      log(fill(T("logCoverSet"),{n:coverCount()}));
+      return;
+    }
+    if(ev.target.dataset.c||ev.target.dataset.x||ev.target===d)CP.modal=null;
+  });
 }
 
 function refreshOutInfo(){
@@ -2519,6 +5510,7 @@ function refreshOutInfo(){
   $("outTbl").innerHTML="";
   showMsg("outMsg",null,"");
   refreshSavHint();
+  refreshCoverBtn();          /* 勾选变了，封面按钮上的「已设 N 本」跟着变 */
 }
 function refreshSavHint(){
   const ip=$("optInplace"),hint=$("savHint"),wrap=$("savSufWrap");
@@ -2529,17 +5521,25 @@ function refreshSavHint(){
     ? T("savHintInplace")+(St.rootHandle?"":" · "+T("savHintNoDir"))
     : T("savHintCopy");
 }
-async function ensureCleaned(b){
-  const raw=await bookText(b);
+/* ctMap/rawText 由「下载插图链接」那趟预取带来：清洗里的插图校验直接命中，
+   不再单独请求一遍（预览/其它入口不传，行为与原来一致）。
+   清理明细（trace/blank/原行数）随快照一起缓存：导出时的「清洗内容汇总」
+   直接复用，不必为了出汇总把已经洗过的正文再洗一遍 */
+async function ensureCleaned(b,ctMap,rawText){
+  const raw=(rawText===undefined||rawText===null)?await bookText(b):rawText;
   const rules=activeRuleIds();
   if(b._clean===undefined){
-    const r=rules.length?Core.cleanText(raw,rules,false,St.customRules):{text:raw,removed:0};
+    const r=rules.length?await Core.cleanTextAsync(raw,rules,false,St.customRules,ctMap||null,true)
+                        :{text:raw,removed:0,trace:[],blank:0};
     b._clean=r.text;
+    b._cleanTrace=r.trace||[];
+    b._cleanBlank=r.blank||0;
+    b._cleanBefore=Core.lineCount(raw);
   }
   return b._clean;
 }
-async function chaptersFor(b){
-  const cleaned=await ensureCleaned(b);
+async function chaptersFor(b,ctMap,rawText){
+  const cleaned=await ensureCleaned(b,ctMap,rawText);
   if(b._chap) return b._chap;
   const custom=((b.chapRe||$("chapRegex").value)||"").trim()||null;
   let reOk=true;if(custom){try{new RegExp(custom);}catch(e){reOk=false;}}
@@ -2547,6 +5547,16 @@ async function chaptersFor(b){
   return chs;
 }
 function fileBaseName(b){return fileNameBase(b);}
+/* 插图下载进度：节流后把「第几张/共几张」原地刷到日志最后一行（首条与末条必出） */
+function imgProgress(name){
+  let last=0;
+  return (done,total)=>{
+    const now=Date.now();
+    if(done>1&&done<total&&now-last<IMG_PROG_GAP)return;
+    last=now;
+    logProgress(fill(T("logImgProg"),{name,d:done,t:total}));
+  };
+}
 
 async function runExport(){
   if(St.busy)return;
@@ -2579,6 +5589,9 @@ async function runExport(){
   const tb=$("outTbl");const L=TX();
   tb.innerHTML="<tr><th>"+esc(L.thName)+"</th><th>"+esc(T("thStatus"))+"</th><th style='text-align:right'>"+esc(L.thSize)+"</th></tr>";
   let ok=0,fail=0,skip=0,fileN=0;
+  /* 清洗内容汇总：按书累积清理明细，全部处理完再一次性落盘 */
+  const wantSum=!!($("optSum")&&$("optSum").checked);
+  const sumBooks=[];
   for(let i=0;i<sel.length;i++){
     const b=sel[i];const row=document.createElement("tr");
     const tdN=document.createElement("td");tdN.className="name";tdN.textContent=b.title||b.name;
@@ -2589,12 +5602,39 @@ async function runExport(){
     try{
       if(skipDup&&b._exported){skip++;tdS.textContent=T("dupYes");continue;}
       const base=fileBaseName(b);
-      const chapters=await chaptersFor(b);
+      /* 「下载插图链接」：先一趟请求把图取下来（同时充当清洗的插图校验），
+         之后清洗命中这份判定、epub 打包用这批字节，整本书只请求一次 */
+      const wantImg=imgDownloadOn()&&(fmts.includes("epub")||toDir);
+      let prefetch=null,rawText=null;
+      if(wantImg){
+        rawText=await bookText(b);
+        prefetch=await Core.fetchImages(rawText,{limit:6,
+          progress:imgProgress(b.title||b.name)});
+        log(fill(T("logImgPrefetch"),{name:b.title||b.name,n:prefetch.checked,m:prefetch.images}));
+      }
+      const chapters=await chaptersFor(b,prefetch?prefetch.ctMap:null,rawText);
+      const cleaned=prefetch?await ensureCleaned(b,prefetch.ctMap,rawText):null;
+      const epubImages=prefetch?Core.imagesForEpub(prefetch,cleaned):null;
       const files=[];
+      const hasImgs=!!(epubImages&&epubImages.size);
       if(fmts.includes("epub")){
+        /* 封面窗里定过的直接用那份字节；没定过才回退到同名图 / 默认封面 */
         const u8=await Core.buildEpub({title:b.title||base,author:b.author||"",chapters,
-          theme:themeId(),cover:await bookCover(b)});
+          theme:themeId(),cover:await coverFor(b),images:epubImages});
         files.push({name:base+".epub",data:u8,mime:"application/epub+zip"});
+        if(hasImgs) log(fill(T("logImgSaved"),{name:b.title||b.name,n:epubImages.size}));
+      }
+      /* 导出到目录时插图另存「插图/书名/001.jpg…」（与桌面版同一套落盘方式） */
+      if(toDir&&hasImgs){
+        const sub=await writeImagesToDir(dir,base,epubImages);
+        log(fill(T("logImgDir"),{name:b.title||b.name,n:epubImages.size,d:sub}));
+      }
+      if(prefetch){
+        const used=hasImgs?epubImages.size:0;
+        const blocked=prefetch.missed||0;
+        const skipped=prefetch.checked-used-blocked;
+        if(blocked>0) log(fill(T("logImgCors"),{k:blocked}));
+        if(skipped>0) log(fill(T("logImgSkip"),{k:skipped}));
       }
       if(fmts.includes("txt")&&!inplace){
         const s=Core.buildMergedTxt(chapters);
@@ -2618,11 +5658,44 @@ async function runExport(){
       b._exported=true;
       tdS.textContent=done.length?done.join(" + "):"—";
       tdZ.textContent=Core.humanSize(files.reduce((n,f)=>n+blobSize(f),0));
+      if(wantSum){
+        sumBooks.push({
+          title:b.title||b.name||"",
+          author:b.author||"",
+          file:b.rel||b.name||"",
+          linesBefore:b._cleanBefore,
+          linesAfter:Core.lineCount(b._clean===undefined?"":b._clean),
+          blank:b._cleanBlank||0,
+          entries:b._cleanTrace||[],
+          note:(("_cleanTrace" in b)||!activeRuleIds().length)?"":T("sumNoteSnap"),
+        });
+      }
       ok++;
       log(fill(T("logExported"),{name:b.title||b.name,f:files.map(f=>f.name).join(", ")}));
     }catch(e){
       fail++;tdS.textContent="✗ "+(e&&e.message||e);
       log("导出失败："+(b.title||b.name)+" — "+(e&&e.message||e));
+      if(wantSum){
+        sumBooks.push({title:b.title||b.name||"",author:b.author||"",
+          file:b.rel||b.name||"",entries:[],
+          note:fill(T("sumFail"),{e:(e&&e.message||e)})});
+      }
+    }
+  }
+  /* 清洗内容汇总：有输出目录就写进去，否则作为文件下载 */
+  if(wantSum&&sumBooks.length){
+    const sname="清洗内容汇总.txt";
+    const nEnt=sumBooks.reduce((n,b)=>n+(b.entries?b.entries.length:0),0);
+    const nBlank=sumBooks.reduce((n,b)=>n+(b.blank||0),0);
+    try{
+      const txt=Core.buildCleanSummary(sumBooks,
+        {rules:activeRuleIds(),lang:CUR,custom:St.customRules});
+      let wrote=sname;
+      if(toDir) wrote=await writeTextToDir(dir,sname,txt);
+      else{dlBytes(sname,txt,"text/plain;charset=utf-8",false);fileN++;await sleep(150);}
+      log(fill(T("logSumOk"),{f:wrote,n:sumBooks.length,m:nEnt,b:nBlank}));
+    }catch(e){
+      log(fill(T("logSumFail"),{e:(e&&e.message||e)}));
     }
   }
   pb.firstElementChild.style.width="100%";
@@ -2639,6 +5712,27 @@ async function runExport(){
 }
 function refreshOutInfoRowWarn(){}
 function blobSize(f){return typeof f.data==="string"?new Blob([f.data]).size:f.data.length;}
+/* 插图落到「导出目录/插图/书名/」，编号沿用 epub 里的 001.jpg…
+   同一本书重跑只覆盖同名文件，不堆「书名 (1)」 */
+async function writeImagesToDir(dir,name,images){
+  const root=await dir.getDirectoryHandle("插图",{create:true});
+  const sub=await root.getDirectoryHandle(name,{create:true});
+  for(const it of images.values()){
+    const hf=await sub.getFileHandle(it.name,{create:true});
+    const w=await hf.createWritable();
+    await w.write(it.data);
+    await w.close();
+  }
+  return "插图/"+name;
+}
+/* 汇总文件每次重跑都覆盖（不像正文那样堆「(1)(2)」），免得目录里越积越多 */
+async function writeTextToDir(dir,name,text){
+  const hf=await dir.getFileHandle(name,{create:true});
+  const w=await hf.createWritable();
+  await w.write(new TextEncoder().encode(text));
+  await w.close();
+  return name;
+}
 async function writeToDir(dir,name,data){
   // 存在同名则追加 (1)(2)…
   let target=name;
@@ -2699,7 +5793,7 @@ async function saveDirFlow(){
 }
 
 /* ================= 语言 / 模态 ================= */
-function setLang(l){CUR=l;cfgSet("lang",l);applyStatic();buildRules();renderLib();refreshChapMsg();refreshThemeSelect();refreshCoverSelect();}
+function setLang(l){CUR=l;cfgSet("lang",l);applyStatic();buildRules();renderLib();refreshChapMsg();refreshThemeBtn();refreshCoverBtn();refreshNameSelect();}
 function bindTop(){
   $("btnLang").onclick=()=>setLang(CUR==="zh"?"en":"zh");
   $("btnAbout").onclick=()=>openModal(T("aboutTitle"),TX().aboutBody);
@@ -2718,6 +5812,7 @@ function bindSteps(){
   $("btnChapTry").onclick=tryChapters;
   $("btnChapApply").onclick=applyChapters;
   $("btnChapAll").onclick=chapAll;
+  $("btnChapTree").onclick=exportChapTree;
   const cbChap=$("chapBook"),inBook=$("bookRegex");
   if(cbChap) cbChap.onchange=()=>{syncBookRegex();refreshChapMsg();};
   if(inBook) inBook.oninput=()=>{storeBookRegex();
@@ -2730,9 +5825,14 @@ function bindSteps(){
   const ip=$("optInplace"),sf=$("savSuffix");
   if(ip) ip.onchange=()=>{cfgSet("inplace",ip.checked?"1":"0");refreshSavHint();};
   if(sf) sf.oninput=()=>{cfgSet("savSuffix",sf.value);};
-  const thEl=$("selTheme"),cvEl=$("selCover");
-  if(thEl) thEl.onchange=()=>cfgSet("theme",thEl.value);
-  if(cvEl) cvEl.onchange=()=>cfgSet("cover",cvEl.value);
+  const thBtn=$("btnTheme"),cvBtn=$("btnCover"),epEl=$("fmtEpub");
+  if(thBtn) thBtn.onclick=openThemePicker;
+  if(cvBtn) cvBtn.onclick=openCoverPicker;
+  if(epEl) epEl.onchange=syncEpubOpts;
+  const nfEl=$("selNameFmt");
+  if(nfEl) nfEl.onchange=onNameFmtChange;
+  const sumEl=$("optSum");
+  if(sumEl) sumEl.onchange=()=>cfgSet("sum",sumEl.checked?"1":"0");
 }
 
 /* ================= 启动 ================= */
@@ -2742,13 +5842,20 @@ async function boot(){
   applyStatic();bindNav();bindLib();bindDrop();bindTop();bindSteps();bindRulesPack();buildRules();
   if(cfgKey("savSuffix")!==null&&$("savSuffix")) $("savSuffix").value=cfgKey("savSuffix");
   if(cfgKey("inplace")==="1"&&$("optInplace")) $("optInplace").checked=true;
-  refreshThemeSelect();refreshCoverSelect();
+  if(cfgKey("sum")==="0"&&$("optSum")) $("optSum").checked=false;
+  // 主题：先恢复上次导入的自定义 CSS，再定当前选择
+  try{
+    const tc=cfgKey("themeCss");
+    if(tc)Core.addTheme(JSON.parse(tc));
+  }catch(e){}
+  St.theme=cfgKey("theme")||Core.DEFAULT_THEME;
+  const cs=cfgKey("coverStyle");
+  St.coverStyle=Core.coverStyleIds().includes(cs)?cs:Core.DEFAULT_COVER_STYLE;
+  refreshThemeBtn();refreshCoverBtn();refreshNameSelect();syncEpubOpts();
   try{
     const cr=cfgKey("customRules");
     if(cr){const arr=JSON.parse(cr);if(Array.isArray(arr))St.customRules=arr;}
   }catch(e){}
-  if(cfgKey("theme")&&$("selTheme")) $("selTheme").value=cfgKey("theme");
-  if(cfgKey("cover")&&$("selCover")) $("selCover").value=cfgKey("cover");
   refreshModeHint();refreshLibInfo();refreshOutInfo();
   // 恢复上次目录授权
   const rh=await idbGet("rootHandle");

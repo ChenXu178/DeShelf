@@ -23,6 +23,8 @@ RULES = ["url", "site", "nav", "trim", "blank2"]
 PARA = ("她听我分析的头头是道，目光里写满了敬佩，等我说完后，歪着头看着桌上那把枪喃喃自语说："
         "“这把枪怎么很面熟？”她忽然意识到了什么，双手拍拍腰上，“嗷”地叫了一声，"
         "冲过来一把夺走了手枪，瞪着我问：“你什么时候偷走的？”")
+LONG_URL = ("https://e1.kuangxiangit.com/uploads/chapterimgsnew/382/249214/250218/"
+            "1739808797-100401717-112858295.jpg")
 CORPUS = "\n".join([
     "阴阳鬼探",
     "",
@@ -42,6 +44,13 @@ CORPUS = "\n".join([
     "www.zhudao.com",
     "http://www.xxx.net 小说下载网，TXT下载请到本站。",
     "www.zhudao.com 我常去逛的站子，里面什么都有，还能看连载。",
+    # 长图链：只认协议头的旧逻辑会把它当成大段正文放过
+    LONG_URL,
+    '<img src="%s" alt=\'大概是这个姿势\'>' % LONG_URL,
+    "图片：%s" % LONG_URL,
+    "他笑了笑，把手机收进口袋" + LONG_URL,
+    # 推广套话 + 长图链：网址一长，旧逻辑只裁网址、把一句推广语留成正文
+    "欢迎关注笔趣阁，畅享百万书库" + LONG_URL,
     "上一页　下一页",
     "第１２章　夜路",
     "",
@@ -52,28 +61,61 @@ EXPECT = [
 ]
 
 
-def run_python(text, rules=None):
+def run_python(text, rules=None, custom=None):
     st = {}
-    out, removed = jzcore.clean_text(text, rules or RULES, st)
-    return {"text": out, "removed": removed, "trimmed": st.get("trimmed", 0)}
+    out, removed = jzcore.clean_text(text, rules or RULES, st, custom, want_trace=True)
+    return {"text": out, "removed": removed, "trimmed": st.get("trimmed", 0),
+            "blank": st.get("blank", 0), "trace": st.get("trace", [])}
 
 
-def run_web(text, rules=None):
+def run_web(text, rules=None, custom=None):
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.dirname(here)
     fd, tmp = tempfile.mkstemp(suffix=".txt")
     os.close(fd)
     try:
         io.open(tmp, "w", encoding="utf-8", newline="").write(text)
-        r = subprocess.run(
-            ["node", os.path.join(here, "_dump_clean.mjs"), tmp, json.dumps(rules or RULES)],
-            capture_output=True, cwd=root,
-        )
+        args = ["node", os.path.join(here, "_dump_clean.mjs"), tmp,
+                json.dumps(rules or RULES)]
+        if custom is not None:
+            args.append(json.dumps(custom, ensure_ascii=False))
+        r = subprocess.run(args, capture_output=True, cwd=root)
         if r.returncode != 0:
             raise SystemExit("node 执行失败：" + r.stderr.decode("utf-8", "ignore")[:400])
         return json.loads(r.stdout.decode("utf-8"))
     finally:
         os.remove(tmp)
+
+
+def run_web_summary(books, opt):
+    """让网页版 Core.buildCleanSummary 生成同一份汇总文本。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    fd, tmp = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    try:
+        io.open(tmp, "w", encoding="utf-8", newline="").write(
+            json.dumps({"books": books, "opt": opt}, ensure_ascii=False))
+        r = subprocess.run(
+            ["node", os.path.join(here, "_dump_clean.mjs"), tmp, "--summary"],
+            capture_output=True, cwd=root,
+        )
+        if r.returncode != 0:
+            raise SystemExit("node 执行失败：" + r.stderr.decode("utf-8", "ignore")[:400])
+        return r.stdout.decode("utf-8")
+    finally:
+        os.remove(tmp)
+
+
+def diff_at(a, b):
+    """返回第一处不同的 (行号, 桌面, 网页)，失败时打印用。"""
+    la, lb = a.split("\n"), b.split("\n")
+    for i in range(max(len(la), len(lb))):
+        x = la[i] if i < len(la) else "<缺行>"
+        y = lb[i] if i < len(lb) else "<缺行>"
+        if x != y:
+            return (i + 1, x, y)
+    return None
 
 
 # —— 简繁双份语料：盗版站常见形态，繁體版 + 简体版 各一份，其中一行还被插了网址 ——
@@ -191,10 +233,19 @@ def main():
     chk("网址在前、后面接着正文的长句保留", "我常去逛的站子" in text)
     chk("翻页导航已删", "下一页" not in text)
     chk("章节标题保留", "第１２章　夜路" in text)
+    chk("长图链独占一行也删掉", LONG_URL not in text)
+    chk("含网址的 HTML 标签整块清掉", "<img" not in text and "大概是这个姿势" not in text)
+    chk("“图片：”加长图链整行删掉", "图片：" not in text)
+    chk("正文粘长图链只裁网址", "他笑了笑，把手机收进口袋" in text)
+    chk("推广语 + 长图链整行删掉", "欢迎关注笔趣阁" not in text)
+    # 用户反馈：只勾「含网址的行」时，推广语+长图链不能被裁成一句推广语留下
+    promo_only = run_python("正文甲。\n欢迎关注笔趣阁，畅享百万书库" + LONG_URL + "\n", ["url"])
+    chk("只开「含网址的行」也整行删掉推广+长图链",
+        "欢迎关注笔趣阁" not in promo_only["text"], promo_only["text"])
 
     print("== 计数 ==")
-    chk("trimmed 计数正确", py["trimmed"] == 2, py["trimmed"])   # 两段是行尾粘网址
-    chk("removed 计数正确", py["removed"] == 5, py["removed"])   # 4 条广告行 + 1 条导航
+    chk("trimmed 计数正确", py["trimmed"] == 3, py["trimmed"])   # 三段是行尾粘网址
+    chk("removed 计数正确", py["removed"] == 9, py["removed"])   # 7 条广告行 + 1 条导航 + 1 条推广语+长图链
 
     print("== Python / Web 一致性 ==")
     chk("清洗后文本逐字相同", py["text"] == web["text"],
@@ -202,6 +253,71 @@ def main():
     chk("removed 相同", py["removed"] == web["removed"], (py["removed"], web["removed"]))
     chk("trimmed 相同", py["trimmed"] == web["trimmed"], (py["trimmed"], web["trimmed"]))
     chk("裁剪位置相同", len(web["cuts"]) == py["trimmed"], web["cuts"])
+
+    print("== 清理明细（原文行号 / 清理原因 / 空行计数） ==")
+    chk("明细条数相同", len(py["trace"]) == len(web["trace"]),
+        (len(py["trace"]), len(web["trace"])))
+    chk("明细逐条相同（含原文行号与命中规则）", py["trace"] == web["trace"],
+        next((a, b) for a, b in zip(py["trace"], web["trace"]) if a != b)
+        if py["trace"] != web["trace"] else None)
+    chk("空行计数相同", py["blank"] == web["blank"], (py["blank"], web["blank"]))
+    src_lines = CORPUS.split("\n")
+    bad = [e for e in py["trace"] if not 1 <= e["line"] <= len(src_lines)]
+    chk("原文行号都落在文件范围内", not bad, bad[:2])
+    want_line = src_lines.index("上一页　下一页") + 1
+    nav = [e for e in py["trace"] if e["rule"] == "nav"]
+    chk("导航行的行号就是原文那一行", len(nav) == 1 and nav[0]["line"] == want_line,
+        [(e["line"], e["text"]) for e in nav])
+    chk("每条明细都带清理原因", all(e["rule"] for e in py["trace"]),
+        [e for e in py["trace"] if not e["rule"]][:2])
+
+    # 自定义规则的说明（label）两端一致
+    cust_rules = [{"name": "去掉求票尾巴", "pattern": "求票", "action": "cut",
+                   "enabled": True}]
+    small = "正文甲，求票求收藏\n上一页\n正文乙。\n"
+    pyc = run_python(small, ["nav"], cust_rules)
+    webc = run_web(small, ["nav"], cust_rules)
+    chk("自定义规则的明细两端相同", pyc["trace"] == webc["trace"],
+        (pyc["trace"], webc["trace"]))
+    chk("自定义规则写明规则名", bool(pyc["trace"]) and pyc["trace"][0]["label"] == "去掉求票尾巴",
+        pyc["trace"][:1])
+
+    print("== 清洗内容汇总（桌面 / 网页同一份文本） ==")
+    when = "2026-01-01 00:00:00"
+    books_py = [{
+        "title": "阴阳鬼探", "author": "某作者", "file": "阴阳鬼探.txt",
+        "lines_before": len(src_lines),
+        "lines_after": len(py["text"].splitlines()),
+        "blank": py["blank"], "entries": py["trace"], "note": "",
+    }, {
+        "title": "空本", "author": "", "file": "b.txt", "entries": [],
+    }]
+    books_js = [{
+        "title": "阴阳鬼探", "author": "某作者", "file": "阴阳鬼探.txt",
+        "linesBefore": books_py[0]["lines_before"],
+        "linesAfter": books_py[0]["lines_after"],
+        "blank": py["blank"], "entries": web["trace"], "note": "",
+    }, {
+        "title": "空本", "author": "", "file": "b.txt", "entries": [],
+    }]
+    for lang in ("zh", "en"):
+        s_py = jzcore.summary_text(books_py, RULES, lang, when)
+        s_web = run_web_summary(books_js, {"rules": RULES, "lang": lang, "when": when})
+        chk("%s 汇总逐字相同" % ("中文" if lang == "zh" else "英文"), s_py == s_web,
+            diff_at(s_py, s_web))
+    books_c_py = [{"title": "阴阳鬼探", "author": "某作者", "file": "阴阳鬼探.txt",
+                   "lines_before": len(small.splitlines()),
+                   "lines_after": len(pyc["text"].splitlines()),
+                   "blank": pyc["blank"], "entries": pyc["trace"], "note": ""}]
+    books_c_js = [{"title": "阴阳鬼探", "author": "某作者", "file": "阴阳鬼探.txt",
+                   "linesBefore": len(small.splitlines()),
+                   "linesAfter": len(pyc["text"].splitlines()),
+                   "blank": pyc["blank"], "entries": webc["trace"], "note": ""}]
+    s_py = jzcore.summary_text(books_c_py, ["nav"], "zh", when, cust_rules)
+    s_web = run_web_summary(books_c_js,
+                            {"rules": ["nav"], "lang": "zh", "when": when,
+                             "custom": cust_rules})
+    chk("带自定义规则的汇总逐字相同", s_py == s_web, diff_at(s_py, s_web))
 
     print("== 简繁重复行 ==")
     jd_rules = ["jsdup"]

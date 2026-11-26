@@ -9,7 +9,7 @@ sys.path.insert(0, HERE)
 import tkinter as tk
 
 import jzcore
-from Juanzhi_Desktop import App, safe_name
+from Juanzhi_Desktop import App, safe_name, theme_title, _ellipsize, px
 
 fails = []
 
@@ -94,6 +94,118 @@ app.nb.select(app.tab_out)
 root.update()
 check("开始处理按钮", app.btn_go, 60, 18)
 check("进度条", app.pb, 200, 10)
+check("文件名下拉框", app.cb_name, 80, 18)
+check("版面主题按钮", app.btn_theme, 60, 18)
+check("封面按钮", app.btn_cover, 60, 18)
+pats = app.name_pats()
+want_pats = ["", "author - book", "[author] book", app.S["name_pat_book_author"], None]
+ok = pats == want_pats
+print(("  [OK]  " if ok else "  [FAIL]") + " 文件名预设映射 %r" % (pats,))
+if not ok:
+    fails.append("文件名预设映射")
+app.cfg["name_fmt"] = "author - book"
+app._restore_name_opt()
+ok = app.cb_name.current() == 1 and app.name_format() == "author - book"
+print(("  [OK]  " if ok else "  [FAIL]") + " 文件名预设可恢复")
+if not ok:
+    fails.append("文件名预设恢复")
+app.cfg["name_fmt"] = "《book》·author"
+app._restore_name_opt()
+ok = app.cb_name.current() == len(app.name_labels) - 1 and \
+    app.name_format() == "《book》·author"
+print(("  [OK]  " if ok else "  [FAIL]") + " 自定义格式可恢复")
+if not ok:
+    fails.append("自定义格式恢复")
+app.cfg["name_fmt"] = ""
+app._restore_name_opt()
+ok = app.cb_name.current() == 0 and app.name_format() == ""
+print(("  [OK]  " if ok else "  [FAIL]") + " 保持原样时为书名")
+if not ok:
+    fails.append("保持原样")
+got = safe_name(jzcore.apply_name_format("book/author", "斗破/苍穹", "天蚕土豆"), maxlen=80)
+ok = got == "斗破苍穹天蚕土豆"
+print(("  [OK]  " if ok else "  [FAIL]") + " 文件名非法字符已清掉 -> %r" % got)
+if not ok:
+    fails.append("文件名非法字符")
+# 自定义格式确认后要显示在下拉框里（最后一项换成用户填的模板）
+app._custom_fmt = "《book》·author"
+app._refresh_name_box()
+app.cb_name.set(app.name_labels[-1])
+ok = app.cb_name.get() == "《book》·author" and app.name_labels[-1] == "《book》·author"
+print(("  [OK]  " if ok else "  [FAIL]") + " 自定义格式显示在下拉框 -> %r" % app.cb_name.get())
+if not ok:
+    fails.append("自定义格式显示")
+
+print("\n== 主题按钮：过长文本用省略号截断 ==")
+
+
+def ui(label, ok, detail=""):
+    print(("  [OK]  " if ok else "  [FAIL]") + " %s%s" % (label, detail))
+    if not ok:
+        fails.append(label)
+
+
+font = app._theme_btn_font()
+DOT = font.measure("…")
+utxt = "abcdef"
+for src, limit, want, tag in (
+        ("", 200, "", "空串"),
+        (utxt, font.measure(utxt), utxt, "刚好放得下"),
+        (utxt, font.measure("abc") + DOT, "abc…", "刚好放得下 abc + …"),
+        (utxt, 0, "", "宽度为 0"),
+        (utxt, max(1, DOT - 1), "", "连省略号都放不下")):
+    got = _ellipsize(src, font, limit)
+    ui("_ellipsize %s -> %r" % (tag, got), got == want, "" if got == want else "（期望 %r）" % want)
+
+w0 = app.btn_theme.winfo_width()
+avail0 = w0 - 2 * px(10) - px(4)
+real_id = app.theme_id
+fake_long = {"id": "__long__",
+             "name": "一个特别特别长的主题名称 For Testing Long Theme Names"}
+app.theme_by_id["__long__"] = fake_long
+app.theme_id = "__long__"
+app._refresh_theme_btn()
+root.update()
+shown = app.btn_theme.cget("text")
+full = theme_title(fake_long, app.S, app.lang)
+ui("长主题名被截断", shown != full and shown.endswith("…"), " -> %r" % shown)
+ui("截断后仍放得下", font.measure(shown) <= avail0,
+   "（%dpx / 可用 %dpx）" % (font.measure(shown), avail0))
+ui("保持单行", "\n" not in shown)
+ui("按钮宽度没被文字撑大", app.btn_theme.winfo_width() == w0,
+   "（%d -> %d）" % (w0, app.btn_theme.winfo_width()))
+
+app._refresh_theme_btn()                       # 重复设同一个主题：文字必须稳定
+root.update()
+ui("重复刷新不抖动", app.btn_theme.cget("text") == shown)
+
+app.btn_theme.configure(width=6)               # 按钮变窄：截得更短，依旧带省略号
+root.update()
+app._fit_theme_btn()
+root.update()
+narrow = app.btn_theme.cget("text")
+avail_n = app.btn_theme.winfo_width() - 2 * px(10) - px(4)
+ui("窄按钮也带省略号", narrow.endswith("…"), " -> %r" % narrow)
+ui("窄按钮不溢出", font.measure(narrow) <= avail_n,
+   "（%dpx / 可用 %dpx）" % (font.measure(narrow), avail_n))
+ui("窄按钮截得更短", len(narrow) <= len(shown))
+
+app.btn_theme.configure(width=10)              # 复原：文字自动回长
+root.update()
+app._fit_theme_btn()
+root.update()
+ui("恢复宽度后文字回长", app.btn_theme.cget("text") == shown)
+
+app.theme_by_id["__short__"] = {"id": "__short__", "name": "短名"}
+app.theme_id = "__short__"
+app._refresh_theme_btn()
+root.update()
+ui("短名字不截断", app.btn_theme.cget("text") == "短名",
+   " -> %r" % app.btn_theme.cget("text"))
+del app.theme_by_id["__long__"], app.theme_by_id["__short__"]
+app.theme_id = real_id
+app._refresh_theme_btn()
+root.update()
 
 print("\n== 工具函数 ==")
 cases = [("第1章/楔子", "第1章楔子"), ("", "未命名"), ("  a/b:c*d?e  ", "abcde")]

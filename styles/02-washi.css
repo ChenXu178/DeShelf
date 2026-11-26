@@ -1,0 +1,66 @@
+@charset "utf-8";
+/*!
+* @theme-name: 和纸暖褐 Washi Paper
+* @theme-version: 1.0
+* @description: 米黄纸底配茶褐文字，章名上下各一道细线，插图嵌入纸白内框，旧平装书的温度。
+*/
+
+html {
+  background: #faf5ec;
+}
+
+body {
+  margin: 1.8em 1.4em;
+  color: #4a3f33;
+  line-height: 1.95;
+  text-align: justify;
+  background: #faf5ec;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.2em 0 1.8em;
+  padding: 0.75em 0.4em;
+  text-align: center;
+  letter-spacing: 0.2em;
+  line-height: 1.65;
+  color: #6b5138;
+  border-top: 1px solid #d8c4a6;
+  border-bottom: 1px solid #d8c4a6;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.95em;
+  text-indent: 2em;
+  line-height: 1.95;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 10px;
+  background: #fffdf7;
+  border: 1px solid #e2d2b8;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.75em 0 0;
+  text-indent: 0;
+  text-align: center;
+  color: #8d7355;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+}

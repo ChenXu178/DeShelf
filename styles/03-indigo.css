@@ -1,0 +1,66 @@
+@charset "utf-8";
+/*!
+* @theme-name: 靛蓝典籍 Indigo Classic
+* @theme-version: 1.0
+* @description: 冷灰蓝页底配靛青章名，标题上单线下双线，插图为白卡细边，清醒克制的文库本观感。
+*/
+
+html {
+  background: #f5f7fa;
+}
+
+body {
+  margin: 1.9em 1.5em;
+  color: #232f3f;
+  line-height: 1.9;
+  text-align: justify;
+  background: #f5f7fa;
+}
+
+/* ---- 章节标题 ---- */
+h2 {
+  margin: 2.3em 0 1.9em;
+  padding: 0.8em 0.3em;
+  text-align: center;
+  letter-spacing: 0.14em;
+  line-height: 1.6;
+  color: #2a3f61;
+  border-top: 1px solid #c2cfe1;
+  border-bottom: 3px double #c2cfe1;
+}
+
+/* ---- 正文 ---- */
+p {
+  margin: 0 0 0.9em;
+  text-indent: 2em;
+  line-height: 1.9;
+}
+
+/* ---- 插图 ---- */
+div.pic {
+  margin: 2em 0;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #d5dfec;
+  text-align: center;
+}
+
+img.pic {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+div.pic img.pic {
+  display: block;
+  margin: 0 auto;
+}
+
+p.cap {
+  margin: 0.8em 0 0.15em;
+  text-indent: 0;
+  text-align: center;
+  color: #6b7f99;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+}
