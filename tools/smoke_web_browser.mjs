@@ -479,15 +479,44 @@ try {
     out.menu=menu?menu.children.length:0;
     out.menuText=menu?menu.textContent:'';
     out.wantPick=T('coverPickImg');out.wantDl=T('coverDl');
+    out.wantDef=T('coverNewDefault');
     return out;
   })()`);
   ok("封面窗：卡片数 = 已选书籍数", r.val && r.val.n === r.val.sel && r.val.n === 1,
     JSON.stringify(r.err || r.val));
   ok("封面窗：卡片含封面图 / 书名 / 作者", r.val && r.val.hasImg && r.val.name && r.val.auth,
     JSON.stringify(r.val));
-  ok("封面窗：右键菜单为「选择封面图片 / 下载网络封面」", r.val && r.val.menu === 2
+  /* 没有同名本地封面：两项之外多一项「更换默认封面」（与桌面版一致） */
+  ok("封面窗：右键菜单 = 选图 / 下载 / 更换默认封面", r.val && r.val.menu === 3
     && r.val.menuText.indexOf(r.val.wantPick) >= 0
-    && r.val.menuText.indexOf(r.val.wantDl) >= 0, JSON.stringify(r.val));
+    && r.val.menuText.indexOf(r.val.wantDl) >= 0
+    && r.val.menuText.indexOf(r.val.wantDef) >= 0, JSON.stringify(r.val));
+
+  // 8e0. 主题按钮：名字太长用省略号收尾，按钮宽度不变（完整名字在 title 里）
+  r = await evalv(`(async () => {
+    window.goStep(3);                    /* 按钮在导出页，得先显示出来才量得到宽度 */
+    await new Promise(r2=>setTimeout(r2,250));
+    const btn=document.getElementById('btnTheme');
+    const w0=btn.getBoundingClientRect().width;
+    const fake={id:'custom:long-name.css',custom:true,named:true,
+      name:'一个特别特别特别长的主题名称用来测试省略号',css:'body{margin:0}'};
+    Core.addTheme(fake);
+    const old=St.theme;
+    St.theme=fake.id;refreshThemeBtn();
+    const cs=getComputedStyle(btn);
+    const out={w0, w1:btn.getBoundingClientRect().width,
+      ellipsis:btn.scrollWidth>btn.clientWidth+1,
+      overflow:cs.textOverflow, nowrap:cs.whiteSpace==='nowrap',
+      title:btn.title, text:btn.textContent};
+    St.theme=old;refreshThemeBtn();      /* 复原，别影响后面的导出断言 */
+    window.goStep(2);
+    return out;
+  })()`);
+  ok("主题按钮：过长主题名用省略号截断", r.val && r.val.ellipsis
+    && r.val.overflow === 'ellipsis' && r.val.nowrap, JSON.stringify(r.err || r.val));
+  ok("主题按钮：截断后宽度不变、title 保留全名", r.val && r.val.w0 > 100
+    && Math.abs(r.val.w0 - r.val.w1) < 0.5
+    && r.val.title === r.val.text, JSON.stringify(r.val));
 
   // 8e1b. 菜单项可点：点「下载网络封面」弹出链接输入框，取消后回到封面窗
   r = await evalv(`(async () => {
@@ -539,6 +568,55 @@ try {
   ok("封面下载被跨域拦下：提示原因并引导用桌面版", r.val && r.val.hasCors
     && r.val.hasDesktop && r.val.closed && r.val.coverStillOpen, JSON.stringify(r.err || r.val));
 
+  // 8e1d. 底栏「默认封面」下拉框：一次改掉所有内置封面的书
+  r = await evalv(`(async () => {
+    const sel=document.getElementById('cvStyle');
+    const c0=document.querySelector('.cv-card');
+    const img0=c0.querySelector('.cv-shot img');
+    const before=img0?img0.src:'';
+    const opts=sel?[...sel.options].map(o=>o.value):[];
+    const cur=sel?sel.value:'';
+    if(sel){sel.value='ink';sel.dispatchEvent(new Event('change'));}
+    await new Promise(r2=>setTimeout(r2,1200));
+    const img=c0.querySelector('.cv-shot img');
+    return {opts, want:Core.coverStyleIds(), cur,
+      changed:!!(img&&img.src&&img.src!==before),
+      pin:CP.pins.get(c0.dataset.k), style:CP.style, origin:c0._origin};
+  })()`);
+  ok("封面窗：底栏下拉框 = 五种内置风格（无 6/7）", r.val
+    && JSON.stringify(r.val.opts) === JSON.stringify(r.val.want)
+    && r.val.cur === 'sujian', JSON.stringify(r.err || r.val));
+  ok("封面窗：换风格后内置封面重画并记下风格", r.val && r.val.changed
+    && r.val.pin === 'ink' && r.val.style === 'ink' && r.val.origin === 'builtin',
+    JSON.stringify(r.val));
+
+  // 8e1e. 右键「更换默认封面」：第二层列出风格，选一个只改这一本
+  r = await evalv(`(async () => {
+    const c0=document.querySelector('.cv-card');
+    c0.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,
+      clientX:130,clientY:130}));
+    const m1=document.getElementById('cvMenu');
+    const more=m1?[...m1.children].find(d=>d.dataset.a==='more'):null;
+    const out={hasMore:!!more};
+    if(!more)return out;
+    more.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+    await new Promise(r2=>setTimeout(r2,120));
+    const m2=document.getElementById('cvMenu');
+    out.items=m2?[...m2.children].map(d=>d.dataset.s||d.dataset.a):[];
+    out.hasBack=!!(m2&&m2.querySelector('[data-a="back"]'));
+    const pick=m2?m2.querySelector('[data-s="cinnabar"]'):null;
+    if(pick)pick.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+    await new Promise(r2=>setTimeout(r2,800));
+    out.pin=CP.pins.get(c0.dataset.k);
+    out.closed=!document.getElementById('cvMenu');
+    out.img=!!c0.querySelector('.cv-shot img');
+    return out;
+  })()`);
+  ok("封面窗：更换默认封面 → 第二层列出全部风格", r.val && r.val.hasMore
+    && r.val.hasBack && r.val.items.length === 6, JSON.stringify(r.err || r.val));
+  ok("封面窗：单本换成朱印", r.val && r.val.pin === 'cinnabar' && r.val.closed
+    && r.val.img, JSON.stringify(r.val));
+
   // 8e2. 换成本地图片：转 JPEG、刷新缩略图、记进工作副本
   r = await evalv(`(async () => {
     const c0=document.querySelector('.cv-card');
@@ -556,6 +634,21 @@ try {
   ok("封面窗：自选图片转成 JPEG 并刷新缩略图", r.val && r.val.got && r.val.isJpeg
     && r.val.w === 90 && r.val.h === 120 && r.val.blobImg, JSON.stringify(r.err || r.val));
 
+  // 8e2b. 用户挑过图的书：不再算内置封面（pin 清掉），右键仍可换成内置封面
+  r = await evalv(`(async () => {
+    const c0=document.querySelector('.cv-card');
+    c0.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,
+      clientX:130,clientY:130}));
+    const m=document.getElementById('cvMenu');
+    const n=m?m.children.length:0;
+    const hasMore=!!(m&&m.querySelector('[data-a="more"]'));
+    const pin=CP.pins.get(c0.dataset.k);
+    if(m)m.remove();
+    return {n, hasMore, pin, origin:c0._origin};
+  })()`);
+  ok("封面窗：自选图之后不再算内置封面", r.val && r.val.n === 3 && r.val.hasMore
+    && r.val.pin === undefined && r.val.origin === 'user', JSON.stringify(r.err || r.val));
+
   // 8e3. 确定后提交：封面映射落定、按钮变成「封面（已设 1 本）」
   r = await evalv(`(async () => {
     document.querySelector('.dlg [data-ok]').click();
@@ -565,11 +658,15 @@ try {
     const same=await coverFor(b);
     return {closed:!document.querySelector('.cv-card'),n:St.coverMap.size,
       btn:document.getElementById('btnCover').textContent,
-      hasCov:!!cov, sameBytes:!!(cov&&same&&same.data===cov.data)};
+      hasCov:!!cov, sameBytes:!!(cov&&same&&same.data===cov.data),
+      style:St.coverStyle, saved:cfgKey('coverStyle'), pins:St.coverPins.size};
   })()`);
   ok("封面窗：确定后关闭并提交封面", r.val && r.val.closed && r.val.n === 1 && r.val.hasCov,
     JSON.stringify(r.err || r.val));
   ok("封面窗：按钮显示已设数量", r.val && /1/.test(r.val.btn), JSON.stringify(r.val));
+  ok("封面窗：确定的风格写回配置（用户图的书不算内置）", r.val
+    && r.val.style === 'ink' && r.val.saved === 'ink' && r.val.pins === 0,
+    JSON.stringify(r.val));
 
   // 8e4. 导出的 EPUB 用的是封面窗里那份图（文件名按 MIME 归一成 cover.jpg）
   r = await evalv(`(async () => {

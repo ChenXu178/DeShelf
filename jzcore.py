@@ -3251,35 +3251,53 @@ def render_theme_thumb(theme, size=None, renderer=None):
 COVER_SIZE = (600, 800)              # 3:4，与常见阅读器缩略图比例一致
 _COVER_IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
 
-# 系统里的中文字体，按偏好排序（楷体最像线装书，给书名用）。
-# 不把字体打进 EXE：楷体 11 MB、雅黑 19 MB，而 Windows 必然装了其中至少一种；
-# 全找不到时封面照做，只是不写字（几何版），不会报错。
-_COVER_FONTS = (
-    "C:/Windows/Fonts/simkai.ttf",        # 楷体
-    "C:/Windows/Fonts/STKAITI.TTF",       # 华文楷体
-    "C:/Windows/Fonts/STXIHEI.TTF",
-    "C:/Windows/Fonts/msyh.ttc",          # 微软雅黑
-    "C:/Windows/Fonts/simhei.ttf",        # 黑体
-    "C:/Windows/Fonts/simsun.ttc",        # 宋体
-    "/System/Library/Fonts/Supplemental/Songti.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/arphic/uming.ttc",
-)
+# 系统里的中文字体，按风格分三档：楷体最像线装书（竖排书名），黑体给现代
+# 极简风，宋体留作后备。不把字体打进 EXE：楷体 11 MB、雅黑 19 MB，而 Windows
+# 必然装了其中至少一种；全找不到时封面照做，只是不写字（几何版），不报错。
+_COVER_FONTS = {
+    "kai": (
+        "C:/Windows/Fonts/simkai.ttf",        # 楷体
+        "C:/Windows/Fonts/STKAITI.TTF",       # 华文楷体
+        "C:/Windows/Fonts/msyh.ttc",          # 微软雅黑
+        "C:/Windows/Fonts/simhei.ttf",        # 黑体
+        "C:/Windows/Fonts/simsun.ttc",        # 宋体
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+    ),
+    "hei": (
+        "C:/Windows/Fonts/simhei.ttf",        # 黑体
+        "C:/Windows/Fonts/msyh.ttc",          # 微软雅黑
+        "C:/Windows/Fonts/STXIHEI.TTF",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+    ),
+    "song": (
+        "C:/Windows/Fonts/simsun.ttc",        # 宋体
+        "C:/Windows/Fonts/STSONG.TTF",        # 华文宋体
+        "C:/Windows/Fonts/msyh.ttc",
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+    ),
+}
 
 _cover_font_cache = {}
 
 
-def _load_font(size):
-    """按偏好加载中文字体，返回 PIL 字体对象；都不可用返回 None。"""
-    if size in _cover_font_cache:
-        return _cover_font_cache[size]
+def _load_font(size, kind="kai"):
+    """按风格加载中文字体，返回 PIL 字体对象；都不可用返回 None。"""
+    key = (kind, size)
+    if key in _cover_font_cache:
+        return _cover_font_cache[key]
     font = None
     try:
         from PIL import ImageFont
     except Exception:
-        _cover_font_cache[size] = None
+        _cover_font_cache[key] = None
         return None
-    for path in _COVER_FONTS:
+    for path in _COVER_FONTS.get(kind) or _COVER_FONTS["kai"]:
         try:
             if not os.path.exists(path):
                 continue
@@ -3287,7 +3305,7 @@ def _load_font(size):
             break
         except Exception:
             continue
-    _cover_font_cache[size] = font
+    _cover_font_cache[key] = font
     return font
 
 
@@ -3387,118 +3405,325 @@ def prepare_cover_image(path, max_side=1600, quality=88):
             "image/jpeg" if jpg else "image/png", 0, 0)
 
 
-def make_cover(title, author="", size=COVER_SIZE):
-    """画一张默认封面：宣纸底 + 双层旧金细框 + 竖排楷体书名 + 作者 + 落款。
+# 内置封面风格：(id, 中文名, 英文名)。顺序即界面下拉框里的顺序；第一种是
+# 旧版那套「宣纸 + 楷体」，默认就是它，老用户升级后看到的封面不变。
+COVER_STYLES = (
+    ("sujian", "素笺", "Paper"),
+    ("indigo", "靛蓝", "Indigo"),
+    ("cinnabar", "朱印", "Vermilion"),
+    ("ink", "墨韵", "Ink"),
+    ("minimal", "极简", "Minimal"),
+)
+DEFAULT_COVER_STYLE = COVER_STYLES[0][0]
 
-    返回 (data, "cover.jpg", "image/jpeg", w, h)；PIL 不可用返回 None
-    （该 epub 就不带封面，与旧版行为一致，不抛异常）。
+
+def cover_style_ids():
+    """全部内置风格的 id，顺序与界面下拉框一致。"""
+    return [s[0] for s in COVER_STYLES]
+
+
+def cover_style_name(style_id, lang="zh"):
+    """风格 id → 界面显示名；认不出的 id 按默认风格显示。"""
+    en = str(lang or "").lower().startswith("en")
+    for sid, cn, en_name in COVER_STYLES:
+        if sid == style_id:
+            return en_name if en else cn
+    return cover_style_name(DEFAULT_COVER_STYLE, lang)
+
+
+def cover_style_id(name, lang="zh"):
+    """界面显示名 → 风格 id（下拉框回读用）；认不出就返回默认 id。"""
+    for sid in cover_style_ids():
+        if cover_style_name(sid, lang) == name:
+            return sid
+    return DEFAULT_COVER_STYLE
+
+
+def _draw_vcol(d, text, cx, y0, font, fill, lh=1.15):
+    """竖排一列：逐字水平居中地往下画，返回下一行的 y。"""
+    y = y0
+    size = font.size
+    for ch in text:
+        try:
+            tw = d.textlength(ch, font=font)
+        except Exception:
+            tw = size
+        d.text((cx - tw / 2.0, y), ch, font=font, fill=fill)
+        y += size * lh
+    return y
+
+
+def _vlayout(text, box_w, box_h, hi=112, lo=22, lh=1.15, ratio=1.35):
+    """竖排字号与列数：短书名一列到底（别拆成 3+1），一列放不下才从右往左折。"""
+    n = max(1, len(text))
+    for s in range(hi, lo, -2):
+        if n * s * lh <= box_h and s * ratio <= box_w:
+            return s, n, 1
+    for s in range(hi, lo, -2):
+        per = max(1, int(box_h / (s * lh)))
+        cols = -(-n // per)
+        if cols * s * ratio <= box_w:
+            return s, per, cols
+    per = max(1, int(box_h / (lo * lh)))
+    return lo, per, -(-n // per)
+
+
+def _draw_vtitle(d, text, box, fill, kind="kai", hi=112, lh=1.15, ratio=1.35,
+                 right_edge=None):
+    """在 box=(左, 上, 右, 下) 里竖排书名，返回排版信息（没字体时返回 None）。
+
+    right_edge 给了就靠右排（书名整体贴右边，左侧留白给作者/界栏），
+    否则在 box 里水平居中。
     """
-    try:
-        from PIL import Image, ImageDraw
-    except Exception:
+    left, top, right, bottom = box
+    size, per, cols = _vlayout(text, right - left, bottom - top,
+                               hi=hi, lh=lh, ratio=ratio)
+    font = _load_font(size, kind)
+    if font is None:
         return None
-    W, H = size
-    PAPER = (246, 241, 228)
-    INK = (47, 42, 36)
-    GOLD = (198, 180, 148)
-    GRAY = (120, 110, 96)
-    FAINT = (176, 162, 138)
+    col_w = size * ratio
+    if right_edge is None:
+        total = cols * col_w - (col_w - size)
+        x_right = (left + right) / 2.0 + total / 2.0 - size / 2.0
+    else:
+        x_right = right_edge - size / 2.0
+        need = x_right - (cols - 1) * col_w - size / 2.0
+        if need < left + 12:                 # 折列时别把最左一列挤出画面
+            x_right += left + 12 - need
+    block_h = min(per, len(text)) * size * lh
+    y0 = top + ((bottom - top) - block_h) / 2.0
+    for ci in range(cols):
+        chunk = text[ci * per:(ci + 1) * per]
+        if chunk:
+            _draw_vcol(d, chunk, x_right - ci * col_w, y0, font, fill, lh)
+    return {"size": size, "font": font, "per": per, "cols": cols,
+            "x_right": x_right, "y0": y0, "block_h": block_h}
 
-    im = Image.new("RGB", (W, H), PAPER)
+
+def _hwidth(d, text, font, track=0):
+    """横排整行宽度（含字间距），算不出来就按字号估。"""
+    try:
+        return (sum(d.textlength(c, font=font) for c in text)
+                + track * (len(text) - 1))
+    except Exception:
+        return len(text) * (font.size + track)
+
+
+def _draw_htext(d, text, cx, y, font, fill, track=0):
+    """横排画一行并水平居中，track 是字间距（极简风格的疏排）。"""
+    x = cx - _hwidth(d, text, font, track) / 2.0
+    for ch in text:
+        d.text((x, y), ch, font=font, fill=fill)
+        try:
+            x += d.textlength(ch, font=font) + track
+        except Exception:
+            x += font.size + track
+
+
+def _fit_hfont(d, text, max_w, kind="kai", hi=34, lo=15, track=0):
+    """横排文字：在 max_w 内找最大字号，返回字体（没字体返回 None）。"""
+    for s in range(hi, max(lo, 8) - 1, -1):
+        f = _load_font(s, kind)
+        if f is None:
+            return None
+        if _hwidth(d, text, f, track) <= max_w:
+            return f
+    return _load_font(lo, kind)
+
+
+def _draw_author(d, text, cx, y, max_w, fill, kind="kai", hi=32, lo=16, track=0):
+    """横排作者名：超宽自动缩字号，居中画在 y 行。"""
+    font = _fit_hfont(d, text, max_w, kind, hi, lo, track)
+    if font is not None:
+        _draw_htext(d, text, cx, y, font, fill, track)
+
+
+def _vgradient(size, top, bottom):
+    """竖向渐变底：逐行画线，600x800 也就几毫秒，不必引第三方库。"""
+    from PIL import Image, ImageDraw
+    w, h = size
+    im = Image.new("RGB", size, top)
+    d = ImageDraw.Draw(im)
+    steps = float(max(1, h - 1))
+    for y in range(h):
+        t = y / steps
+        d.line([0, y, w, y], fill=(
+            int(top[0] + (bottom[0] - top[0]) * t),
+            int(top[1] + (bottom[1] - top[1]) * t),
+            int(top[2] + (bottom[2] - top[2]) * t)))
+    return im
+
+
+def _cover_sujian(text, author, size):
+    """素笺：宣纸底 + 双层旧金细框 + 竖排楷体书名，书名上下各一道鱼尾金线。"""
+    from PIL import Image, ImageDraw
+    W, H = size
+    PAPER, INK = (246, 241, 228), (47, 42, 36)
+    GOLD, GRAY = (198, 180, 148), (120, 110, 96)
+    im = Image.new("RGB", size, PAPER)
     d = ImageDraw.Draw(im)
     d.rectangle([18, 18, W - 19, H - 19], outline=GOLD, width=2)
     d.rectangle([30, 30, W - 31, H - 31], outline=GOLD, width=1)
 
-    text = (title or "未命名").strip() or "未命名"
-    n = len(text)
-
-    # 字号与列数：在「可用宽高」内找最大的字号，竖排传统从右往左分列
-    avail_h = H - 2 * 150
-    avail_w = W - 2 * 130
-    size_px, per_col, cols = 40, n, 1
-    # 先求「一列就能放下」的最大字号：短书名单列最像书，别拆成 3+1 那种
-    for s in range(112, 24, -2):
-        if n * s * 1.15 <= avail_h and s * 1.35 <= avail_w:
-            size_px, per_col, cols = s, n, 1
-            break
-    else:
-        for s in range(112, 24, -2):
-            per = max(1, int(avail_h / (s * 1.15)))
-            c = -(-n // per)                # 向上取整，不用 math 模块
-            if c * (s * 1.35) <= avail_w:
-                size_px, per_col, cols = s, per, c
-                break
-
-    font = _load_font(size_px)
-    if font is not None:
-        col_w = size_px * 1.35
-        total = cols * col_w - (col_w - size_px)
-        x_right = W / 2.0 + total / 2.0 - size_px / 2.0
-        # 竖排是顶齐的：多列时各列首字同一条水平线（按最长一列居中），
-        # 只有单列才按实际字数居中，否则短列会缩到中间显得零散。
-        first = min(per_col, n)
-        block_h = first * size_px * 1.15
-        y0 = (H - block_h) / 2.0
-        for ci in range(cols):
-            chunk = text[ci * per_col:(ci + 1) * per_col]
-            if not chunk:
-                continue
-            cx = x_right - ci * col_w
-            y = y0
-            for ch in chunk:
-                try:
-                    tw = d.textlength(ch, font=font)
-                except Exception:
-                    tw = size_px
-                d.text((cx - tw / 2.0, y), ch, font=font, fill=INK)
-                y += size_px * 1.15
-        # 第一列上下各一道短金线，像线装书的鱼尾
-        line_half = size_px * 0.62
-        d.line([x_right - line_half, y0 - size_px * 0.55,
-                x_right + line_half, y0 - size_px * 0.55], fill=GOLD, width=2)
-        d.line([x_right - line_half, y0 + block_h + size_px * 0.38,
-                x_right + line_half, y0 + block_h + size_px * 0.38],
+    # 书名区上留 150、下留 190：作者行在 H-128，下方的鱼尾线不能压到它
+    info = _draw_vtitle(d, text, (130, 150, W - 130, H - 190), INK, "kai", hi=112)
+    if info:
+        px_ = info["size"]
+        half = px_ * 0.62
+        cx = info["x_right"]
+        d.line([cx - half, info["y0"] - px_ * 0.55,
+                cx + half, info["y0"] - px_ * 0.55], fill=GOLD, width=2)
+        d.line([cx - half, info["y0"] + info["block_h"] + px_ * 0.38,
+                cx + half, info["y0"] + info["block_h"] + px_ * 0.38],
                fill=GOLD, width=2)
-
     if author:
-        fs = 32
-        fa = _load_font(fs)
-        while fa is not None and fs > 16:
-            try:
-                aw = d.textlength(author, font=fa)
-            except Exception:
-                aw = 0
-            if aw <= W - 150:
-                break
-            fs -= 2
-            fa = _load_font(fs)
-        if fa is not None:
-            try:
-                aw = d.textlength(author, font=fa)
-            except Exception:
-                aw = 0
-            d.text(((W - aw) / 2.0, H - 128), author, font=fa, fill=GRAY)
+        _draw_author(d, author, W / 2.0, H - 128, W - 150, GRAY)
+    return im
 
-    fb = _load_font(22)
-    if fb is not None:
-        tag = APP_CN + " · " + APP_EN
-        try:
-            tw = d.textlength(tag, font=fb)
-        except Exception:
-            tw = 0
-        d.text(((W - tw) / 2.0, H - 66), tag, font=fb, fill=FAINT)
 
+def _cover_indigo(text, author, size):
+    """靛蓝：深靛蓝渐变 + 冷灰细框 + 米白竖排书名，左侧一道竖金线当界栏。"""
+    from PIL import ImageDraw
+    W, H = size
+    im = _vgradient(size, (34, 50, 78), (13, 20, 34))
+    d = ImageDraw.Draw(im)
+    d.rectangle([34, 34, W - 35, H - 35], outline=(92, 112, 146), width=1)
+    d.rectangle([44, 44, W - 45, H - 45], outline=(64, 80, 110), width=1)
+
+    info = _draw_vtitle(d, text, (0, 96, W, H - 200), (240, 232, 214),
+                        "kai", hi=100, right_edge=W - 88)
+    if info:
+        px_ = info["size"]
+        x = info["x_right"] - px_ * 0.95
+        d.line([x, info["y0"] - px_ * 0.26, x,
+                info["y0"] + info["block_h"] + px_ * 0.26],
+               fill=(146, 122, 84), width=2)
+        if author:
+            font = _load_font(30, "kai")
+            if font is not None:
+                _draw_vcol(d, author, 108, info["y0"] + px_ * 1.9,
+                           font, (150, 164, 188))
+    return im
+
+
+def _cover_cinnabar(text, author, size):
+    """朱印：米色纸面，右侧朱红色条内竖排反白书名，左侧竖排作者加「著」。"""
+    from PIL import Image, ImageDraw
+    W, H = size
+    im = Image.new("RGB", size, (243, 236, 224))
+    d = ImageDraw.Draw(im)
+    bx0, bx1 = W - 224, W - 58
+    d.rectangle([bx0, 58, bx1, H - 58], fill=(152, 52, 42))
+
+    _draw_vtitle(d, text, (bx0 + 12, 84, bx1 - 12, H - 84),
+                 (246, 238, 226), "kai", hi=74)
+    if author:
+        font = _load_font(34, "kai")
+        if font is not None:
+            y = _draw_vcol(d, author, 112, 130, font, (56, 46, 38))
+            small = _load_font(22, "kai")
+            if small is not None:
+                _draw_vcol(d, "著", 112, y + 14, small, (154, 140, 120))
+    return im
+
+
+def _cover_ink(text, author, size):
+    """墨韵：近黑渐变 + 模糊墨晕 + 极暗细框 + 暖白竖排书名。"""
+    from PIL import Image, ImageDraw, ImageFilter
+    W, H = size
+    im = _vgradient(size, (36, 35, 33), (11, 11, 12))
+    wash = Image.new("L", size, 0)
+    wd = ImageDraw.Draw(wash)
+    wd.ellipse([-W * 0.25, H * 0.18, W * 0.85, H * 1.05], fill=110)
+    wd.ellipse([W * 0.45, -H * 0.12, W * 1.25, H * 0.55], fill=70)
+    wash = wash.filter(ImageFilter.GaussianBlur(90))
+    im = Image.composite(Image.new("RGB", size, (58, 55, 50)), im, wash)
+
+    d = ImageDraw.Draw(im)
+    d.rectangle([42, 42, W - 43, H - 43], outline=(78, 73, 64), width=1)
+    info = _draw_vtitle(d, text, (0, 96, W, H - 200), (230, 224, 211),
+                        "kai", hi=104, right_edge=W - 106)
+    if info:
+        px_ = info["size"]
+        cx, half = info["x_right"], px_ * 0.34
+        d.line([cx - half, info["y0"] - px_ * 0.28,
+                cx + half, info["y0"] - px_ * 0.28],
+               fill=(150, 126, 86), width=2)
+        y_bot = info["y0"] + info["block_h"] + px_ * 0.16
+        d.line([cx - half, y_bot, cx + half, y_bot],
+               fill=(150, 126, 86), width=2)
+    if author:
+        _draw_author(d, author, W / 2.0, H - 132, W - 150,
+                     (138, 130, 118), track=6)
+    return im
+
+
+def _cover_minimal(text, author, size):
+    """极简：米白底 + 黑体疏排横书书名，下面一行小字作者。"""
+    from PIL import Image, ImageDraw
+    W, H = size
+    im = Image.new("RGB", size, (247, 246, 243))
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, W - 1, H - 1], outline=(228, 226, 220), width=1)
+
+    # 字距按字号比例算，所以字号得连字距一起试，不能先定字号再排
+    size_px, font = 96, None
+    while size_px > 22:
+        font = _load_font(size_px, "hei")
+        if font is None:
+            break
+        if _hwidth(d, text, font, size_px * 0.12) <= W - 200:
+            break
+        size_px -= 4
+    if font is not None:
+        cy = H * 0.46
+        _draw_htext(d, text, W / 2.0, cy - size_px / 2.0, font,
+                    (32, 31, 30), size_px * 0.12)
+        if author:
+            _draw_author(d, author, W / 2.0, cy + size_px * 0.92, W - 240,
+                         (122, 118, 112), "hei", hi=26, lo=14, track=8)
+    return im
+
+
+_COVER_DRAW = {
+    "sujian": _cover_sujian,
+    "indigo": _cover_indigo,
+    "cinnabar": _cover_cinnabar,
+    "ink": _cover_ink,
+    "minimal": _cover_minimal,
+}
+
+
+def make_cover(title, author="", size=COVER_SIZE, style=DEFAULT_COVER_STYLE):
+    """按风格画一张内置封面（默认「素笺」：宣纸底 + 旧金细框 + 竖排楷体书名）。
+
+    style: COVER_STYLES 里的 id；认不出（旧配置、手改过的值）就画默认风格。
+    返回 (data, "cover.jpg", "image/jpeg", w, h)；PIL 不可用返回 None
+    （该 epub 就不带封面，与旧版行为一致，不抛异常）。
+    """
+    try:
+        from PIL import Image                # noqa: F401  （只用来探活）
+    except Exception:
+        return None
+    text = (title or "未命名").strip() or "未命名"
+    author = (author or "").strip()
+    draw = _COVER_DRAW.get(style) or _COVER_DRAW[DEFAULT_COVER_STYLE]
+    im = draw(text, author, size)
+    if im is None:
+        return None
     buf = io.BytesIO()
     im.save(buf, "JPEG", quality=90, optimize=True)
-    return buf.getvalue(), "cover.jpg", "image/jpeg", W, H
+    return buf.getvalue(), "cover.jpg", "image/jpeg", size[0], size[1]
 
 
-def cover_for_book(txt_path, title, author="", mode="auto", outdir=""):
+def cover_for_book(txt_path, title, author="", mode="auto", outdir="",
+                   style=DEFAULT_COVER_STYLE):
     """按模式为这本书准备封面，返回 (data, name, mime, w, h) 或 None。
 
-    mode: "none" 不带封面 / "default" 只生成默认封面 /
-          "auto"（默认）先找同名图片，找不到再生成默认封面
+    mode: "none" 不带封面 / "default" 只生成内置封面 /
+          "auto"（默认）先找同名图片，找不到再按 style 生成内置封面
     outdir: 导出目录；给了就一起扫同名图（书籍目录优先，见 find_cover_image）
+    style: 内置封面风格 id（见 COVER_STYLES），只影响「找不到同名图」那一步
     """
     if mode == "none":
         return None
@@ -3508,7 +3733,7 @@ def cover_for_book(txt_path, title, author="", mode="auto", outdir=""):
             got = prepare_cover_image(found)
             if got:
                 return got
-    return make_cover(title, author)
+    return make_cover(title, author, style=style)
 
 
 def download_cover_image(url, dest_path, timeout=IMG_DL_TIMEOUT):

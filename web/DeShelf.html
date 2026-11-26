@@ -70,6 +70,10 @@ nav.steps .st.act b{color:var(--blue)}
 .btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
 .btn.ghost:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
 .btn.sm{padding:3px 10px;font-size:12px;font-weight:500}
+/* 主题按钮宽度固定：主题名过长时用省略号收尾（完整名字在 title 提示里），
+   与桌面版 _fit_theme_btn 一个目的——不撑宽按钮、不把文字硬切一半 */
+#btnTheme{width:160px;max-width:160px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;vertical-align:middle}
 .btn.danger{background:var(--red)}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .msg{margin-top:8px;padding:6px 10px;border-radius:var(--r);font-size:13px}
@@ -201,6 +205,11 @@ label.lab{font-size:13px;color:var(--muted)}
   box-shadow:0 6px 20px rgba(0,0,0,.18);padding:4px;font-size:13px;min-width:160px}
 .cv-menu div{padding:7px 12px;border-radius:4px;cursor:pointer;color:var(--ink)}
 .cv-menu div:hover{background:var(--line2)}
+.cv-menu div.on{color:var(--blue);font-weight:700}
+.cv-menu div.back{color:var(--muted);font-size:12px}
+/* 底栏「默认封面」下拉框：紧挨着取消按钮，与桌面版同一个位置 */
+.cv-style{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.cv-style .select{padding:4px 6px;font-size:12px}
 
 .dz-inline{display:inline-block;border:1px dashed var(--line);border-radius:var(--r);padding:6px 18px;color:var(--muted)}
 .dz-inline.over{border-color:var(--blue);color:var(--blue);background:#eef4fb}
@@ -332,7 +341,7 @@ b.dark{color:var(--ink)}
     </div>
     <div class="check" style="margin-top:-2px">
       <span class="hint" data-k="outTheme"></span>
-      <button class="btn ghost" id="btnTheme" style="min-width:132px">01-minimal</button>
+      <button class="btn ghost" id="btnTheme" title="01-minimal">01-minimal</button>
       <!-- 封面与主题同一套按钮样式：点开窗口逐本设置，不再用下拉框选策略 -->
       <button class="btn ghost" id="btnCover" style="min-width:132px;margin-left:14px">封面</button>
       <label class="lab" id="imgDlWrap" style="margin-left:14px">
@@ -426,8 +435,9 @@ const Z = {
   /* 封面设置窗口（与桌面版同一套：网格卡片 + 右键换图 + 下载网络封面） */
   btnCover:"封面", btnCoverN:"封面（已设 {n} 本）",
   coverPick:"设置导出封面",
-  coverHint:"右键封面（或点一下卡片）换图：选择本地图片 / 下载网络封面；确定后按这里的封面导出 EPUB。",
+  coverHint:"右键封面（或点一下卡片）换图：选择本地图片 / 下载网络封面 / 更换默认封面；底栏「默认封面」可一次改掉所有内置封面。确定后按这里的封面导出 EPUB。",
   coverPickImg:"选择封面图片", coverDl:"下载网络封面",
+  coverDefault:"默认封面", coverNewDefault:"更换默认封面", coverBack:"‹ 返回",
   coverUrlTitle:"下载网络封面",
   coverUrlHint:"填入图片直链（以 .jpg/.png 等结尾的地址最稳）。网页版受跨域（CORS）限制：站点没给跨站许可时浏览器读不到图片，这类情况请用桌面版下载。",
   coverUrlBad:"请先填入图片链接。",
@@ -599,8 +609,9 @@ const E = {
   themeNeed:"Enter a width and height between 200 and 3000.",
   btnCover:"Cover", btnCoverN:"Cover ({n} set)",
   coverPick:"Set Export Covers",
-  coverHint:"Right-click a cover (or click a card) to change it: local image / download from URL. EPUB export uses exactly these covers.",
+  coverHint:"Right-click a cover (or click a card) to change it: local image / download from URL / change the built-in cover; the “Default cover” dropdown at the bottom switches every built-in cover at once. EPUB export uses exactly these covers.",
   coverPickImg:"Choose cover image", coverDl:"Download cover from URL",
+  coverDefault:"Default cover", coverNewDefault:"Change default cover", coverBack:"‹ Back",
   coverUrlTitle:"Download Cover",
   coverUrlHint:"Paste a direct image link (.jpg/.png and friends work best). The web build is subject to CORS: when the site sends no cross-origin header the browser cannot read the image — use the desktop app for those.",
   coverUrlBad:"Enter an image URL first.",
@@ -2832,6 +2843,169 @@ p.cap {
       +"\n</body>\n</html>\n";
   }
 
+  /* ---------- 内置封面：画布版，与桌面版 jzcore.make_cover 同版式 ----------
+     五种风格（素笺 / 靛蓝 / 朱印 / 墨韵 / 极简）。画布只能在浏览器里用，
+     所以这些函数与 makeCover 一样，只在实际调用时碰 document。 */
+  const COVER_STYLES=[["sujian","素笺","Paper"],["indigo","靛蓝","Indigo"],
+    ["cinnabar","朱印","Vermilion"],["ink","墨韵","Ink"],["minimal","极简","Minimal"]];
+  const DEFAULT_COVER_STYLE="sujian";
+  function coverStyleIds(){return COVER_STYLES.map(s=>s[0]);}
+  function coverStyleName(sid,en){
+    const t=COVER_STYLES.find(s=>s[0]===sid)||COVER_STYLES[0];
+    return en?t[2]:t[1];
+  }
+  function coverStyleId(name,en){
+    const t=COVER_STYLES.find(s=>(en?s[2]:s[1])===name);
+    return t?t[0]:DEFAULT_COVER_STYLE;
+  }
+  const CV_KAI='"KaiTi","STKaiti","Kaiti SC","Songti SC","SimSun",serif';
+  const CV_HEI='"SimHei","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif';
+  function cvFont(size,kind){return size+'px '+(kind==="hei"?CV_HEI:CV_KAI);}
+  /* 竖排：短书名一列到底，一列放不下才从右往左折列（同桌面版 _vlayout） */
+  function cvVLayout(text,boxW,boxH,hi,lo,lh,ratio){
+    const n=Math.max(1,text.length);
+    for(let s=hi;s>lo;s-=2){
+      if(n*s*lh<=boxH&&s*ratio<=boxW)return [s,n,1];
+    }
+    for(let s=hi;s>lo;s-=2){
+      const per=Math.max(1,Math.floor(boxH/(s*lh)));
+      const cols=Math.ceil(n/per);
+      if(cols*s*ratio<=boxW)return [s,per,cols];
+    }
+    const per=Math.max(1,Math.floor(boxH/(lo*lh)));
+    return [lo,per,Math.ceil(n/per)];
+  }
+  function cvVCol(g,text,cx,y0,size,fill,lh,kind){
+    g.font=cvFont(size,kind||"kai");
+    g.fillStyle=fill;g.textAlign="center";g.textBaseline="top";
+    let y=y0;
+    for(const ch of text){g.fillText(ch,cx,y);y+=size*lh;}
+    return y;
+  }
+  function cvVTitle(g,text,box,fill,hi,rightEdge){
+    const lh=1.15,ratio=1.35,left=box[0],top=box[1],right=box[2],bottom=box[3];
+    const lay=cvVLayout(text,right-left,bottom-top,hi==null?112:hi,24,lh,ratio);
+    const size=lay[0],per=lay[1],cols=lay[2],colW=size*ratio;
+    let xRight;
+    if(rightEdge==null){
+      const total=cols*colW-(colW-size);
+      xRight=(left+right)/2+total/2-size/2;
+    }else{
+      xRight=rightEdge-size/2;
+      const need=xRight-(cols-1)*colW-size/2;
+      if(need<left+12)xRight+=left+12-need;   /* 折列时别把最左一列挤出画面 */
+    }
+    const blockH=Math.min(per,text.length)*size*lh;
+    const y0=top+((bottom-top)-blockH)/2;
+    for(let ci=0;ci<cols;ci++){
+      const chunk=text.slice(ci*per,(ci+1)*per);
+      if(chunk)cvVCol(g,chunk,xRight-ci*colW,y0,size,fill,lh,"kai");
+    }
+    return {size:size,xRight:xRight,y0:y0,blockH:blockH};
+  }
+  function cvHWidth(g,text,size,kind,track){
+    g.font=cvFont(size,kind||"kai");
+    let w=0;
+    for(const ch of text)w+=g.measureText(ch).width;
+    return w+(track||0)*Math.max(0,text.length-1);
+  }
+  function cvHText(g,text,cx,y,size,fill,track,kind){
+    g.font=cvFont(size,kind||"kai");
+    g.fillStyle=fill;g.textAlign="left";g.textBaseline="top";
+    let x=cx-cvHWidth(g,text,size,kind,track)/2;
+    for(const ch of text){
+      g.fillText(ch,x,y);
+      x+=g.measureText(ch).width+(track||0);
+    }
+  }
+  /* 横排作者名：超宽自动缩字号（同桌面版 _draw_author） */
+  function cvHAuthor(g,text,cx,y,maxW,fill,kind,hi,lo,track){
+    kind=kind||"kai";hi=hi||32;lo=lo||16;track=track||0;
+    let size=hi;
+    while(size>lo&&cvHWidth(g,text,size,kind,track)>maxW)size-=1;
+    cvHText(g,text,cx,y,size,fill,track,kind);
+  }
+  /* 素笺：宣纸底 + 双层旧金细框 + 竖排楷体书名，上下各一道鱼尾金线 */
+  function cvCoverSujian(g,W,H,text,author){
+    const PAPER="#f6f1e4",INK="#2f2a24",GOLD="#c6b494",GRAY="#786e60";
+    g.fillStyle=PAPER;g.fillRect(0,0,W,H);
+    g.strokeStyle=GOLD;g.lineWidth=2;g.strokeRect(18,18,W-37,H-37);
+    g.lineWidth=1;g.strokeRect(30,30,W-61,H-61);
+    /* 书名区上留 150、下留 190：作者行在 H-128，下方金线不能压到它 */
+    const info=cvVTitle(g,text,[130,150,W-130,H-190],INK,112);
+    if(info){
+      const s=info.size,half=s*0.62,x=info.xRight;
+      g.strokeStyle=GOLD;g.lineWidth=2;
+      g.beginPath();g.moveTo(x-half,info.y0-s*0.55);g.lineTo(x+half,info.y0-s*0.55);g.stroke();
+      g.beginPath();
+      g.moveTo(x-half,info.y0+info.blockH+s*0.38);
+      g.lineTo(x+half,info.y0+info.blockH+s*0.38);g.stroke();
+    }
+    if(author)cvHAuthor(g,author,W/2,H-128,W-150,GRAY,"kai",32,16,0);
+  }
+  /* 靛蓝：深靛蓝渐变 + 冷灰细框 + 米白竖排书名，左侧一道竖金线当界栏 */
+  function cvCoverIndigo(g,W,H,text,author){
+    const bg=g.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,"#22324e");bg.addColorStop(1,"#0d1422");
+    g.fillStyle=bg;g.fillRect(0,0,W,H);
+    g.strokeStyle="#5c7092";g.lineWidth=1;g.strokeRect(34,34,W-69,H-69);
+    g.strokeStyle="#40506e";g.strokeRect(44,44,W-89,H-89);
+    const info=cvVTitle(g,text,[0,96,W,H-200],"#f0e8d6",100,W-88);
+    if(info){
+      const s=info.size,x=info.xRight-s*0.95;
+      g.strokeStyle="#927a54";g.lineWidth=2;
+      g.beginPath();
+      g.moveTo(x,info.y0-s*0.26);g.lineTo(x,info.y0+info.blockH+s*0.26);g.stroke();
+      if(author)cvVCol(g,author,108,info.y0+s*1.9,30,"#96a4bc",1.15,"kai");
+    }
+  }
+  /* 朱印：米色纸面，右侧朱红色条内竖排反白书名，左侧竖排作者加「著」 */
+  function cvCoverCinnabar(g,W,H,text,author){
+    g.fillStyle="#f3ece0";g.fillRect(0,0,W,H);
+    const bx0=W-224,bx1=W-58;
+    g.fillStyle="#98342a";g.fillRect(bx0,58,bx1-bx0,H-116);
+    cvVTitle(g,text,[bx0+12,84,bx1-12,H-84],"#f6eee2",74);
+    if(author){
+      const y=cvVCol(g,author,112,130,34,"#382e26",1.15,"kai");
+      cvVCol(g,"著",112,y+14,22,"#9a8c78",1.15,"kai");
+    }
+  }
+  /* 墨韵：近黑渐变 + 墨晕 + 极暗细框 + 暖白竖排书名（桌面版用高斯模糊，
+     画布这边用两层径向渐变叠出同样的水墨感） */
+  function cvCoverInk(g,W,H,text,author){
+    const bg=g.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,"#242321");bg.addColorStop(1,"#0b0b0c");
+    g.fillStyle=bg;g.fillRect(0,0,W,H);
+    let wsh=g.createRadialGradient(W*0.3,H*0.62,0,W*0.3,H*0.62,H*0.62);
+    wsh.addColorStop(0,"rgba(58,55,50,0.55)");wsh.addColorStop(1,"rgba(58,55,50,0)");
+    g.fillStyle=wsh;g.fillRect(0,0,W,H);
+    wsh=g.createRadialGradient(W*0.86,H*0.2,0,W*0.86,H*0.2,H*0.5);
+    wsh.addColorStop(0,"rgba(58,55,50,0.35)");wsh.addColorStop(1,"rgba(58,55,50,0)");
+    g.fillStyle=wsh;g.fillRect(0,0,W,H);
+    g.strokeStyle="#4e4940";g.lineWidth=1;g.strokeRect(42,42,W-85,H-85);
+    const info=cvVTitle(g,text,[0,96,W,H-200],"#e6e0d3",104,W-106);
+    if(info){
+      const s=info.size,cx=info.xRight,half=s*0.34;
+      g.strokeStyle="#967e56";g.lineWidth=2;
+      g.beginPath();
+      g.moveTo(cx-half,info.y0-s*0.28);g.lineTo(cx+half,info.y0-s*0.28);g.stroke();
+      const yb=info.y0+info.blockH+s*0.16;
+      g.beginPath();g.moveTo(cx-half,yb);g.lineTo(cx+half,yb);g.stroke();
+    }
+    if(author)cvHAuthor(g,author,W/2,H-132,W-150,"#8a8276","kai",32,16,6);
+  }
+  /* 极简：米白底 + 黑体疏排横书书名，下面一行小字作者 */
+  function cvCoverMinimal(g,W,H,text,author){
+    g.fillStyle="#f7f6f3";g.fillRect(0,0,W,H);
+    g.strokeStyle="#e4e2dc";g.lineWidth=1;g.strokeRect(0.5,0.5,W-1,H-1);
+    let size=96;
+    while(size>22&&cvHWidth(g,text,size,"hei",size*0.12)>W-200)size-=4;
+    const track=size*0.12,cy=H*0.46;
+    cvHText(g,text,W/2,cy-size/2,size,"#201f1e",track,"hei");
+    if(author)cvHAuthor(g,author,W/2,cy+size*0.92,W-240,"#7a7670","hei",26,14,8);
+  }
+  const CV_COVER_DRAW={sujian:cvCoverSujian,indigo:cvCoverIndigo,
+    cinnabar:cvCoverCinnabar,ink:cvCoverInk,minimal:cvCoverMinimal};
   /* ---------- 默认封面：画布版，与桌面版 PIL 版同版式 ---------- */
   const COVER_PAGE="<?xml version='1.0' encoding='utf-8'?>\n<!DOCTYPE html>\n"+
     '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh-CN">\n<head>\n'+
@@ -2841,58 +3015,15 @@ p.cap {
     'div.cover img{max-width:100%;max-height:100%;}</style>\n'+
     '</head>\n<body>\n  <div class="cover"><img src="__COVER_SRC__" alt="封面"/></div>\n'+
     '</body>\n</html>\n';
-  async function makeCover(title,author,W,H){
+  async function makeCover(title,author,W,H,style){
     try{
       W=W||600;H=H||800;
+      const text=(String(title||"").trim()||"未命名");
+      const au=String(author||"").trim();
       const cv=document.createElement("canvas");cv.width=W;cv.height=H;
       const g=cv.getContext("2d");
-      const PAPER="#f6f1e4",INK="#2f2a24",GOLD="#c6b494",GRAY="#786e60",FAINT="#b0a28a";
-      g.fillStyle=PAPER;g.fillRect(0,0,W,H);
-      g.strokeStyle=GOLD;g.lineWidth=2;g.strokeRect(18,18,W-37,H-37);
-      g.lineWidth=1;g.strokeRect(30,30,W-61,H-61);
-      const text=(String(title||"").trim()||"未命名");
-      const n=text.length;
-      const availH=H-300,availW=W-260;
-      let size=40,per=n,cols=1;
-      /* 先求「一列放下」的最大字号：短书名单列最像书 */
-      let one=false;
-      for(let s=112;s>24;s-=2){
-        if(n*s*1.15<=availH&&s*1.35<=availW){size=s;per=n;cols=1;one=true;break;}
-      }
-      if(!one){
-        for(let s=112;s>24;s-=2){
-          const p=Math.max(1,Math.floor(availH/(s*1.15)));
-          const c=Math.ceil(n/p);
-          if(c*(s*1.35)<=availW){size=s;per=p;cols=c;break;}
-        }
-      }
-      const colW=size*1.35,total=cols*colW-(colW-size);
-      const xRight=W/2+total/2-size/2;
-      const first=Math.min(per,n),blockH=first*size*1.15,y0=(H-blockH)/2;
-      g.fillStyle=INK;g.textAlign="center";g.textBaseline="top";
-      g.font=size+'px "KaiTi","STKaiti","Kaiti SC","Songti SC","SimSun",serif';
-      for(let ci=0;ci<cols;ci++){
-        const chunk=text.slice(ci*per,(ci+1)*per);
-        if(!chunk)continue;
-        const cx=xRight-ci*colW;let y=y0;
-        for(const ch of chunk){g.fillText(ch,cx,y);y+=size*1.15;}
-      }
-      const half=size*0.62;
-      g.strokeStyle=GOLD;g.lineWidth=2;
-      g.beginPath();g.moveTo(xRight-half,y0-size*0.55);g.lineTo(xRight+half,y0-size*0.55);g.stroke();
-      g.beginPath();g.moveTo(xRight-half,y0+blockH+size*0.38);g.lineTo(xRight+half,y0+blockH+size*0.38);g.stroke();
-      if(author){
-        let fs=32;
-        g.font=fs+'px "KaiTi","STKaiti","Kaiti SC","Songti SC",serif';
-        while(fs>16&&g.measureText(author).width>W-150){
-          fs-=2;g.font=fs+'px "KaiTi","STKaiti","Kaiti SC","Songti SC",serif';
-        }
-        g.fillStyle=GRAY;
-        g.fillText(author,W/2,H-128+(32-fs));
-      }
-      g.fillStyle=FAINT;
-      g.font='22px "Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif';
-      g.fillText("卷帙 · DeShelf",W/2,H-66);
+      const draw=CV_COVER_DRAW[style]||CV_COVER_DRAW[DEFAULT_COVER_STYLE];
+      draw(g,W,H,text,au);
       const blob=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.9));
       if(!blob) return null;
       return {data:new Uint8Array(await blob.arrayBuffer()),name:"cover.jpg",mime:"image/jpeg",w:W,h:H};
@@ -3804,6 +3935,7 @@ p.cap {
     buildCleanSummary,lineCount,nowStamp,SUM_KINDS,SUM_TEXT,
     THEMES,DEFAULT_THEME,THEME_CSS,themeCss,themeById,themeTitle,addTheme,
 parseThemeCss,themePreviewHtml,isCustomTheme,makeCover,prepareCoverFile,
+    COVER_STYLES,DEFAULT_COVER_STYLE,coverStyleIds,coverStyleName,coverStyleId,
     exportRulesPack,parseRulesPack,customToText,textToCustom,
     xmlEsc,crc32,sha256hex};
 })();
@@ -3830,6 +3962,11 @@ const St={
   rulesOn:new Set(Core.DEFAULT_ON), customRe:"",
   /* 封面设置窗里定过的封面：书籍键 → {data,name,mime,w,h}，只在本页有效 */
   coverMap:new Map(),
+  /* 内置封面：全局默认风格 + 哪几本用的是内置封面（键 → 风格 id）。
+     重开封面窗时据此还原「这本是内置画出来的」，与桌面版 cover_style /
+     cover_pins 一致；风格本身进 localStorage，pins 只在本次会话里有效 */
+  coverStyle:Core.DEFAULT_COVER_STYLE,
+  coverPins:new Map(),
 };
 
 /* ================= 编码显示名 ================= */
@@ -5020,9 +5157,9 @@ function attachCovers(books,imgs){
   }
   return hit;
 }
-/* 自动封面：同名图片优先（书籍目录 → 输出目录），都没有就画默认封面。
+/* 同名本地图：书旁边的图优先，其次是输出目录里那张。
    与桌面版 find_cover_image 一个顺序：书旁边的图最准，输出目录里多是下载来的图 */
-async function autoCover(b){
+async function coverLocal(b){
   if(b.coverEnt){
     try{
       const ent=b.coverEnt;
@@ -5031,9 +5168,14 @@ async function autoCover(b){
       if(c)return c;
     }catch(e){log("⚠ 封面图读取失败："+(e&&e.message||e));}
   }
-  const fromDir=await coverFromSaveDir(b);
-  if(fromDir)return fromDir;
-  return await Core.makeCover(b.title||fileBaseName(b),b.author||"");
+  return await coverFromSaveDir(b);
+}
+/* 自动封面：同名图片优先，都没有就按当前默认风格画一张（styles 见 Core） */
+async function autoCover(b,style){
+  const local=await coverLocal(b);
+  if(local)return local;
+  return await Core.makeCover(b.title||fileBaseName(b),b.author||"",600,800,
+                              style||St.coverStyle);
 }
 /* 输出目录里的图片清单（一次性列目录，等于桌面版的一次 listdir）：
    同一批书反复找封面时不必逐个 getFileHandle 试探。 */
@@ -5082,8 +5224,9 @@ async function coverFor(b){
 }
 
 /* ---------- 封面设置窗（网格卡片 + 右键菜单，与桌面版同款） ----------
-   CP.tmp 是本次窗口的工作副本：点确定才提交，取消保持原样。 */
-const CP={modal:null,tmp:null};
+   CP.tmp / CP.pins / CP.style 是本次窗口的工作副本：点确定才提交，取消保持原样。
+   CP.gen 是「统一换风格」的批次号，旧批次算完的封面不会盖掉新风格。 */
+const CP={modal:null,tmp:null,pins:null,style:"",gen:0};
 function cpPaint(card,cov){
   const shot=card.querySelector(".cv-shot");if(!shot)return;
   if(card._url){try{URL.revokeObjectURL(card._url);}catch(e){}card._url=null;}
@@ -5100,18 +5243,44 @@ function cpCloseMenu(){
   const m=document.getElementById("cvMenu");if(m)m.remove();
   if(_cpMenuDown){document.removeEventListener("mousedown",_cpMenuDown,true);_cpMenuDown=null;}
 }
+/* 有没有同名本地封面：有的话就不给「更换默认封面」，本地图永远优先 */
+function cpCanDefault(card){
+  return card._origin!=="local";
+}
 function cpOpenMenu(x,y,card){
   cpCloseMenu();
   const m=document.createElement("div");
   m.className="cv-menu";m.id="cvMenu";
-  m.innerHTML='<div data-a="pick">'+esc(T("coverPickImg"))+'</div>'
-    +'<div data-a="url">'+esc(T("coverDl"))+'</div>';
+  const en=CUR==="en";
+  const mainHtml=()=>'<div data-a="pick">'+esc(T("coverPickImg"))+'</div>'
+    +'<div data-a="url">'+esc(T("coverDl"))+'</div>'
+    +(cpCanDefault(card)
+      ?'<div data-a="more">'+esc(T("coverNewDefault"))+' ▸</div>'
+      :'');
+  /* 第二层：内置风格列表（桌面版是子菜单，网页版用同一个菜单换一页，
+     触屏/鼠标都点得到，也不用处理子菜单的悬停定位） */
+  const styleHtml=()=>'<div data-a="back" class="back">'+esc(T("coverBack"))+'</div>'
+    +Core.COVER_STYLES.map(s=>'<div data-a="style" data-s="'+s[0]+'"'
+        +(card._pin===s[0]?' class="on"':'')+'>'
+        +esc(Core.coverStyleName(s[0],en))+'</div>').join("");
+  m.innerHTML=mainHtml();
   document.body.appendChild(m);
-  const w=m.offsetWidth,h=m.offsetHeight;      /* 贴着鼠标弹出，别越出可视区 */
-  m.style.left=Math.max(4,Math.min(x,window.innerWidth-w-6))+"px";
-  m.style.top=Math.max(4,Math.min(y,window.innerHeight-h-6))+"px";
+  const place=()=>{                            /* 贴着鼠标弹出，别越出可视区 */
+    const w=m.offsetWidth,h=m.offsetHeight;
+    m.style.left=Math.max(4,Math.min(x,window.innerWidth-w-6))+"px";
+    m.style.top=Math.max(4,Math.min(y,window.innerHeight-h-6))+"px";
+  };
+  place();
   m.addEventListener("click",ev=>{
-    const a=ev.target.dataset.a;if(!a)return;
+    const t=ev.target.closest("[data-a]");if(!t)return;
+    const a=t.dataset.a;
+    if(a==="more"){m.innerHTML=styleHtml();place();return;}
+    if(a==="back"){m.innerHTML=mainHtml();place();return;}
+    if(a==="style"){
+      cpCloseMenu();
+      cpSetDefault(card,t.dataset.s).catch(e=>log("⚠ 换内置封面失败："+(e&&e.message||e)));
+      return;
+    }
     cpCloseMenu();
     if(a==="pick")cpPickFile(card);
     else cpAskUrl(card);
@@ -5126,8 +5295,71 @@ async function cpSetCoverFile(card,file){
   const cov=await Core.prepareCoverFile(file);
   if(!cov){askConfirm(T("coverImgBad"),T("closeX"),()=>{});return false;}
   CP.tmp.set(card.dataset.k,cov);
+  CP.pins.delete(card.dataset.k);      /* 用户自己挑的图：不再算内置封面 */
+  card._origin="user";card._pin=null;
   cpPaint(card,cov);
   return true;
+}
+/* 算一本书这次该用的封面：同名本地图 > 单本定的内置风格 > 用户挑过的图 >
+   默认风格（同桌面版 CoverPicker._prepare 的顺序） */
+async function cpLoad(card,forceStyle){
+  const b=card._book,key=card.dataset.k;
+  const local=await coverLocal(b);
+  if(local)return {cov:local,origin:"local"};
+  const pin=CP.pins.get(key);
+  if(pin){
+    if(!forceStyle){
+      const got=CP.tmp.get(key);
+      if(got)return {cov:got,origin:"builtin",style:pin};
+    }
+    const used=forceStyle||pin;
+    return {cov:await Core.makeCover(b.title||fileBaseName(b),b.author||"",600,800,used),
+            origin:"builtin",style:used};
+  }
+  const got=CP.tmp.get(key);
+  if(got)return {cov:got,origin:"user"};
+  const used=forceStyle||CP.style;
+  return {cov:await Core.makeCover(b.title||fileBaseName(b),b.author||"",600,800,used),
+          origin:"builtin",style:used};
+}
+/* 算好并贴到卡片上；gen 传了就只在批次没变时生效（换风格时旧结果作废） */
+async function cpFill(card,forceStyle,gen){
+  const r=await cpLoad(card,forceStyle);
+  if(gen!=null&&gen!==CP.gen)return;
+  if(!card.isConnected||CP.modal!==card._modal)return;
+  card._origin=r.origin;card._pin=r.style||null;
+  const key=card.dataset.k;
+  if(r.cov)CP.tmp.set(key,r.cov);
+  if(r.origin==="builtin"&&r.style)CP.pins.set(key,r.style);
+  else CP.pins.delete(key);
+  cpPaint(card,r.cov);
+}
+/* 右键「更换默认封面」：只改这一本 */
+async function cpSetDefault(card,sid){
+  if(!sid||card._origin==="local")return;
+  const b=card._book;
+  const cov=await Core.makeCover(b.title||fileBaseName(b),b.author||"",600,800,sid);
+  if(!cov||!card.isConnected||CP.modal!==card._modal)return;
+  card._origin="builtin";card._pin=sid;
+  CP.pins.set(card.dataset.k,sid);
+  CP.tmp.set(card.dataset.k,cov);
+  cpPaint(card,cov);
+}
+/* 底栏下拉框：所有内置封面的书统一换风格，用户挑的图/本地图不动 */
+async function cpApplyStyle(sid){
+  if(!sid||sid===CP.style)return;
+  CP.style=sid;
+  CP.gen++;
+  const my=CP.gen;                     /* 连点两下下拉框：后一次作废前一次 */
+  const cards=[...document.querySelectorAll("#cvGrid .cv-card")];
+  for(const card of cards){
+    if(CP.gen!==my)return;
+    if(card._origin==="local"||card._origin==="user")continue;
+    /* 不先删 pins：cpLoad 靠它认出「这本是内置封面」，重画后 pin 就是新风格，
+       单本的单独设置自然被统一值覆盖（与桌面版一致） */
+    await cpFill(card,sid,my);
+    if(!card.isConnected)return;
+  }
 }
 /* 选择本地图片：只把转好的字节留在内存里，不落盘 */
 function cpPickFile(card){
@@ -5196,22 +5428,40 @@ async function cpDownload(card,url){
   }
   log(saved?fill(T("coverDlSaved"),{f:saved}):T("coverDlOnlyEpub"));
 }
-/* 打开封面设置窗：网格列出本次要导出的书，逐本算自动封面，右键（或点卡片）换图 */
+/* 打开封面设置窗：网格列出本次要导出的书，逐本算自动封面，右键（或点卡片）换图。
+   底栏「默认封面」下拉框统一换内置风格；右键「更换默认封面」只改一本。 */
 function openCoverPicker(){
   const sel=selectedBooks();
   if(!sel.length){askConfirm(T("coverNoBooksMsg"),T("closeX"),()=>{});return;}
+  const en=CUR==="en";
+  const styleOpts=Core.COVER_STYLES.map(s=>'<option value="'+s[0]+'">'
+    +esc(Core.coverStyleName(s[0],en))+'</option>').join("");
   const id=openModal(T("coverPick"),
     '<div class="cv-tip">'+esc(T("coverHint"))+'</div><div class="cv-grid" id="cvGrid"></div>',
-    '<button class="btn ghost" data-c="1">'+esc(T("dCancel"))+'</button>'
+    '<label class="cv-style"><span>'+esc(T("coverDefault"))+'</span>'
+    +'<select class="select" id="cvStyle">'+styleOpts+'</select></label>'
+    +'<button class="btn ghost" data-c="1">'+esc(T("dCancel"))+'</button>'
     +'<button class="btn b2" data-ok="1">'+esc(T("dOk"))+'</button>');
   CP.modal=id;
   CP.tmp=new Map(St.coverMap);          /* 确定才提交：取消保持原样 */
+  CP.pins=new Map(St.coverPins);
+  CP.style=Core.coverStyleIds().includes(St.coverStyle)
+    ?St.coverStyle:Core.DEFAULT_COVER_STYLE;
+  CP.gen++;
+  const gen=CP.gen;
   const d=document.getElementById(id);
   d.querySelector(".dlg").style.width="min(1000px,95vw)";
+  const sel_el=d.querySelector("#cvStyle");
+  if(sel_el){
+    sel_el.value=CP.style;
+    sel_el.onchange=()=>cpApplyStyle(sel_el.value)
+      .catch(e=>log("⚠ 统一换封面风格失败："+(e&&e.message||e)));
+  }
   const grid=d.querySelector("#cvGrid");
   sel.forEach(b=>{
     const card=document.createElement("div");
     card.className="cv-card";card.dataset.k=bookKey(b);card._book=b;
+    card._modal=id;
     card.innerHTML='<div class="cv-shot"><span class="ph">'+esc(T("coverPreparing"))+'</span></div>'
       +'<div class="cv-name">'+esc(b.title||b.name||"")+'</div>'
       +'<div class="cv-auth">'+esc(b.author||"")+'</div>';
@@ -5221,20 +5471,16 @@ function openCoverPicker(){
     card.addEventListener("click",()=>{      /* 触屏没有右键：点卡片也能出菜单 */
       const r=card.getBoundingClientRect();
       cpOpenMenu(r.left+14,r.top+14,card);});
-    (async()=>{
-      let c=CP.tmp.get(bookKey(b));
-      if(!c){
-        c=await autoCover(b);
-        if(CP.modal!==id)return;          /* 窗口已关：结果不留 */
-        if(c)CP.tmp.set(bookKey(b),c);
-      }
-      if(CP.modal!==id)return;
-      cpPaint(card,c);
-    })();
+    cpFill(card,null,gen).catch(e=>log("⚠ 封面准备失败："+(e&&e.message||e)));
   });
   d.addEventListener("click",ev=>{
     if(ev.target.dataset.ok){
-      St.coverMap=CP.tmp;CP.modal=null;closeModal(id);
+      if(CP.modal!==id)return;
+      St.coverMap=CP.tmp;               /* 窗口里看到的字节原样交回去 */
+      St.coverPins=CP.pins;
+      St.coverStyle=CP.style;
+      cfgSet("coverStyle",CP.style);
+      CP.modal=null;closeModal(id);
       refreshCoverBtn();
       log(fill(T("logCoverSet"),{n:coverCount()}));
       return;
@@ -5588,6 +5834,8 @@ async function boot(){
     if(tc)Core.addTheme(JSON.parse(tc));
   }catch(e){}
   St.theme=cfgKey("theme")||Core.DEFAULT_THEME;
+  const cs=cfgKey("coverStyle");
+  St.coverStyle=Core.coverStyleIds().includes(cs)?cs:Core.DEFAULT_COVER_STYLE;
   refreshThemeBtn();refreshCoverBtn();refreshNameSelect();syncEpubOpts();
   try{
     const cr=cfgKey("customRules");

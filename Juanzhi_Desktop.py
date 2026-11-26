@@ -22,10 +22,10 @@ import tkinter as tk
 
 try:
     import ctypes
-except ImportError:              # 非 Windows / 精简解释器：全部 DPI 调用自动降级
+except ImportError:  # 非 Windows / 精简解释器：全部 DPI 调用自动降级
     ctypes = None
 
-try:                             # 主题缩略图要平滑缩放；没有 Pillow 也能跑（整数抽样）
+try:  # 主题缩略图要平滑缩放；没有 Pillow 也能跑（整数抽样）
     from PIL import Image as _PILImage
 except Exception:
     _PILImage = None
@@ -41,7 +41,7 @@ AUTHOR = "© 永远的兰兰 · Lanlan Eternal"
 # 又不会在卡片缝隙和大片空白处露出显眼的灰。
 BG = "#F5F6F8"
 CARD = "#FFFFFF"
-LINE = "#D3D8DE"   # 细线：太白的分组框在白底上看不出来
+LINE = "#D3D8DE"  # 细线：太白的分组框在白底上看不出来
 INK = "#232629"
 MUTED = "#5F6670"
 BLUE = "#2F6FB0"
@@ -245,7 +245,6 @@ The software is provided “as is”. The author accepts no liability for data
 loss or damage. Please confirm you have a backup before using “Overwrite”.
 """
 
-
 ABOUT_ZH = """版权与许可 · Copyright & License
 
 卷帙 DeShelf {ver}
@@ -357,7 +356,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-
 TEXTS = {
     ZH: {
         # 窗口 / 菜单
@@ -423,7 +421,7 @@ TEXTS = {
         "lab_chap_pick": "试分书籍：",
         "chap_pick_hint": "选单本试分；「试分全部选中」处理①书库勾选的全部书",
         "chap_hint": "内置可识别：第1章 / 第一百二十三章 / 卷三 / Chapter 5 / 序章 / 楔子 / 番外 / 后记；"
-                    "填写自定义正则后将只使用自定义规则。不会写？点右边「常用写法」挑一条。",
+                     "填写自定义正则后将只使用自定义规则。不会写？点右边「常用写法」挑一条。",
         # 「常用写法」窗口
         "re_help": "常用写法",
         "re_help_title": "自定义章节正则 · 常用写法",
@@ -526,6 +524,11 @@ TEXTS = {
                            "确定后按这里的封面导出 EPUB。",
         "cover_pick_img": "选择封面图片",
         "cover_dl": "下载网络封面",
+        # 内置封面：底栏下拉框统一换风格，右键给单本换
+        "cover_default": "默认封面",
+        "cover_new_default": "更换默认封面",
+        "cover_style_all": "内置封面已统一为「{0}」",
+        "cover_style_one": "内置封面已换成「{0}」",
         "cover_url_title": "下载网络封面",
         "cover_url_hint": "图片链接",
         "cover_url_bad": "请先填入图片链接。",
@@ -597,7 +600,7 @@ TEXTS = {
         "d_nothing_msg": "你选择了「仅导出」却又没有勾选任何导出格式。",
         "d_confirm_ip": "确认原地覆盖",
         "d_confirm_ip_msg": "将把清洗后的内容写回 {0} 个原文件，每个原文件会先备份为 .bak。\n\n"
-                           "此操作会改动你的原始文件，确定继续吗？",
+                            "此操作会改动你的原始文件，确定继续吗？",
         "d_re_bad": "正则无效", "d_re_bad_msg": "自定义章节正则无效，请检查语法。",
         "d_preview_fail": "预览失败", "d_chap_fail": "分章失败",
         "d_export_fail": "导出失败",
@@ -683,8 +686,8 @@ TEXTS = {
         "lab_chap_pick": "Book to split:",
         "chap_pick_hint": "Pick a book here; \"Try Split (all selected)\" acts on every book ticked in ①Library",
         "chap_hint": "Built-in patterns match 第1章 / 第一百二十三章 / 卷三 / Chapter 5 / "
-                    "序章 / 楔子 / 番外 / 后记; a custom regex replaces the built-ins. "
-                    "Need help? Press “Templates”.",
+                     "序章 / 楔子 / 番外 / 后记; a custom regex replaces the built-ins. "
+                     "Need help? Press “Templates”.",
         "re_help": "Templates",
         "re_help_title": "Custom chapter regex · templates",
         "re_help_intro": (
@@ -794,6 +797,10 @@ TEXTS = {
                            "EPUB export uses exactly these covers.",
         "cover_pick_img": "Choose cover image",
         "cover_dl": "Download cover from URL",
+        "cover_default": "Default cover",
+        "cover_new_default": "Change default cover",
+        "cover_style_all": "Built-in covers set to \"{0}\"",
+        "cover_style_one": "Built-in cover set to \"{0}\"",
         "cover_url_title": "Download Cover",
         "cover_url_hint": "Image URL",
         "cover_url_bad": "Enter an image URL first.",
@@ -859,7 +866,7 @@ TEXTS = {
         "d_nothing_msg": "You picked \u201cExport only\u201d but selected no format.",
         "d_confirm_ip": "Confirm Overwrite",
         "d_confirm_ip_msg": "Cleaned text will be written back to {0} original files, each backed "
-                           "up as .bak first.\n\nThis modifies your original files. Continue?",
+                            "up as .bak first.\n\nThis modifies your original files. Continue?",
         "d_re_bad": "Invalid Regex", "d_re_bad_msg": "Custom chapter regex is invalid — check the syntax.",
         "d_preview_fail": "Preview Failed", "d_chap_fail": "Split Failed",
         "d_export_fail": "Export Failed",
@@ -891,7 +898,7 @@ def _sys_lang():
     try:
         import ctypes
         lid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
-        return ZH if (lid & 0x3FF) == 0x04 else EN   # 0x0804/0x0404/0x0004 = Chinese
+        return ZH if (lid & 0x3FF) == 0x04 else EN  # 0x0804/0x0404/0x0004 = Chinese
     except Exception:
         return ZH
 
@@ -915,7 +922,7 @@ def safe_name(s, maxlen=60, fallback="未命名"):
 
 
 # ============================================================ DPI / 屏幕几何
-_SCALE = 1.0        # 96 DPI 逻辑像素 → 当前 DPI 物理像素的倍率（125% = 1.25）
+_SCALE = 1.0  # 96 DPI 逻辑像素 → 当前 DPI 物理像素的倍率（125% = 1.25）
 
 
 def px(v):
@@ -936,6 +943,34 @@ def _wrap_label(e):
     e.widget.configure(wraplength=max(px(120), e.width - px(8)))
 
 
+def _ellipsize(text, font, max_px):
+    """把 text 截到 max_px 像素以内，放不下就用「…」收尾（始终单行）。
+
+    按真实字体逐字量（font.measure），中英文混排、全角标点都不会算歪；
+    二分找「连同省略号仍放得下」的最长前缀。max_px 连一个省略号都放不下时
+    返回空串，免得挤出一个残缺的符号。
+    """
+    if not text or max_px <= 0:
+        return ""
+    try:
+        if font.measure(text) <= max_px:
+            return text
+        dot = font.measure("…")
+        if dot > max_px:
+            return ""
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if font.measure(text[:mid]) + dot <= max_px:
+                lo = mid
+            else:
+                hi = mid - 1
+    except tk.TclError:
+        return text
+    cut = text[:lo].rstrip()
+    return (cut + "…") if cut else ""
+
+
 def _set_dpi_aware():
     """声明进程 DPI 感知。**必须**在 tk.Tk() 之前调用。
 
@@ -951,7 +986,7 @@ def _set_dpi_aware():
     if ctypes is None or os.name != "nt":
         return
     try:
-        if ctypes.windll.shcore.SetProcessDpiAwareness(1) == 0:   # S_OK
+        if ctypes.windll.shcore.SetProcessDpiAwareness(1) == 0:  # S_OK
             return
     except Exception:
         pass
@@ -972,13 +1007,13 @@ def _init_metrics(root):
         dpi = float(root.winfo_fpixels("1i"))
     except Exception:
         dpi = 0.0
-    if not (60.0 <= dpi <= 480.0):        # 取值异常时退回 96 DPI
+    if not (60.0 <= dpi <= 480.0):  # 取值异常时退回 96 DPI
         dpi = 96.0
     # 只放大不缩小：84 DPI 之类的老屏 / 非 Windows 平台保持设计尺寸，
     # 免得为了「适配」反而把界面整体压小。
     _SCALE = max(1.0, dpi / 96.0)
     try:
-        root.tk.call("tk", "scaling", dpi / 72.0)   # 1 point = dpi/72 px
+        root.tk.call("tk", "scaling", dpi / 72.0)  # 1 point = dpi/72 px
     except Exception:
         pass
     return _SCALE
@@ -1024,7 +1059,7 @@ def _center_win(win, w, h):
             aw, ah, ax, ay = win.winfo_screenwidth(), win.winfo_screenheight(), 0, 0
         except Exception:
             return None
-    W = max(1, min(W, aw - px(24)))       # 小屏 + 高缩放时别超出可见区域
+    W = max(1, min(W, aw - px(24)))  # 小屏 + 高缩放时别超出可见区域
     H = max(1, min(H, ah - px(24)))
     x = ax + (aw - W) // 2
     y = ay + (ah - H) // 2
@@ -1045,10 +1080,10 @@ THEME_LEFT_RATIO = 0.36
 THEME_LEFT_MIN, THEME_LEFT_MAX = 280, 620
 # 右栏固定两列：窗口拉宽时列宽（也就是缩略图）直接变大，不再分新列
 THEME_COLS = 2
-THEME_CARD_PAD = 10          # 卡片内部：图与卡片边框的留白（单边）
-THEME_CARD_GAP = 8           # 网格单元格的最小间距（实际间距由 GRID_MARGIN 决定）
-THEME_GRID_MARGIN = 14       # 列表与窗口边缘的留白（卡片之间是它的两倍）
-THEME_PREVIEW_W, THEME_PREVIEW_H = 372, 478      # 左栏大图的初始尺寸
+THEME_CARD_PAD = 10  # 卡片内部：图与卡片边框的留白（单边）
+THEME_CARD_GAP = 8  # 网格单元格的最小间距（实际间距由 GRID_MARGIN 决定）
+THEME_GRID_MARGIN = 14  # 列表与窗口边缘的留白（卡片之间是它的两倍）
+THEME_PREVIEW_W, THEME_PREVIEW_H = 372, 478  # 左栏大图的初始尺寸
 
 
 def _to_int(s):
@@ -1110,7 +1145,7 @@ def _scaled_photo(src, w, h, fast=False):
                 else getattr(_PILImage, "LANCZOS", 1))
         try:
             im = obj.resize((w, h), filt)
-            try:                        # ImageTk 最快；被裁掉时退回 PNG 数据
+            try:  # ImageTk 最快；被裁掉时退回 PNG 数据
                 from PIL import ImageTk
                 return ImageTk.PhotoImage(im)
             except Exception:
@@ -1120,7 +1155,7 @@ def _scaled_photo(src, w, h, fast=False):
                     data=base64.b64encode(buf.getvalue()).decode("ascii"))
         except Exception:
             return None
-    k = max(1, -(-obj.width() // w), -(-obj.height() // h))      # 向上取整
+    k = max(1, -(-obj.width() // w), -(-obj.height() // h))  # 向上取整
     return obj.subsample(k, k) if k > 1 else obj
 
 
@@ -1160,15 +1195,15 @@ def _prune_cache(limit=160):
 # ============================================================ 导出封面
 #
 # 导出页不再给「封面策略」下拉框：点按钮开一个窗口，把本次要导出的书逐本列出来，
-# 每本书的封面默认走 cover_for_book(auto)（同名图优先，找不到画默认封面），
-# 右键可以换成本地图片或从网上下载。确定后整份封面交回主窗口，
-# 开始处理时按这份映射原样写进 epub。
+# 每本书的封面默认走 cover_for_book(auto)：用户挑过的图优先，其次是同名图片，
+# 都没有就按内置风格现画（底栏「默认封面」下拉框统一换风格，右键「更换默认封面」
+# 给单本换）。确定后整份封面交回主窗口，开始处理时按这份映射原样写进 epub。
 
-COVER_THUMB_W, COVER_THUMB_H = 132, 184      # 网格里每本书的缩略图上限
-COVER_CARD_PAD = 8                           # 卡片内留白（单边）
-COVER_GRID_GAP = 12                          # 卡片之间 / 与窗口边缘的留白
-COVER_PICKER_W, COVER_PICKER_H = 900, 720    # 窗口初始尺寸
-COVER_URL_W = 560                            # 网络封面输入框窗口宽度
+COVER_THUMB_W, COVER_THUMB_H = 132, 184  # 网格里每本书的缩略图上限
+COVER_CARD_PAD = 8  # 卡片内留白（单边）
+COVER_GRID_GAP = 12  # 卡片之间 / 与窗口边缘的留白
+COVER_PICKER_W, COVER_PICKER_H = 900, 720  # 窗口初始尺寸
+COVER_URL_W = 560  # 网络封面输入框窗口宽度
 
 
 def _book_key(path):
@@ -1190,7 +1225,7 @@ def _source_from_bytes(data, name="cover.jpg"):
             return ("pil", im.convert("RGB"))
         except Exception:
             pass
-    try:                    # 没有 Pillow：落个临时文件让 tk 自己认（只认 PNG/GIF）
+    try:  # 没有 Pillow：落个临时文件让 tk 自己认（只认 PNG/GIF）
         path = os.path.join(_cache_dir(), "cover-view" + os.path.splitext(name)[1])
         with open(path, "wb") as f:
             f.write(data)
@@ -1221,7 +1256,7 @@ def _fit_photo(src, w, h):
                     data=base64.b64encode(buf.getvalue()).decode("ascii"))
         except Exception:
             return None
-    k = max(1, -(-obj.width() // w), -(-obj.height() // h))      # 向上取整
+    k = max(1, -(-obj.width() // w), -(-obj.height() // h))  # 向上取整
     return obj.subsample(k, k) if k > 1 else obj
 
 
@@ -1235,34 +1270,34 @@ class ThemePicker:
     """
 
     def __init__(self, parent, themes, current, lang, S):
-        self.themes = list(themes)      # 复制一份：导入自定义 CSS 会往里加
+        self.themes = list(themes)  # 复制一份：导入自定义 CSS 会往里加
         self.lang = lang
         self.S = S
         self.result = None
         self.cur = current
         self._by_id = {t["id"]: t for t in themes}
         self._cards = {}
-        self._src = {}             # id -> 可反复缩放的源图
-        self._ph = {}              # id -> ((w, h), tk 图)，按当前尺寸缓存
-        self._pv_path = ""         # 左侧大图的渲染结果
-        self._pv_shown = None      # ((w, h), tk 图)
-        self._pv_src = None        # 大图的解码缓存（拖动时反复缩放用）
+        self._src = {}  # id -> 可反复缩放的源图
+        self._ph = {}  # id -> ((w, h), tk 图)，按当前尺寸缓存
+        self._pv_path = ""  # 左侧大图的渲染结果
+        self._pv_shown = None  # ((w, h), tk 图)
+        self._pv_src = None  # 大图的解码缓存（拖动时反复缩放用）
         self._pv_src_path = ""
         self._pv_size = (px(THEME_PREVIEW_W), px(THEME_PREVIEW_H))
         self._grid_key = None
-        self._img_key = None       # 缩略图当前是按哪个尺寸 + 画质贴的
+        self._img_key = None  # 缩略图当前是按哪个尺寸 + 画质贴的
         self._layout_job = None
         self._busy = False
-        self._left_user_w = 0      # 用户拖过分隔条后左栏的宽度（0=按比例自动）
-        self._drag = None          # 拖分隔条时的起点 (x_root, 左栏宽)
-        self._grid_job = None      # 拖动停顿后跟右栏尺寸的定时器
-        self._warned = False       # 没装浏览器的提示只弹一次
+        self._left_user_w = 0  # 用户拖过分隔条后左栏的宽度（0=按比例自动）
+        self._drag = None  # 拖分隔条时的起点 (x_root, 左栏宽)
+        self._grid_job = None  # 拖动停顿后跟右栏尺寸的定时器
+        self._warned = False  # 没装浏览器的提示只弹一次
         self._jobs = queue.Queue()
         self._done = queue.Queue()
         self._seq = 0
         self._dead = False
         _prune_cache()
-        self._build(parent)                 # 缩略图在这一步直接读 .png，不等渲染
+        self._build(parent)  # 缩略图在这一步直接读 .png，不等渲染
         # 配置里存的是自定义 CSS：把它也放进列表，方便直接沿用
         if jzcore.is_custom_theme(current):
             t = jzcore.load_theme(current)
@@ -1321,7 +1356,7 @@ class ThemePicker:
         self._vp = tuple(jzcore.THEME_PREVIEW_SIZE)
         self._vp_text()
         row = self._vp_row = ttk.Frame(left)
-        row.pack(pady=(px(10), 0))       # 默认居中，跟上面的预览图对齐
+        row.pack(pady=(px(10), 0))  # 默认居中，跟上面的预览图对齐
         ttk.Label(row, text=S["theme_vp_w"], foreground=MUTED,
                   font=FONT_S).pack(side="left")
         ew = ttk.Entry(row, textvariable=self.vp_w_var, width=5,
@@ -1406,7 +1441,7 @@ class ThemePicker:
         box = tk.Frame(card, bg="#FFFFFF", highlightthickness=1,
                        highlightbackground=LINE, bd=0,
                        width=px(160), height=px(260))
-        box.pack_propagate(False)       # 尺寸由布局定，图片只往里缩/放
+        box.pack_propagate(False)  # 尺寸由布局定，图片只往里缩/放
         box.pack(padx=pad, pady=(px(8), px(4)))
         img = tk.Label(box, bd=0, bg="#FFFFFF")
         hint = tk.Label(box, bg="#FFFFFF", fg=MUTED, font=FONT_S,
@@ -1428,7 +1463,7 @@ class ThemePicker:
         desc = t.get("desc") or ""
         if t.get("stale"):
             desc = (desc + "  ·  " if desc else "") + self.S["theme_stale"]
-        if t.get("custom") and not desc:      # 自定义 CSS 没写说明：退一步显示文件名
+        if t.get("custom") and not desc:  # 自定义 CSS 没写说明：退一步显示文件名
             desc = os.path.basename(t.get("path") or "")
         return desc
 
@@ -1448,7 +1483,7 @@ class ThemePicker:
             first, last = self._cv.yview()
         except Exception:
             return
-        if first <= 0.0 and last >= 1.0:       # 内容不满一屏：不拦滚轮
+        if first <= 0.0 and last >= 1.0:  # 内容不满一屏：不拦滚轮
             return
         delta = getattr(e, "delta", 0) or 0
         step = max(1, int(abs(delta) / 40))
@@ -1474,7 +1509,7 @@ class ThemePicker:
 
     def _relayout(self):
         self._layout_job = None
-        if self._drag:                  # 拖动期间由 _split_move 一帧帧负责
+        if self._drag:  # 拖动期间由 _split_move 一帧帧负责
             return
         self._layout_now(False)
 
@@ -1490,7 +1525,7 @@ class ThemePicker:
         try:
             self._layout_left()
             if not fast:
-                self._win.update_idletasks()   # 几何落定后再量右栏宽度
+                self._win.update_idletasks()  # 几何落定后再量右栏宽度
             self._layout_grid(fast, images)
         except tk.TclError:
             pass
@@ -1585,16 +1620,16 @@ class ThemePicker:
             lw = int(max(px(300), win.winfo_width()) * THEME_LEFT_RATIO)
             lw = max(px(THEME_LEFT_MIN), min(px(THEME_LEFT_MAX), lw))
         lh = self._left.winfo_height()
-        if lh < px(160):                        # 还没完成布局，先按窗口估
+        if lh < px(160):  # 还没完成布局，先按窗口估
             lh = max(px(300), win.winfo_height() - px(120))
         row_h = self._vp_row.winfo_reqheight()
-        avail_h = max(px(150), lh - row_h - px(16))   # 视口输入框 + 间距
+        avail_h = max(px(150), lh - row_h - px(16))  # 视口输入框 + 间距
         vw, vh = self._vp
         ratio = float(vh) / float(vw)
         pv_h = avail_h
         pv_w = int(pv_h / ratio)
         max_w = max(px(100), lw - px(8))
-        if pv_w > max_w:                        # 高度够了但宽度到顶，改由宽度定
+        if pv_w > max_w:  # 高度够了但宽度到顶，改由宽度定
             pv_w = max_w
             pv_h = int(pv_w * ratio)
         lw = max(lw, pv_w + px(10), self._vp_row.winfo_reqwidth())
@@ -1626,7 +1661,7 @@ class ThemePicker:
                 card["desc"].configure(wraplength=thumb_w)
         if not images:
             return
-        if self._img_key == (key, fast):    # 这批尺寸 + 这个画质已经贴过了
+        if self._img_key == (key, fast):  # 这批尺寸 + 这个画质已经贴过了
             return
         self._img_key = (key, fast)
         self._fill_thumbs(fast)
@@ -1676,7 +1711,7 @@ class ThemePicker:
         w = _to_int(self.vp_w_var.get())
         h = _to_int(self.vp_h_var.get())
         if not w or not h:
-            self._vp_text()                     # 输错了就恢复成上一次的值
+            self._vp_text()  # 输错了就恢复成上一次的值
             return
         w = max(200, min(3000, w))
         h = max(200, min(3000, h))
@@ -1685,8 +1720,8 @@ class ThemePicker:
             return
         self._vp = (w, h)
         self._vp_text()
-        self._schedule_layout()                 # 比例变了，左栏也要重排
-        self._select(self.cur)                  # 按新视口重渲一张（有缓存就秒出）
+        self._schedule_layout()  # 比例变了，左栏也要重排
+        self._select(self.cur)  # 按新视口重渲一张（有缓存就秒出）
 
     # -------------------------------------------------------- 导入自定义 CSS
     def import_css(self):
@@ -1711,7 +1746,7 @@ class ThemePicker:
             t["stale"] = False
             t["custom"] = True
             self._add_card(t)
-        else:                                   # 同一个文件又导了一次：按新内容刷新
+        else:  # 同一个文件又导了一次：按新内容刷新
             new = jzcore.parse_theme(css, tid)
             t["css"] = css
             t["name"] = new["name"]
@@ -1734,7 +1769,7 @@ class ThemePicker:
         self._seq += 1
         for k, card in self._cards.items():
             card["frame"].configure(highlightbackground=BLUE if k == tid else LINE)
-        try:                                    # 标题跟着所选主题走
+        try:  # 标题跟着所选主题走
             self._win.title(theme_title(t, self.S, self.lang))
         except tk.TclError:
             pass
@@ -1751,11 +1786,11 @@ class ThemePicker:
         hti = None
         while True:
             item = self._jobs.get()
-            if item is None:                    # 窗口已关
+            if item is None:  # 窗口已关
                 break
             tid, css, size, seq = item
             if seq != self._seq:
-                continue                        # 已被后续选择顶替，别再浪费一次启动
+                continue  # 已被后续选择顶替，别再浪费一次启动
             # 左侧大图用长正文：视口有多高都能填满，看得出版面节奏
             html = jzcore.theme_preview_html(css, size[0], full=True)
             path, err, nobrowser = None, "", False
@@ -1770,7 +1805,7 @@ class ThemePicker:
                                           save_as=os.path.basename(cached),
                                           size=size)[0]
             except jzcore.NoBrowser:
-                nobrowser = True                 # 交给界面弹窗提示，不抛异常
+                nobrowser = True  # 交给界面弹窗提示，不抛异常
             except Exception as e:
                 err = str(e)
             self._done.put((tid, seq, path, err, nobrowser))
@@ -1831,7 +1866,7 @@ class ThemePicker:
         size = self._pv_size
         if self._pv_shown and self._pv_shown[0] == size:
             return
-        if self._pv_src_path != self._pv_path:   # 源图只解码一次，拖动时不必反复读盘
+        if self._pv_src_path != self._pv_path:  # 源图只解码一次，拖动时不必反复读盘
             self._pv_src = _load_source(self._pv_path)
             self._pv_src_path = self._pv_path
         photo = _scaled_photo(self._pv_src, size[0], size[1], fast)
@@ -1862,7 +1897,7 @@ class ThemePicker:
 
     def _close(self):
         self._dead = True
-        self._jobs.put(None)          # 渲染线程干完手上那张就退出
+        self._jobs.put(None)  # 渲染线程干完手上那张就退出
         try:
             self._win.destroy()
         except tk.TclError:
@@ -1884,29 +1919,45 @@ class ThemePicker:
 class CoverPicker:
     """导出封面设置窗：网格列出本次要导出的书，右键逐本换封面。
 
-    打开先用 cover_for_book(..., "auto") 逐本准备封面（后台线程算一张贴一张，
-    几百本也不会把界面冻住）。右键菜单两项：「选择封面图片」挑本地图，只把
-    prepare_cover_image 的结果留在内存里；「下载网络封面」填链接自动下载，
-    转成 JPEG 后按书籍文件名存进导出目录。确定后整份映射交回主窗口，
-    导出 EPUB 时按这里看到的封面原样写进书里。
+    打开先逐本准备封面（后台线程算一张贴一张，几百本也不会把界面冻住）：
+    用户挑过的图 / 下载来的图优先，其次是同名本地图，都没有就按内置风格现画。
+    右键菜单三项：「选择封面图片」挑本地图，只把 prepare_cover_image 的结果
+    留在内存里；「下载网络封面」填链接自动下载，转成 JPEG 后按书籍文件名存进
+    导出目录；没有本地同名封面的书还多一项「更换默认封面」，收着全部内置
+    风格，只改这一本。底栏「默认封面」下拉框则把所有内置封面的书统一换风格。
+    确定后整份映射交回主窗口，导出 EPUB 时按这里看到的封面原样写进书里。
     """
 
-    def __init__(self, parent, books, covers, outdir, lang, S):
+    def __init__(self, parent, books, covers, outdir, lang, S,
+                 style=None, pins=None):
         self.books = list(books)
         self.outdir = (outdir or "").strip()
         self.lang = lang
         self.S = S
         self.result = None
-        self.covers = dict(covers or {})     # {书籍路径键: cover_for_book 元组}
-        self._cards = {}                     # 序号 -> 卡片控件
+        self.covers = dict(covers or {})  # {书籍路径键: cover_for_book 元组}
+        # 内置封面：全局默认风格 + 每本书画它时用的风格（重开窗口据此还原）
+        self.style = (style if style in jzcore.cover_style_ids()
+                      else jzcore.DEFAULT_COVER_STYLE)
+        self.pins = dict(pins or {})  # {书籍键: 内置风格 id}
+        self.result_style = self.style
+        self.result_pins = dict(self.pins)
+        self._style_by_name = {jzcore.cover_style_name(sid, lang): sid
+                               for sid in jzcore.cover_style_ids()}
+        self._origin = {}  # 序号 -> "local" / "builtin" / "user"
+        self._gen = 0  # 批次号：换了风格就作废旧批次的结果
+        self._cards = {}  # 序号 -> 卡片控件
         self._thumb = (px(COVER_THUMB_W), px(COVER_THUMB_H))
         self._card_w = self._thumb[0] + 2 * px(COVER_CARD_PAD)
         self._cols = 0
-        self._q = queue.Queue()              # 后台线程算好的自动封面
-        self._dlq = queue.Queue()            # 后台线程下载回来的封面
+        self._tasks = queue.Queue()  # 待出封面的书：(批次, 序号, 强制风格)
+        self._q = queue.Queue()  # 后台线程算好的封面
+        self._dlq = queue.Queue()  # 后台线程下载回来的封面
         self._dead = False
         self._build(parent)
         threading.Thread(target=self._worker, daemon=True).start()
+        for i in range(len(self.books)):
+            self._tasks.put((0, i, None))
         self._poll()
 
     # -------------------------------------------------------- 界面
@@ -1928,6 +1979,16 @@ class CoverPicker:
                    command=self._ok).pack(side="right")
         ttk.Button(bar, text=S["d_cancel"], style="Soft.TButton",
                    command=self._cancel).pack(side="right", padx=px(6))
+        # 取消左边：默认封面下拉框，一次改掉所有「没有本地封面」的书
+        self.style_var = tk.StringVar(
+            value=jzcore.cover_style_name(self.style, self.lang))
+        self.cb_style = ttk.Combobox(
+            bar, state="readonly", width=10, textvariable=self.style_var,
+            values=[jzcore.cover_style_name(sid, self.lang)
+                    for sid in jzcore.cover_style_ids()])
+        self.cb_style.pack(side="right", padx=(px(10), 0))
+        self.cb_style.bind("<<ComboboxSelected>>", self._on_style_all)
+        ttk.Label(bar, text=S["cover_default"]).pack(side="right")
         # 下载/读图的即时反馈：不弹窗也能看到结果（失败仍走警告框）
         self._status = ttk.Label(win, text="", foreground=MUTED, font=FONT_S)
         self._status.pack(side="bottom", fill="x", padx=px(12))
@@ -1968,7 +2029,7 @@ class CoverPicker:
                         highlightbackground=LINE, bd=0)
         card.grid(row=0, column=0, padx=gap // 2, pady=gap // 2, sticky="n")
         box = tk.Frame(card, bg="#FFFFFF", bd=0, width=tw, height=th)
-        box.pack_propagate(False)       # 尺寸固定，图片只往里缩
+        box.pack_propagate(False)  # 尺寸固定，图片只往里缩
         box.pack(padx=pad, pady=(pad, px(4)))
         img = tk.Label(box, bd=0, bg="#FFFFFF")
         hint = tk.Label(box, bg="#FFFFFF", fg=MUTED, font=FONT_S,
@@ -1990,13 +2051,19 @@ class CoverPicker:
                 "title": title, "author": author, "photo": None}
 
     def _menu(self, e, i):
-        """右键菜单：换成本地图片，或从网络下载一张。"""
+        """右键菜单：换成本地图片、从网络下载，或（没有本地封面时）换内置风格。"""
         S = self.S
         m = tk.Menu(self._win, tearoff=0)
         m.add_command(label=S["cover_pick_img"],
                       command=lambda: self.pick_image(i))
         m.add_command(label=S["cover_dl"],
                       command=lambda: self.download(i))
+        if self._can_set_default(i):  # 有同名本地图的书不给这一项
+            sub = tk.Menu(m, tearoff=0)
+            for sid in jzcore.cover_style_ids():
+                sub.add_command(label=jzcore.cover_style_name(sid, self.lang),
+                                command=lambda s=sid, k=i: self.set_default(k, s))
+            m.add_cascade(label=S["cover_new_default"], menu=sub)
         try:
             m.tk_popup(e.x_root, e.y_root)
         except tk.TclError:
@@ -2004,34 +2071,77 @@ class CoverPicker:
 
     # -------------------------------------------------------- 自动封面
     def _worker(self):
-        """逐本准备自动封面：已有的（用户改过的）直接用，不重算。
-
-        书籍目录和导出目录都扫（后者放的是下载下来的图），书籍目录优先。
-        """
-        for i, b in enumerate(self.books):
+        """后台线程：按任务队列逐本出封面（打开时排一轮，换风格再排一轮）。"""
+        while not self._dead:
+            try:
+                gen, i, style = self._tasks.get(timeout=0.1)
+            except queue.Empty:
+                continue
             if self._dead:
                 return
-            key = _book_key(b.get("path"))
-            got = self.covers.get(key)
-            if got is None:
-                try:
-                    got = jzcore.cover_for_book(b.get("path") or "",
-                                                b.get("title") or "",
-                                                b.get("author") or "", "auto",
-                                                self.outdir)
-                except Exception:
-                    got = None
-                if got:
-                    self.covers[key] = got
-            self._q.put((i, got))
+            if gen < self._gen:  # 已被后来的「统一换风格」作废
+                continue
+            self._q.put((gen, i, self._prepare(i, style)))
+
+    def _prepare(self, i, style):
+        """算一本书这次该用的封面，返回 (封面元组, 来源, 内置风格)。
+
+        来源：user=用户挑过/下载过，local=同名本地图，builtin=内置现画。
+        风格换了（style 给了）就把内置封面按新风格重画，别的来源一律不动。
+        """
+        b = self.books[i]
+        key = _book_key(b.get("path"))
+        # 同名本地图永远最优先，与 cover_for_book 的 "auto" 一个口径
+        found = None
+        try:
+            found = jzcore.find_cover_image(b.get("path") or "",
+                                            b.get("title") or "", self.outdir)
+        except Exception:
+            found = None
+        if found:
+            try:
+                got = jzcore.prepare_cover_image(found)
+            except Exception:
+                got = None
+            if got:
+                return got, "local", None
+        pin = self.pins.get(key)
+        if pin:
+            if style is None:
+                got = self.covers.get(key)
+                if got is not None:  # 重开窗口：上次画好的直接用
+                    return got, "builtin", pin
+            return self._make_default(b, style or pin), "builtin", style or pin
+        got = self.covers.get(key)
+        if got is not None:
+            return got, "user", None
+        used = style or self.style
+        return self._make_default(b, used), "builtin", used
+
+    def _make_default(self, b, sid):
+        """按内置风格画一本书的封面；画不出来（没装 Pillow）返回 None。"""
+        try:
+            return jzcore.make_cover(b.get("title") or "", b.get("author") or "",
+                                     style=sid)
+        except Exception:
+            return None
 
     def _poll(self):
-        """主线程收后台结果：自动封面一张张贴，下载结果落到卡片上。"""
+        """主线程收后台结果：封面一张张贴，下载结果落到卡片上。"""
         if self._dead:
             return
         try:
             while True:
-                i, got = self._q.get_nowait()
+                gen, i, res = self._q.get_nowait()
+                if gen != self._gen:  # 旧批次：风格已经换过，丢弃
+                    continue
+                got, origin, pin = res
+                self._origin[i] = origin
+                key = _book_key(self.books[i].get("path"))
+                if pin:
+                    self.pins[key] = pin
+                else:
+                    self.pins.pop(key, None)
                 self._show(i, got)
         except queue.Empty:
             pass
@@ -2039,7 +2149,7 @@ class CoverPicker:
             while True:
                 i, got, dest = self._dlq.get_nowait()
                 if got:
-                    self._set_cover(i, got)
+                    self._set_user_cover(i, got)
                     self._status.configure(text=self.S["cover_dl_ok"].format(dest))
                 else:
                     self._status.configure(text="")
@@ -2065,6 +2175,12 @@ class CoverPicker:
         card["hint"].configure(text=self.S["cov_none"], fg=MUTED)
         card["hint"].place(relx=.5, rely=.5, anchor="center")
 
+    def _set_user_cover(self, i, got):
+        """用户自己挑的图（本地选图 / 网络下载）：以后统一换风格不再碰它。"""
+        self.pins.pop(_book_key(self.books[i].get("path")), None)
+        self._origin[i] = "user"
+        self._set_cover(i, got)
+
     def _set_cover(self, i, got):
         """把一本书的封面换成新图：记进映射并刷新卡片缩略图。"""
         b = self.books[i]
@@ -2073,7 +2189,7 @@ class CoverPicker:
         if card is None:
             return
         photo = _fit_photo(_source_from_bytes(got[0], got[1]), *self._thumb)
-        card["photo"] = photo            # 保住引用，否则 tk 图会被回收掉
+        card["photo"] = photo  # 保住引用，否则 tk 图会被回收掉
         if photo is not None:
             card["hint"].place_forget()
             card["img"].configure(image=photo)
@@ -2082,6 +2198,50 @@ class CoverPicker:
             card["img"].place_forget()
             card["hint"].configure(text=self.S["cover_img_bad"], fg=RED)
             card["hint"].place(relx=.5, rely=.5, anchor="center")
+
+    # -------------------------------------------------------- 内置封面
+    def _can_set_default(self, i):
+        """有同名本地图的书不参与「更换默认封面」：本地图永远优先。"""
+        if i in self._origin:
+            return self._origin[i] != "local"
+        b = self.books[i]
+        try:
+            return not jzcore.find_cover_image(b.get("path") or "",
+                                               b.get("title") or "",
+                                               self.outdir)
+        except Exception:
+            return True
+
+    def _on_style_all(self, _e=None):
+        """底栏下拉框换风格：所有内置封面的书统一重画，用户挑的图不动。"""
+        sid = self._style_by_name.get(self.style_var.get())
+        if not sid or sid == self.style:
+            return
+        self.style = sid
+        self.result_style = sid
+        self._gen += 1  # 换风格了：旧批次的结果全部作废
+        for i in range(len(self.books)):
+            origin = self._origin.get(i)
+            if origin == "builtin":
+                self._tasks.put((self._gen, i, sid))  # 内置封面按新风格重画
+            elif origin is None:
+                self._tasks.put((self._gen, i, None))  # 还没出图：按新默认重算
+        self._status.configure(text=self.S["cover_style_all"].format(
+            jzcore.cover_style_name(sid, self.lang)))
+
+    def set_default(self, i, sid):
+        """右键给这一本换内置封面：只改这一本，不动其他书。"""
+        if not self._can_set_default(i):
+            return
+        got = self._make_default(self.books[i], sid)
+        if not got:
+            return
+        key = _book_key(self.books[i].get("path"))
+        self.pins[key] = sid
+        self._origin[i] = "builtin"
+        self._set_cover(i, got)
+        self._status.configure(text=self.S["cover_style_one"].format(
+            jzcore.cover_style_name(sid, self.lang)))
 
     # -------------------------------------------------------- 换封面
     def pick_image(self, i):
@@ -2099,7 +2259,7 @@ class CoverPicker:
             messagebox.showwarning(S["d_warn"], S["cover_pick_fail"],
                                    parent=self._win)
             return
-        self._set_cover(i, got)
+        self._set_user_cover(i, got)
         self._status.configure(text=os.path.basename(path))
 
     def download(self, i):
@@ -2205,7 +2365,7 @@ class CoverPicker:
             first, last = self._cv.yview()
         except Exception:
             return
-        if first <= 0.0 and last >= 1.0:       # 内容不满一屏：不拦滚轮
+        if first <= 0.0 and last >= 1.0:  # 内容不满一屏：不拦滚轮
             return
         delta = getattr(e, "delta", 0) or 0
         step = max(1, int(abs(delta) / 40))
@@ -2214,6 +2374,8 @@ class CoverPicker:
     # -------------------------------------------------------- 结果
     def _ok(self):
         self.result = dict(self.covers)
+        self.result_style = self.style
+        self.result_pins = dict(self.pins)
         self._close()
 
     def _cancel(self):
@@ -2244,12 +2406,20 @@ class App:
         self.books = []
         # 封面设置窗的结果：{书籍路径键: cover_for_book 元组}，只在本进程有效
         self.cover_map = {}
+        # 内置封面：全局默认风格 + 哪几本用的是内置封面（键 -> 风格 id），
+        # 重开封面窗时据此还原「这本是内置画出来的」，用户挑的图不受影响
+        self.cover_style = jzcore.DEFAULT_COVER_STYLE
+        self.cover_pins = {}
         self.q = queue.Queue()
         self.busy = False
         self.cancel = False
         self.cfg = jzcore.load_config()
         self.lang = pick_lang()
         self.S = TEXTS[self.lang]
+        # 主题按钮：宽度固定，名字长了按宽度加省略号（见 _fit_theme_btn）
+        self._theme_text = ""        # 当前主题的完整名字
+        self._btn_font = None        # 量文字宽度用的字体（懒加载）
+        self._theme_fitting = False  # 改文字时防 <Configure> 递归
         last = self.cfg.get("lastdir", "")
         self.dir_var = tk.StringVar(value=last)
         self.out_var = tk.StringVar(value=self.cfg.get("outdir", ""))
@@ -2698,7 +2868,7 @@ class App:
                 first, last = cv.yview()
             except Exception:
                 return
-            if first <= 0.0 and last >= 1.0:      # 内容不满一屏：不拦滚轮
+            if first <= 0.0 and last >= 1.0:  # 内容不满一屏：不拦滚轮
                 return
             step = -1 if e.delta > 0 else 1
             cv.yview_scroll(step * max(1, abs(int(e.delta / 120))), "units")
@@ -2859,7 +3029,7 @@ class App:
         self._name_idx = 0
         self.cb_name = ttk.Combobox(row, state="readonly")
         self.cb_name.pack(side="left", padx=(px(4), 0))
-        self._refresh_name_box()        # 填选项 + 按最长一项算宽度
+        self._refresh_name_box()  # 填选项 + 按最长一项算宽度
         self._restore_name_opt()
         self.cb_name.bind("<<ComboboxSelected>>", self._on_name_sel)
         # EPUB 排版主题与封面：只影响导出的 epub，不改正文
@@ -2875,14 +3045,15 @@ class App:
                                     style="Soft.TButton",
                                     command=self.choose_theme)
         self.btn_theme.pack(side="left", padx=(px(4), 0))
+        # 主题名长短不一：按钮宽度固定，文字按实际宽度截断加省略号（见 _fit_theme_btn）
+        self.btn_theme.bind("<Configure>", self._fit_theme_btn)
         # 封面与主题同一套按钮样式：点开窗口逐本设置，不再用下拉框选策略
         self.btn_cover = ttk.Button(row2, text=S["cover_btn"], width=10,
                                     style="Soft.TButton",
                                     command=self.choose_covers)
         self.btn_cover.pack(side="left", padx=(px(16), 0))
         # 插图下载：只影响 epub 打包与「插图/书名」目录，不改正文
-        self.cb_imgdl = ttk.Checkbutton(row2, text=S["f_imgdl"],
-                                        variable=self.img_dl_var)
+        self.cb_imgdl = ttk.Checkbutton(row2, text=S["f_imgdl"], variable=self.img_dl_var)
         self.cb_imgdl.pack(side="left", padx=(px(16), 0))
         self.refresh_imgdl_state()
         self._restore_epub_opts()
@@ -2893,7 +3064,7 @@ class App:
         r = ttk.Frame(g3)
         r.pack(fill="x", padx=px(10), pady=px(6))
         ttk.Entry(r, textvariable=self.out_var).pack(side="left", fill="x", expand=True, padx=(0, px(4)))
-        ttk.Button(r, text=S["browse"], command=self.pick_out).pack(side="left")
+        ttk.Button(r, text=S["browse"], style="Soft.TButton", command=self.pick_out).pack(side="left")
         # 汇总文件只落到输出目录，不改正文；用来回查“被清洗掉的是不是正文”
         self.cb_sum = ttk.Checkbutton(g3, text=S["f_summary"],
                                       variable=self.sum_var,
@@ -2912,8 +3083,11 @@ class App:
             self._cardify(g)
 
     def _restore_epub_opts(self):
-        """按配置恢复版面主题（主题存的是 CSS 文件名）。"""
+        """按配置恢复版面主题（存 CSS 文件名）和内置封面的默认风格。"""
         self.theme_id = self._valid_theme(self.cfg.get("theme"))
+        style = self.cfg.get("cover_style")
+        self.cover_style = (style if style in jzcore.cover_style_ids()
+                            else jzcore.DEFAULT_COVER_STYLE)
         self._refresh_theme_btn()
         self._refresh_cover_btn()
 
@@ -2929,14 +3103,47 @@ class App:
         return ids[0] if ids else jzcore.DEFAULT_THEME
 
     def _refresh_theme_btn(self):
+        """按钮上显示当前主题名；太长就省略号截断（完整名字在选主题窗口里看）。"""
         t = self.theme_by_id.get(self.theme_id)
-        if t is None:                    # 自定义 CSS 不在内置列表里
+        if t is None:  # 自定义 CSS 不在内置列表里
             t = jzcore.load_theme(self.theme_id)
+        self._theme_text = (theme_title(t, self.S, self.lang) if t
+                            else self.S["f_theme"])
+        self._fit_theme_btn()
+
+    def _theme_btn_font(self):
+        """主题按钮用的字体：与 ttk 基础样式同一套，量文字宽度才准。"""
+        if getattr(self, "_btn_font", None) is None:
+            try:
+                self._btn_font = tkfont.Font(root=self.root, font=FONT)
+            except Exception:
+                self._btn_font = tkfont.nametofont("TkDefaultFont")
+        return self._btn_font
+
+    def _fit_theme_btn(self, _e=None):
+        """按按钮当前宽度把主题名收进一行：塞不下就用「…」截断。
+
+        按钮宽度是固定的（width=10 个字），换文案不会反过来改宽度，所以这里
+        不会来回抖；换 DPI / 布局变化时靠 <Configure> 再量一次。
+        """
+        btn = getattr(self, "btn_theme", None)
+        if not self._alive(btn) or getattr(self, "_theme_fitting", False):
+            return
+        text = getattr(self, "_theme_text", "")
         try:
-            self.btn_theme.configure(
-                text=theme_title(t, self.S, self.lang) if t
-                else self.S["f_theme"])
-        except Exception:
+            w = btn.winfo_width()
+            if w <= 1:                      # 还没布局：先按请求宽度估
+                w = btn.winfo_reqwidth()
+            # 去掉左右内边距（Soft.TButton: px(10)）和描边，再留一点余量
+            avail = w - 2 * px(10) - px(4)
+            shown = _ellipsize(text, self._theme_btn_font(), avail)
+            if btn.cget("text") != shown:
+                self._theme_fitting = True  # 改文字可能触发 Configure，防递归
+                try:
+                    btn.configure(text=shown)
+                finally:
+                    self._theme_fitting = False
+        except tk.TclError:
             pass
 
     def choose_theme(self):
@@ -2959,19 +3166,25 @@ class App:
         """弹出封面设置窗口：网格列出已勾选的书，右键逐本换封面。
 
         确定后把整份封面（字节已备好）留在 self.cover_map 里，开始处理时
-        按它写进 epub —— 与窗口里看到的封面完全一致。
+        按它写进 epub —— 与窗口里看到的封面完全一致。窗口里选的默认封面
+        风格和「哪几本是内置封面」也一并带回来，下次打开照原样还原。
         """
         S = self.S
         sel = [b for b in self.books if b["sel"]]
         if not sel:
             messagebox.showinfo(S["cover_no_books"], S["cover_no_books_msg"])
             return
-        got = CoverPicker(self.root, sel, self.cover_map,
-                          self.out_var.get().strip(), self.lang, S).show()
-        if got is None:                 # 取消：保留原来的设置
+        picker = CoverPicker(self.root, sel, self.cover_map,
+                             self.out_var.get().strip(), self.lang, S,
+                             style=self.cover_style, pins=self.cover_pins)
+        got = picker.show()
+        if got is None:  # 取消：保留原来的设置
             return
         self.cover_map = got
+        self.cover_style = getattr(picker, "result_style", self.cover_style)
+        self.cover_pins = getattr(picker, "result_pins", self.cover_pins)
         self._refresh_cover_btn()
+        self._save_epub_opts()
         n = sum(1 for b in sel if _book_key(b["path"]) in self.cover_map)
         self.log(S["log_cover_set"].format(n))
 
@@ -2994,6 +3207,7 @@ class App:
 
     def _save_epub_opts(self):
         self.cfg["theme"] = self.epub_theme()
+        self.cfg["cover_style"] = self.cover_style
         jzcore.save_config(self.cfg)
 
     def _save_sum_opt(self):
@@ -3031,7 +3245,7 @@ class App:
             except ValueError:
                 idx = len(self.name_labels) - 1
                 self._custom_fmt = fmt
-                self._refresh_name_box()    # 老配置只存了模板，补进下拉项再选中
+                self._refresh_name_box()  # 老配置只存了模板，补进下拉项再选中
         self._name_idx = idx
         try:
             self.cb_name.current(idx)
@@ -3056,7 +3270,7 @@ class App:
                     pass
                 return
             self._custom_fmt = fmt
-            self._refresh_name_box()        # 下拉框里直接显示用户填的格式
+            self._refresh_name_box()  # 下拉框里直接显示用户填的格式
         self._name_idx = idx
         try:
             self.cb_name.set(self.name_labels[idx])
@@ -3121,7 +3335,7 @@ class App:
 
         def _ok(_e=None):
             val = var.get().strip()
-            msg = _err(val)                     # 非法：留在窗里改，不丢用户输入
+            msg = _err(val)  # 非法：留在窗里改，不丢用户输入
             if msg:
                 status.configure(fg=RED, text=msg)
                 e.focus_set()
@@ -3220,7 +3434,7 @@ class App:
                             "", "end", tags=("bad",) if ck_bad else (),
                             values=(n, b["title"] or os.path.splitext(b["name"])[0],
                                     str(cnt), ck_txt))
-                        self._chap_rows[iid] = b     # 双击这一行 → 单本试分这本书
+                        self._chap_rows[iid] = b  # 双击这一行 → 单本试分这本书
                 elif kind == "prog":
                     cur, total, label = payload
                     self.prog_var.set(0 if not total else cur * 100.0 / total)
@@ -3278,8 +3492,8 @@ class App:
         self._log(self.root)
         self._status(self.root)
         self.status_var.set(self.S["st_ready"])
-        self.reload_rows()          # books 数据在内存，整表重灌（含勾选状态）
-        self._fill_chap_pick()      # 重建后重填「试分书籍」下拉
+        self.reload_rows()  # books 数据在内存，整表重灌（含勾选状态）
+        self._fill_chap_pick()  # 重建后重填「试分书籍」下拉
         try:
             self.nb.select(cur_tab)
         except Exception:
@@ -3316,7 +3530,7 @@ class App:
         S = self.S
         w = tk.Toplevel(self.root)
         w.title(title)
-        _center_win(w, 640, 520)          # 说明窗同样按 DPR 缩放并居中
+        _center_win(w, 640, 520)  # 说明窗同样按 DPR 缩放并居中
         # 按钮先占位：正文 expand=True 会把后 pack 的按钮挤成 0 高
         ttk.Button(w, text=S["d_close"],
                    command=w.destroy).pack(side="bottom", pady=px(8))
@@ -3378,7 +3592,7 @@ class App:
     # ------------------------------------------------------------ 书库
     def add_book(self, info):
         idx = len(self.books)
-        info.setdefault("chapters", -1)      # 章数字段：-1 = 尚未试分
+        info.setdefault("chapters", -1)  # 章数字段：-1 = 尚未试分
         self.books.append(info)
         rel = info.get("rel", os.path.basename(info["path"]))
         self.tv.insert("", "end", iid=str(idx), values=(
@@ -3395,7 +3609,7 @@ class App:
         if d:
             s += self.S["lib_info_dup"].format(d)
         self.info_var.set(s)
-        self._refresh_cover_btn()       # 勾选变了，封面按钮上的「已设置 N 本」跟着变
+        self._refresh_cover_btn()  # 勾选变了，封面按钮上的「已设置 N 本」跟着变
 
     def chap_cell(self, b):
         """书库「章节」列的显示值：未试分显示 -，试分后显示已切出的章数。
@@ -3701,7 +3915,7 @@ class App:
                 "books": [{k: v for k, v in b.items() if k != "path"} for b in self.books]})
         elif kind == "run":
             _s, ok, fail, outdir = payload
-            self.reload_rows()          # 回写实际切分章数/字数后重灌书库列表
+            self.reload_rows()  # 回写实际切分章数/字数后重灌书库列表
             self.mark_dup()
             self.status_var.set(S["st_run_done"].format(ok, fail))
             self.log(S["log_run_done"].format(ok, fail) + "，输出目录 %s" % outdir)
@@ -3883,7 +4097,7 @@ class App:
         _center_win(w, 760, 520)
         ttk.Label(w, text=S["custom_hint"], foreground="#666666", font=FONT_S,
                   wraplength=px(720), justify="left").pack(anchor="w", padx=px(10),
-                                                          pady=(px(8), px(4)))
+                                                           pady=(px(8), px(4)))
         t = tk.Text(w, wrap="none", font=MONO, bg="#FFFFFF", relief="solid", bd=1)
         t.pack(fill="both", expand=True, padx=px(10), pady=px(4))
         t.insert("1.0", jzcore.custom_to_text(self.custom_rules))
@@ -4016,17 +4230,17 @@ class App:
             self.q.put(("prog", (i - 1, total, S["prog_clean"].format(i, total, b["title"]))))
             try:
                 text = jzcore.load_text(b["path"])
-                b["_clean_before"] = len(text.splitlines())   # 汇总里显示「原 N 行 → 洗后 M 行」
+                b["_clean_before"] = len(text.splitlines())  # 汇总里显示「原 N 行 → 洗后 M 行」
                 st = {}
                 text, removed = jzcore.clean_text(text, rules, st, self.custom_rules,
                                                   want_trace=True)
-                b["_clean"] = text          # 清洗快照：分章/导出优先使用（与 Web 版一致）
+                b["_clean"] = text  # 清洗快照：分章/导出优先使用（与 Web 版一致）
                 # 清理明细随快照一起留着：「导出分发」的清洗内容汇总直接复用它，
                 # 免得为了出一份汇总把已经洗过的正文再洗一遍
                 b["_clean_trace"] = st.get("trace") or []
-                b["_clean_blank"] = st.get("blank", 0)      # 汇总里的「删除空行 N 行」
+                b["_clean_blank"] = st.get("blank", 0)  # 汇总里的「删除空行 N 行」
                 b["chars"] = len(text)
-                b["chapters"] = -1          # 正文已变，旧章数作废（与 Web 版一致）
+                b["chapters"] = -1  # 正文已变，旧章数作废（与 Web 版一致）
                 rm_sum += removed
                 ok += 1
             except Exception as e:
@@ -4195,7 +4409,7 @@ class App:
         if not b:
             messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
-        outdir = self.out_var.get().strip()      # 导出到「导出分发」页选的输出目录
+        outdir = self.out_var.get().strip()  # 导出到「导出分发」页选的输出目录
         if not outdir:
             messagebox.showwarning(S["d_tree_outdir"], S["d_tree_outdir_msg"])
             return
@@ -4229,7 +4443,7 @@ class App:
         outdir = os.path.normpath(outdir)
         out = os.path.normpath(os.path.join(outdir, name + S["tree_suffix"] + ".txt"))
         try:
-            os.makedirs(outdir, exist_ok=True)      # 输出目录还没建就建出来
+            os.makedirs(outdir, exist_ok=True)  # 输出目录还没建就建出来
             with open(out, "w", encoding="utf-8", newline="\r\n") as f:
                 f.write(body)
         except Exception as e:
@@ -4291,11 +4505,11 @@ class App:
         total = sum(len(x[1]) for x in chapters)
         self.chap_var.set(S["chap_sum"].format(b["title"], len(chapters), "{:,}".format(total))
                           + (S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else ""))
-        self._set_book_chaps(b, len(chapters))      # 写回书籍状态 → ① 书库「章节」列同步
+        self._set_book_chaps(b, len(chapters))  # 写回书籍状态 → ① 书库「章节」列同步
         # 日志给全本书的章节树概况：多少级、多少章（章数就是切出的章数）
         self.log("《%s》试分 %d 章%s%s" % (b["title"], len(chapters),
-                                          S["chap_tree"].format(ck["levels"]),
-                                          S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else ""))
+                                         S["chap_tree"].format(ck["levels"]),
+                                         S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else ""))
 
     def _chap_cols(self, batch):
         """分章表格列头：False=单本预览(章序/标题/字数/校验)，True=批量试分(序号/书名/章节/校验)。"""
@@ -4326,14 +4540,14 @@ class App:
         custom = self.custom_re.get().strip() or None
         rules = self.active_rules()
         try:
-            jzcore.split_chapters("", custom)       # 空文本秒过，仅校验自定义正则语法
+            jzcore.split_chapters("", custom)  # 空文本秒过，仅校验自定义正则语法
         except ValueError as e:
             messagebox.showerror(S["d_re_bad"], str(e))
             return
         self._chap_cols(True)
         for i in self.tv_chap.get_children():
             self.tv_chap.delete(i)
-        self._chap_rows = {}        # 行 → 书：双击回填单本试分用
+        self._chap_rows = {}  # 行 → 书：双击回填单本试分用
         self.set_busy(True)
         self.cancel = False
         self.status_var.set(S["prog_chap"].format(0, len(sel), sel[0]["title"]))
@@ -4360,7 +4574,7 @@ class App:
                     if rules:
                         text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
                 chapters = jzcore.split_chapters(
-                    text, self._re_for(b, custom))   # 本书有自己的规则就用自己的
+                    text, self._re_for(b, custom))  # 本书有自己的规则就用自己的
                 ck = jzcore.check_chapters([t for t, _body in chapters], self.lang)
             except Exception as e:
                 bad += 1
@@ -4375,7 +4589,7 @@ class App:
             # 日志带本书的章节树概况：多少级、多少章（章数由 {3} 给出）
             self.q.put(("log", S["log_chap_per_book"].format(
                 i, total, name, len(chapters), "{:,}".format(len(text)))
-                + S["chap_tree"].format(ck["levels"])))
+                        + S["chap_tree"].format(ck["levels"])))
         self.q.put(("prog", (total, total, S["prog_done"])))
         self.q.put(("done", ("chap", ok_n, sum_n, bad, self.cancel, ck_bad)))
 
@@ -4427,7 +4641,9 @@ class App:
                    theme=jzcore.DEFAULT_THEME, covers=None, img_dl=False,
                    want_sum=True, name_fmt=""):
         S = self.S
-        custom = custom or ""       # 同上：后台线程不读 tk 变量
+        custom = custom or ""  # 同上：后台线程不读 tk 变量
+        # 封面窗没开过时按当前默认风格现画（普通字符串，跨线程读安全）
+        cover_style = getattr(self, "cover_style", jzcore.DEFAULT_COVER_STYLE)
         ok = fail = 0
         # 清洗内容汇总：按书累积清理明细，全部处理完再一次性落盘
         groups = [] if want_sum else None
@@ -4486,7 +4702,7 @@ class App:
                             trace = st.get("trace")
                             blank_n = st.get("blank", 0)
                 chapters = jzcore.split_chapters(text, self._re_for(b, custom))
-                b["chapters"] = len(chapters)       # 实际切分结果回写，供①书库展示
+                b["chapters"] = len(chapters)  # 实际切分结果回写，供①书库展示
                 title = b["title"] or os.path.splitext(b["name"])[0]
                 if name_fmt:
                     # 「文件名」选的是预设或自定义模板：book/author 换成书名/作者名
@@ -4516,13 +4732,13 @@ class App:
                 if outdir:
                     if "epub" in fmts:
                         # 封面窗里定过的直接用那份字节；没定过（没开过窗口）
-                        # 才回退到老行为：同名图优先，没有就画默认封面
+                        # 才回退：同名图优先，没有就按当前默认风格现画
                         cover = (covers or {}).get(_book_key(b["path"]))
                         if cover is None:
                             try:
                                 cover = jzcore.cover_for_book(
                                     b["path"], title, b.get("author", ""),
-                                    "auto", outdir)
+                                    "auto", outdir, cover_style)
                             except Exception:
                                 cover = None
                         jzcore.write_epub(self.uniq(outdir, base + ".epub"),
@@ -4551,7 +4767,7 @@ class App:
                         "blank": blank_n,
                         "entries": trace or [],
                         "note": "" if (trace is not None or not rules)
-                                else S["sum_note_snapshot"],
+                        else S["sum_note_snapshot"],
                     })
                 ok += 1
             except Exception as e:
@@ -4610,6 +4826,7 @@ class App:
                 return
             last[0] = now
             self.q.put(("logprog", S["log_img_prog"].format(title, done, total)))
+
         return report
 
     def fetch_images(self, text, outdir, base, prefetch=None, notes=None, title=""):
@@ -4653,7 +4870,7 @@ class App:
             name = filename if n == 0 else "%s (%d)%s" % (stem, n, ext)
             p = os.path.join(outdir, name)
             taken = os.path.exists(p) or (
-                also_dir and os.path.exists(os.path.join(outdir, os.path.splitext(name)[0])))
+                    also_dir and os.path.exists(os.path.join(outdir, os.path.splitext(name)[0])))
             if not taken:
                 return p
             n += 1
@@ -4686,7 +4903,7 @@ class _Splash:
         c.pack(fill="both", expand=True)
         self._paint(c)
         c.bind("<Configure>", lambda _e: self._paint(c))
-        _center_win(win, SPLASH_W, SPLASH_H)      # 严格水平 + 垂直居中
+        _center_win(win, SPLASH_W, SPLASH_H)  # 严格水平 + 垂直居中
         try:
             win.attributes("-alpha", 0.0)
         except tk.TclError:
@@ -4697,7 +4914,7 @@ class _Splash:
         win.bind("<Key>", self._skip)
         win.focus_force()
         win.update_idletasks()
-        self._paint(c)                            # 映射后按真实像素再绘一次
+        self._paint(c)  # 映射后按真实像素再绘一次
 
     def _paint(self, c):
         """在 560x340 的设计坐标系里绘制，再按画布实际尺寸等比缩放并居中。
@@ -4708,11 +4925,11 @@ class _Splash:
         S = self.S
         c.delete("all")
         W, H = c.winfo_width(), c.winfo_height()
-        if W < 2 or H < 2:                        # 尚未映射：先用设计尺寸
+        if W < 2 or H < 2:  # 尚未映射：先用设计尺寸
             W, H = px(SPLASH_W), px(SPLASH_H)
-        k = min(W / float(SPLASH_W), H / float(SPLASH_H))   # 等比，不拉伸版式
-        ox = (W - SPLASH_W * k) / 2.0             # 水平居中偏移
-        oy = (H - SPLASH_H * k) / 2.0             # 垂直居中偏移
+        k = min(W / float(SPLASH_W), H / float(SPLASH_H))  # 等比，不拉伸版式
+        ox = (W - SPLASH_W * k) / 2.0  # 水平居中偏移
+        oy = (H - SPLASH_H * k) / 2.0  # 垂直居中偏移
 
         def X(x):
             return ox + x * k
@@ -4720,7 +4937,7 @@ class _Splash:
         def Y(y):
             return oy + y * k
 
-        def P(v):                                 # 线宽 / 字号（像素）
+        def P(v):  # 线宽 / 字号（像素）
             return max(1, int(round(v * k)))
 
         g, ln = SPLASH_GOLD, SPLASH_LINE
@@ -4823,7 +5040,7 @@ class _Splash:
     def _skip(self, _e=None):
         """点击 / 按键：从当前阶段尽量跳到终点，可连点逐级推进。"""
         self._cancel_job()
-        if self._fade_done:                 # 淡入中：直接到最亮并继续原流程
+        if self._fade_done:  # 淡入中：直接到最亮并继续原流程
             self._skipped = True
             try:
                 self.win.attributes("-alpha", 1.0)
@@ -4832,22 +5049,22 @@ class _Splash:
             cb, self._fade_done = self._fade_done, None
             if cb:
                 cb()
-        elif self._hold_then:               # 停驻中：提前结束停留
+        elif self._hold_then:  # 停驻中：提前结束停留
             self._fire_hold()
-        elif self._then:                    # 淡出中：立即销毁收尾
+        elif self._then:  # 淡出中：立即销毁收尾
             self._destroy()
 
 
 def _boot(root):
     app = App(root)
-    _center_win(root, 1080, 760)      # 与开屏海报同一套居中对齐逻辑
+    _center_win(root, 1080, 760)  # 与开屏海报同一套居中对齐逻辑
 
 
 def main():
-    _set_dpi_aware()                 # 必须在 tk.Tk() 之前：Tk 只初始化一次缩放
+    _set_dpi_aware()  # 必须在 tk.Tk() 之前：Tk 只初始化一次缩放
     root = tk.Tk()
-    _init_metrics(root)              # 必须在任何控件/画布创建之前
-    if os.environ.get("JUANZHI_NO_SPLASH"):     # 测试/调试逃生门
+    _init_metrics(root)  # 必须在任何控件/画布创建之前
+    if os.environ.get("JUANZHI_NO_SPLASH"):  # 测试/调试逃生门
         _boot(root)
         root.mainloop()
         return
@@ -4861,7 +5078,7 @@ def main():
         return
 
     def build_and_go():
-        _boot(root)                             # 海报最亮时构建主窗，无感
+        _boot(root)  # 海报最亮时构建主窗，无感
         sp.hold(550, lambda: sp.close(then=lambda: root.deiconify()))
 
     sp.fade_in(build_and_go)

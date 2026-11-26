@@ -8,7 +8,8 @@
   ④ 网络封面下载：转格式后按文件名落盘；非图片/失效返回 None
   ⑤ write_epub：封面文件名按 MIME 归一，空字节按「无封面」
   ⑥ 导出页：没有「封面」标签，只有按钮；未勾 EPUB 置灰；勾选变化显示「已设 N 本」
-  ⑦ 封面窗：网格卡片（封面/书名/作者）、右键两项菜单、本地换图、网络下载、取消/确定
+  ⑦ 封面窗：网格卡片（封面/书名/作者）、右键菜单（内置封面的书多一项「更换默认
+     封面」）、底栏「默认封面」下拉框统一换风格、本地换图、网络下载、取消/确定
   ⑧ 开始处理：epub 封面就是封面窗里那份字节
   ⑨ 插图下载时日志里有进度、首页/目录不请求、插图按 001… 编号打进 epub
 
@@ -316,7 +317,7 @@ check("封面窗用的是 cover_for_book(auto) 的结果",
       [picker.covers[_book_key(p1)][0] == expect[0],
        picker.covers[_book_key(p2)][0] == expect[1]], [True, True])
 
-# 右键菜单：把 tk.Menu 换成记录器，只看它往菜单里加了哪两项
+# 右键菜单：把 tk.Menu 换成记录器，只看它往菜单里加了哪几项
 _menu_labels = []
 
 
@@ -329,6 +330,9 @@ class _MenuRec(object):
         pass
 
     def add_command(self, label=None, command=None, **k):
+        _menu_labels.append(label)
+
+    def add_cascade(self, label=None, menu=None, **k):
         _menu_labels.append(label)
 
     def add_separator(self, *a, **k):
@@ -351,9 +355,57 @@ try:
     picker._menu(_Ev(), 1)
 finally:
     tk.Menu = _real_menu
-check("每张卡右键都有两项", len(_menu_labels), 4)
+# 本地封面的书：两项；内置封面的书：两项 + 子菜单（5 种风格）+ 一项
+check("右键项数：本地 2 项、内置 2 + 5 + 1 项", len(_menu_labels), 10)
 check("菜单第一项", _menu_labels[0], S["cover_pick_img"])
 check("菜单第二项", _menu_labels[1], S["cover_dl"])
+check("本地封面的书没有「更换默认封面」", _menu_labels[2], S["cover_pick_img"])
+check("子菜单列出全部内置风格", _menu_labels[4:9],
+      [jzcore.cover_style_name(s, app.lang) for s in jzcore.cover_style_ids()])
+check("内置封面的书多出「更换默认封面」", _menu_labels[9], S["cover_new_default"])
+check("本地封面的书不能换内置封面", picker._can_set_default(0), False)
+check("内置封面的书能换内置封面", picker._can_set_default(1), True)
+
+# ---------------------------------------------------------------- 7b 默认封面
+print("\n== 7b. 底栏「默认封面」下拉框：统一换风格 ==")
+check("底栏有下拉框", picker.cb_style.winfo_class(), "TCombobox")
+check("下拉框是只读的", str(picker.cb_style.cget("state")), "readonly")
+check("下拉项 = 全部内置风格（没有 6/7）",
+      list(picker.cb_style.cget("values")),
+      [jzcore.cover_style_name(s, app.lang) for s in jzcore.cover_style_ids()])
+check("下拉项顺序即 COVER_STYLES",
+      jzcore.cover_style_ids(),
+      ["sujian", "indigo", "cinnabar", "ink", "minimal"])
+check("默认风格是素笺", picker.style, jzcore.DEFAULT_COVER_STYLE)
+
+p1_before = picker.covers[_book_key(p1)][0]
+p2_before = picker.covers[_book_key(p2)][0]
+picker.style_var.set(jzcore.cover_style_name("ink", app.lang))
+picker._on_style_all()
+deadline = time.time() + 15
+while time.time() < deadline:
+    root.update()
+    got = picker.covers.get(_book_key(p2))
+    if (got and got[0] != p2_before
+            and picker.pins.get(_book_key(p2)) == "ink"):
+        break
+    time.sleep(0.02)
+check("内置封面按新风格重画了", picker.covers[_book_key(p2)][0] != p2_before, True)
+check("重画的是合法 JPEG", picker.covers[_book_key(p2)][0][:3], b"\xff\xd8\xff")
+check("这本记录成「墨韵」", picker.pins.get(_book_key(p2)), "ink")
+check("已有的本地封面不参与统换", picker.covers[_book_key(p1)][0], p1_before)
+check("全局风格已记住", picker.result_style, "ink")
+check("状态行提示统一换过", picker._status.cget("text"),
+      S["cover_style_all"].format(jzcore.cover_style_name("ink", app.lang)))
+
+# 单本换内置封面（右键子菜单）：只影响这一本
+picker.set_default(1, "cinnabar")
+check("单本换成朱印", picker.pins.get(_book_key(p2)), "cinnabar")
+check("单本换风格不动别的书", picker.covers[_book_key(p1)][0], p1_before)
+check("状态行提示单本换过", picker._status.cget("text"),
+      S["cover_style_one"].format(jzcore.cover_style_name("cinnabar", app.lang)))
+picker.set_default(0, "ink")            # 有本地封面的书：不生效
+check("本地封面不会被单本换成内置", picker.covers[_book_key(p1)][0], p1_before)
 
 # 选择本地图片：patch 文件选择器，只验「转格式 + 刷新卡片」
 pick = make_png(os.path.join(BASE, "pick.png"), 90, 120, (200, 40, 40))
