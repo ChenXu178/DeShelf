@@ -804,6 +804,21 @@ function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 function fmtSize(n){const u=["B","KB","MB","GB"];let i=0;while(n>=1024&&i<3){n/=1024;i++;}
   return i===0?Math.round(n)+" B":(n%1>0?n.toFixed(1):n)+" "+u[i];}
 function fmtNum(n){return Number(n||0).toLocaleString("en-US");}
+/* 书库「字数」列的读法（与桌面版一致）：中文按「万 / 亿」，英文按 K / M；
+   阈值以下保留千位分隔，免得短数字被缩写出 0.5万 这种更差精度的写法。 */
+function fmtChars(n){
+  const v=Number(n||0);
+  if(!(v>0))return "—";
+  const short=x=>{const s=x.toFixed(1);return s.endsWith(".0")?s.slice(0,-2):s;};
+  if(CUR==="zh"){
+    if(v>=99995000)return short(v/1e8)+"亿";   /* 顶到 10000 万时按「亿」更好读 */
+    if(v>=1e4)return short(v/1e4)+"万";
+  }else{
+    if(v>=1e6)return short(v/1e6)+"M";
+    if(v>=1000)return v>=999950?short(v/1e6)+"M":short(v/1e3)+"K";
+  }
+  return fmtNum(v);
+}
 function fmtTime(t){const d=new Date(t*1000);const p=x=>String(x).padStart(2,"0");
   return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());}
 function fill(tpl,map){return tpl.replace(/\{(\w+)\}/g,(m,k)=>map[k]!==undefined?map[k]:m);}
@@ -4165,7 +4180,7 @@ function renderLib(){
         +'<td><input type="checkbox" data-sel="1" '+(b.sel?"checked":"")+'></td>'
         +'<td class="name" title="'+esc(b.rel)+'">'+esc(b.title||b.name)+'</td>'
         +'<td class="auth">'+esc(b.author||"")+'</td>'
-        +'<td class="num">'+(b.chars>0?fmtNum(b.chars):"—")+'</td>'
+        +'<td class="num">'+fmtChars(b.chars)+'</td>'
         +'<td class="num">'+Core.humanSize(b.size)+'</td>'
         +'<td>'+encName(b.enc)+'</td>'
         +'<td class="num">'+cn+'</td>'

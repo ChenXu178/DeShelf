@@ -936,6 +936,44 @@ def safe_name(s, maxlen=60, fallback="未命名"):
     return (s or fallback)[:maxlen]
 
 
+def _short_num(v):
+    """保留一位小数；整数不显示 .0（2.0万 → 2万）。"""
+    s = "%.1f" % v
+    return s[:-2] if s.endswith(".0") else s
+
+
+def fmt_count(n, lang=ZH):
+    """书库「字数」列的人读写法。
+
+    中文按「万 / 亿」计（214.7万、1.2亿，列头已写明「字数」，不再重复「字」），
+    英文按 K / M 缩写（2.1M）；阈值以下保留千位分隔（9,999），免得短数字被
+    缩写出 0.5万 这种更差精度的写法。
+    """
+    if n is None:
+        return "-"
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return str(n)
+    if n < 0:
+        return "-"
+    if lang == ZH:
+        if n >= 99995000:
+            # 9999.5 万往上四舍五入会顶到 10000 万，此时按「亿」写更好读
+            return _short_num(n / 100000000.0) + "亿"
+        if n >= 10000:
+            return _short_num(n / 10000.0) + "万"
+    else:
+        if n >= 1000000:
+            return _short_num(n / 1000000.0) + "M"
+        if n >= 1000:
+            # 999,950 以上四舍五入会变成 1000.0K，直接进位成 1M 更好读
+            if n >= 999950:
+                return _short_num(n / 1000000.0) + "M"
+            return _short_num(n / 1000.0) + "K"
+    return "{:,}".format(n)
+
+
 # ============================================================ DPI / 屏幕几何
 _SCALE = 1.0  # 96 DPI 逻辑像素 → 当前 DPI 物理像素的倍率（125% = 1.25）
 
@@ -3612,7 +3650,7 @@ class App:
         rel = info.get("rel", os.path.basename(info["path"]))
         self.tv.insert("", "end", iid=str(idx), values=(
             "✓" if info["sel"] else "", info["title"], info["author"],
-            "{:,}".format(info["chars"]), info["enc"], self.chap_cell(info),
+            fmt_count(info["chars"], self.lang), info["enc"], self.chap_cell(info),
             jzcore.human_size(info["size"]), rel))
         self.refresh_info()
 
@@ -3662,7 +3700,7 @@ class App:
         for i, b in enumerate(self.books):
             self.tv.insert("", "end", iid=str(i), values=(
                 "✓" if b["sel"] else "", b["title"], b["author"],
-                "{:,}".format(b["chars"]), b["enc"], self.chap_cell(b),
+                fmt_count(b["chars"], self.lang), b["enc"], self.chap_cell(b),
                 jzcore.human_size(b["size"]), b.get("rel", os.path.basename(b["path"]))))
 
     def dup_count(self):
