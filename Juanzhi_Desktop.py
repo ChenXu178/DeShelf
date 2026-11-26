@@ -133,7 +133,7 @@ HELP_ZH = """卷帙 DeShelf 使用说明
   与清洗页的标红预览是一回事，只是留成文件，便于按书逐条核对。
 
 【小提示】
-  · 双击书库中的行可切换勾选；右键可打开文件位置。
+  · 双击书库中的行可切换勾选；右键可修改书名 / 作者、打开文件位置。
   · 扫描结果会缓存在目录下的 .deshelf_index.json，下次打开秒载入。
   · 导出到手机后，用支持本地导入的阅读器打开 EPUB 即可带目录阅读。
 """
@@ -208,7 +208,8 @@ HELP_EN = """DeShelf User Guide
   check that no real paragraph was deleted as an ad.
 
 [Tips]
-  · Double-click a library row to toggle selection; right-click for file actions.
+  · Double-click a library row to toggle selection; right-click to edit the title / author
+    or for file actions.
   · Scan results are cached in .deshelf_index.json next to the folder —
     reopening loads instantly.
   · Send EPUBs to your phone and open them in any local-import reader.
@@ -382,7 +383,7 @@ TEXTS = {
         "tab1": " 1 扫描入库 ", "tab2": " 2 批量清洗 ",
         "tab3": " 3 智能分章 ", "tab4": " 4 导出分发 ",
         # 页1 书库
-        "lib_hint": "  双击行可切换勾选，右键可打开文件位置",
+        "lib_hint": "  双击行可切换勾选，右键可修改书名/作者、打开文件位置",
         "lib_info": "共 {0} 本 · 已选 {1} 本",
         "lib_info_dup": " · 重复 {0} 本",
         "col_title": "书名", "col_author": "作者", "col_chars": "字数",
@@ -621,6 +622,13 @@ TEXTS = {
         "m_open_loc": "打开文件位置", "m_open_note": "用记事本打开",
         "m_copy_path": "复制完整路径",
         "m_remove_book": "从列表移除（不删文件）",
+        "m_edit_title": "修改书名", "m_edit_author": "修改作者",
+        "d_edit_title": "修改书名", "d_edit_author": "修改作者",
+        "edit_hint_title": "确定后立即更新列表与索引；留空则显示文件名。",
+        "edit_hint_author": "确定后立即更新列表与索引；留空表示作者未知。",
+        "log_meta_saved": "  已更新{0}：{1}",
+        "st_meta_saved": "已更新{0}：{1}",
+        "meta_untitled": "（使用文件名）", "meta_no_author": "（未知）",
         "log_book_removed": "  已从列表移除：{0}",
         # 通用
         "unnamed": "未命名",
@@ -649,7 +657,7 @@ TEXTS = {
         "stop": "Stop",
         "tab1": " 1 Scan Library ", "tab2": " 2 Batch Clean ",
         "tab3": " 3 Split Chapters ", "tab4": " 4 Export ",
-        "lib_hint": "  Double-click a row to toggle; right-click for file actions",
+        "lib_hint": "  Double-click a row to toggle; right-click to edit title/author or open the file",
         "lib_info": "{0} books · {1} selected",
         "lib_info_dup": " · {0} duplicated",
         "col_title": "Title", "col_author": "Author", "col_chars": "Chars",
@@ -885,6 +893,13 @@ TEXTS = {
         "m_open_loc": "Open file location", "m_open_note": "Open with Notepad",
         "m_copy_path": "Copy full path",
         "m_remove_book": "Remove from list (file kept)",
+        "m_edit_title": "Edit title", "m_edit_author": "Edit author",
+        "d_edit_title": "Edit title", "d_edit_author": "Edit author",
+        "edit_hint_title": "Saved to the list and index on OK; leave blank to show the file name.",
+        "edit_hint_author": "Saved to the list and index on OK; leave blank if unknown.",
+        "log_meta_saved": "  {0} updated: {1}",
+        "st_meta_saved": "{0} updated: {1}",
+        "meta_untitled": "(file name)", "meta_no_author": "(unknown)",
         "log_book_removed": "  Removed from list: {0}",
         "unnamed": "Untitled",
         "sp_tag": "Scan · Clean · Split · Export",
@@ -3701,12 +3716,80 @@ class App:
         m.add_command(label=S["m_open_note"],
                       command=lambda: self.open_file(b["path"]))
         m.add_separator()
+        m.add_command(label=S["m_edit_title"],
+                      command=lambda: self.edit_book_meta(b, "title"))
+        m.add_command(label=S["m_edit_author"],
+                      command=lambda: self.edit_book_meta(b, "author"))
+        m.add_separator()
         m.add_command(label=S["m_copy_path"],
                       command=lambda: self.copy_path(b["path"]))
         m.add_separator()
         m.add_command(label=S["m_remove_book"],
                       command=lambda: self.remove_book(b))
         m.tk_popup(event.x_root, event.y_root)
+
+    def edit_book_meta(self, b, field):
+        """右键「修改书名 / 修改作者」：弹窗手动改一个字段。
+
+        输入框预填当前识别结果；点「确定」（或回车）才写回书籍字典、列表单元格
+        和 .deshelf_index.json，点「取消」/Esc/关窗保持原样。书名留空表示回退到
+        文件名显示（导出时同样回退），作者留空表示未知。
+        """
+        S = self.S
+        is_title = field == "title"
+        label = S["col_title"] if is_title else S["col_author"]
+        w = tk.Toplevel(self.root)
+        w.title(S["d_edit_title"] if is_title else S["d_edit_author"])
+        w.transient(self.root)
+        w.configure(bg=BG)
+        w.resizable(False, False)
+
+        # 底栏先占位，正文再往上排（与程序内其他弹窗一致）
+        bar = ttk.Frame(w)
+        bar.pack(side="bottom", fill="x", padx=px(12), pady=px(10))
+        got = {"val": None}
+
+        var = tk.StringVar(value=b.get(field) or "")
+        e = ttk.Entry(w, textvariable=var, font=FONT, width=42)
+        e.pack(fill="x", padx=px(12), pady=(px(12), 0))
+        tip = tk.Label(w, text=S["edit_hint_title"] if is_title else S["edit_hint_author"],
+                       bg=BG, fg=MUTED, font=FONT_S, justify="left", anchor="w",
+                       wraplength=px(360))
+        tip.pack(fill="x", padx=px(14), pady=(px(6), px(4)))
+
+        def _ok(_e=None):
+            got["val"] = var.get().strip()
+            w.destroy()
+
+        ttk.Button(bar, text=S["d_ok"], style="Accent.TButton",
+                   command=_ok).pack(side="right")
+        ttk.Button(bar, text=S["d_cancel"], style="Soft.TButton",
+                   command=w.destroy).pack(side="right", padx=px(6))
+        e.bind("<Return>", _ok)
+        w.bind("<Escape>", lambda _e: w.destroy())
+        e.focus_set()
+        e.select_range(0, "end")
+        # 高度按内容实测：中英文提示行数不同，写死高度不是留白就是挤压
+        w.update_idletasks()
+        _center_win(w, 420, int(round(w.winfo_reqheight() / max(_SCALE, 0.01))))
+        w.grab_set()
+        self.root.wait_window(w)
+        if got["val"] is None:
+            return  # 取消：什么都不动
+        val = got["val"]
+        if val == (b.get(field) or ""):
+            return  # 没改动：不写索引也不刷日志
+        b[field] = val
+        # 用 is 定位行号：dict == dict 可能在内容相同时命中别的书
+        idx = next((i for i, x in enumerate(self.books) if x is b), -1)
+        if idx >= 0 and self.tv.exists(str(idx)):
+            self.tv.set(str(idx), field, val)
+        d = self.dir_var.get().strip()
+        if d and os.path.isdir(d):
+            self.save_index_now(d)
+        shown = val or (S["meta_untitled"] if is_title else S["meta_no_author"])
+        self.status_var.set(S["st_meta_saved"].format(label, shown))
+        self.log(S["log_meta_saved"].format(label, shown))
 
     def remove_book(self, b):
         """只从列表里移除，不动磁盘文件（手滑添加的文件靠这个收拾）。"""
