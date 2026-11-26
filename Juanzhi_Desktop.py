@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """卷帙 DeShelf — 本地文本整理工具（桌面版，中英双语界面）
 
-扫描 → 清洗 → 分章 → 导出，全程在本机完成，不发起任何网络请求。
+扫描 → 清洗 → 分章 → 导出，正文与文件只在本机处理、不上传；
+仅当用户勾选「插图链接校验」「下载插图链接」或使用「下载网络封面」时才联网取图。
 界面语言：默认跟随系统；菜单「语言 / Language」可即时切换（窗口内重建）并记忆。
 """
 
@@ -59,15 +60,6 @@ MONO = ("Consolas", 9)
 # 运行日志里「插图下载中 3/57」的刷新间隔（秒）：太密会把界面刷成幻灯片，
 # 太稀又会让人以为卡住了；首条和末条一定输出，不受这个间隔限制。
 IMG_PROG_GAP = 0.3
-
-# ---- 开屏海报配色（书卷风深底 + 金线）----
-SPLASH_W, SPLASH_H = 560, 340
-SPLASH_BG = "#202838"
-SPLASH_GOLD = "#C9A24B"
-SPLASH_INK = "#F1E7CE"
-SPLASH_GRAY = "#9AA5B6"
-SPLASH_DIM = "#7C8695"
-SPLASH_LINE = "#465061"
 
 # ============================================================ 语言
 ZH = "zh"
@@ -217,10 +209,10 @@ HELP_EN = """DeShelf User Guide
 
 DISC_ZH = """免责声明
 
-卷帙 DeShelf 是一款纯本地的文本整理工具：默认不联网、不上传、
-不提供也不存储任何书籍内容，仅对用户本机已有的文件做清洗、分章与格式转换。
-只有你主动勾选「插图链接校验」或「下载插图链接」时，程序才会按正文里的链接
-取回插图信息或图片本身，且只保存在你自己的电脑上。
+卷帙 DeShelf 是一款以本地处理为主的文本整理工具：默认不联网、不上传，
+也不提供、不存储任何书籍内容，仅对用户本机已有的文件做清洗、分章与格式转换。
+只有你主动勾选「插图链接校验」「下载插图链接」，或使用「下载网络封面」时，
+程序才会按你给出的链接联网取回插图信息或图片本身，且只保存在你自己的电脑上。
 
 用户应确保其处理的文件拥有合法来源并仅用于个人学习研究，
 因使用本工具产生的任何版权或法律问题，由使用者自行承担。
@@ -231,12 +223,12 @@ DISC_ZH = """免责声明
 
 DISC_EN = """Disclaimer
 
-DeShelf is a purely local text-organizing tool: by default it does not connect
+DeShelf is a local-first text-organizing tool: by default it does not connect
 to the network or upload anything, and it never hosts or stores book content.
 It only cleans, splits and converts files that already exist on your machine.
 Network access happens solely when you tick “Verify illustration links” or
-“Download illustration links”, which fetches image info or the images
-themselves — and keeps them on your own computer.
+“Download illustration links”, or use “Download cover from URL” — it then
+fetches image info or the images themselves and keeps them on your computer.
 
 Users are responsible for ensuring the files they process have a legal
 source and are used for personal study only. Any copyright or legal issue
@@ -250,8 +242,8 @@ ABOUT_ZH = """版权与许可 · Copyright & License
 
 卷帙 DeShelf {ver}
 本地 TXT 整理工具：扫描 · 清洗 · 分章 · 导出 EPUB / TXT。
-纯本地运行——不上传、不下载任何书籍内容，全部处理只在这台电脑上完成；
-仅在你勾选插图校验 / 下载插图时按正文里的链接取图。
+正文与文件只在本机处理、不上传；仅在你勾选插图校验 / 下载插图，
+或使用「下载网络封面」时，才按你给出的链接联网取图。
 
 【作者与署名】
 © 2026 永远的兰兰 (Lanlan Eternal)
@@ -274,13 +266,23 @@ MIT 只有一条硬性条件——保留作者署名：
 卷帙 DeShelf © 2026 永远的兰兰 (Lanlan Eternal)，MIT License。
 
 【第三方组件】
-· Python 3.12 —— PSF License Agreement
-· Tcl/Tk（tkinter）—— BSD-style License
-· Pillow（PIL）—— MIT-CMU License
-· OpenCC 简繁对照表 —— Apache License 2.0（仅用于比对，不改写正文）
+运行时（随 EXE 一并打包）：
+· Python 3.15 —— PSF License Agreement
+· Tcl/Tk 9.0（tkinter）—— BSD-style License（图形界面）
+· Pillow（PIL）—— MIT-CMU License（封面绘制、主题缩略图）
+· html2image —— MIT License（把版面主题渲成预览图）
+  随之打包的依赖：requests、websocket-client（Apache-2.0）；
+  urllib3、charset-normalizer（MIT）；certifi（MPL-2.0）；idna（BSD-3-Clause）
+构建期（不参与运行）：
+· PyInstaller —— GPL-2.0 with bootloader exception
+  该例外允许把打包出的程序以 MIT 等任意许可分发，成品 EXE 不受 GPL 约束。
+比对数据（只用来判断两行是否为同一段，不改写正文）：
+· OpenCC 繁→简对照表 —— Apache License 2.0
+· zhconv 的 zh2Hans 字表 —— GPL-2.0-or-later（仅取其中 547 对单字映射）
 
-封面使用的楷体是 Windows 自带字体（simkai.ttf）：本软件不打包、不分发任何
-字体文件；换到其它系统会自动回退到可用字体。
+主题预览由你本机已装的 Chrome / Edge / Chromium 渲染一张截图，浏览器本身
+不由本软件打包或分发。封面与界面所用楷体是 Windows 自带字体（simkai.ttf）：
+本软件不打包、不分发任何字体文件；换到其它系统会自动回退到可用字体。
 各组件的完整许可声明见仓库根目录的 THIRD-PARTY-NOTICES.md。
 
 【免责】
@@ -293,8 +295,9 @@ ABOUT_EN = """Copyright & License
 
 DeShelf {ver}
 A local TXT organizer: scan · clean · split · export EPUB / TXT.
-Runs entirely on your machine — no uploads, no downloads of any book content;
-only opted-in illustration verification / download touches the network.
+Text and files are processed on your machine and never uploaded; the network
+is used only for opted-in illustration verification / download or
+“Download cover from URL”.
 
 [ Author & attribution ]
 © 2026 Lanlan Eternal
@@ -318,13 +321,25 @@ MIT has exactly one hard requirement: keep the author's attribution.
 Suggested credit: DeShelf © 2026 Lanlan Eternal, MIT License.
 
 [ Third-party components ]
-· Python 3.12 — PSF License Agreement
-· Tcl/Tk (tkinter) — BSD-style License
-· Pillow (PIL) — MIT-CMU License
-· OpenCC character tables — Apache License 2.0 (comparison only; text is never rewritten)
+Runtime (bundled into the EXE):
+· Python 3.15 — PSF License Agreement
+· Tcl/Tk 9.0 (tkinter) — BSD-style License (GUI)
+· Pillow (PIL) — MIT-CMU License (covers and theme thumbnails)
+· html2image — MIT License (renders CSS layout themes to preview images)
+  its bundled dependencies: requests, websocket-client (Apache-2.0);
+  urllib3, charset-normalizer (MIT); certifi (MPL-2.0); idna (BSD-3-Clause)
+Build time only (not part of the runtime):
+· PyInstaller — GPL-2.0 with bootloader exception, which lets the built EXE be
+  distributed under any licence, MIT included.
+Comparison data (only to decide whether two lines are the same passage; the
+text itself is never rewritten):
+· OpenCC traditional→simplified table — Apache License 2.0
+· zhconv zh2Hans table — GPL-2.0-or-later (547 single-character pairs only)
 
-The cover uses KaiTi shipped with Windows (simkai.ttf): no font file is bundled
-or redistributed — other systems fall back to an available font.
+Theme previews are rendered by the Chrome / Edge / Chromium already installed on
+your machine; no browser is bundled or redistributed. The KaiTi font used by
+covers and the UI ships with Windows (simkai.ttf): no font file is bundled or
+redistributed, and other systems fall back to an available font.
 Full notices: THIRD-PARTY-NOTICES.md at the repository root.
 
 [ Disclaimer ]
@@ -611,11 +626,12 @@ TEXTS = {
         # 关于 / 帮助
         "about_title": "关于 %s %s",
         "about_what": "本地文本整理工具：扫描 · 清洗 · 分章 · 导出\n"
-                      "纯本地运行，不上传、不下载任何书籍内容。",
+                      "文件只在本机处理、不上传；仅在你勾选插图校验 / 下载插图时联网取图。",
         "about_repo": "GitHub 主页 / 查看最新版：\nhttps://github.com/podcatcher962/DeShelf/releases",
         "usage_title": "使用说明", "disclaimer_title": "免责声明",
         "help_text": HELP_ZH, "disclaimer_text": DISC_ZH,
-        "about_win": "版权与许可", "about_sub": "纯本地离线工具 · 扫描 · 清洗 · 分章 · 导出",
+        "about_win": "版权与许可",
+        "about_sub": "本地处理 · 扫描 · 清洗 · 分章 · 导出 · 可选联网取图",
         "about_body": ABOUT_ZH,
         "b_copy_about": "复制说明全文", "b_copy_mit": "复制 MIT 全文",
         # 右键菜单
@@ -632,9 +648,6 @@ TEXTS = {
         "log_book_removed": "  已从列表移除：{0}",
         # 通用
         "unnamed": "未命名",
-        # 开屏
-        "sp_tag": "扫描 · 清洗 · 分章 · 导出",
-        "sp_bottom": "{0} · 纯本地离线工具 · 点击或按任意键跳过",
     },
     EN: {
         "w_title": "%s %s %s",
@@ -882,12 +895,13 @@ TEXTS = {
         "csv_name": "library_list.csv", "csv_type": "CSV files",
         "about_title": "About %s %s",
         "about_what": "A local TXT organizer: scan · clean · split · export\n"
-                      "Runs on your machine — no upload, nothing leaves your computer.",
+                      "Files never leave your computer; the network is used only "
+                      "for opt-in illustration check / download.",
         "about_repo": "GitHub homepage / latest release:\nhttps://github.com/podcatcher962/DeShelf/releases",
         "usage_title": "User Guide", "disclaimer_title": "Disclaimer",
         "help_text": HELP_EN, "disclaimer_text": DISC_EN,
         "about_win": "Copyright & License",
-        "about_sub": "Fully offline · scan · clean · split · export",
+        "about_sub": "Local by default · scan · clean · split · export · opt-in image download",
         "about_body": ABOUT_EN,
         "b_copy_about": "Copy the full text", "b_copy_mit": "Copy the MIT text",
         "m_open_loc": "Open file location", "m_open_note": "Open with Notepad",
@@ -902,8 +916,6 @@ TEXTS = {
         "meta_untitled": "(file name)", "meta_no_author": "(unknown)",
         "log_book_removed": "  Removed from list: {0}",
         "unnamed": "Untitled",
-        "sp_tag": "Scan · Clean · Split · Export",
-        "sp_bottom": "{0} · Fully offline · Click or press any key to skip",
     },
 }
 
@@ -1096,8 +1108,7 @@ def _center_win(win, w, h):
 
     w/h 以 96 DPI 逻辑像素传入，内部按 DPR 换算并按工作区夹取：
     · 不再有硬编码的 -12 偏移，所以是真正的几何居中；
-    · 用工作区而不是整屏，任务栏不会把视觉中心顶高；
-    · 开屏与主窗走同一函数，两者中心重合、切换时不会跳动。
+    · 用工作区而不是整屏，任务栏不会把视觉中心顶高。
     """
     try:
         win.update_idletasks()
@@ -4997,212 +5008,16 @@ class App:
             n += 1
 
 
-class _Splash:
-    """开屏海报：无边框置顶窗，alpha 淡入 → 回调构建主窗 → close() 淡出销毁。
-
-    任意键或点击海报可跳过等待，直接进入主界面。
-    时序全部由 after 驱动；_skipped 置位后淡入链立即收敛。
-    文案按界面语言渲染（构造时传入 lang）。
-    """
-
-    def __init__(self, root, lang=None):
-        self.root = root
-        self._fade_job = None
-        self._skipped = False
-        self._fade_done = None
-        self._hold_then = None
-        self._then = None
-        self.S = TEXTS[lang or pick_lang()]
-        win = tk.Toplevel(root)
-        self.win = win
-        win.overrideredirect(True)
-        win.attributes("-topmost", True)
-        win.configure(bg=SPLASH_BG)
-        # 画布随窗口尺寸自适应：_paint 按画布实际尺寸等比缩放并居中绘制
-        c = self.cv = tk.Canvas(win, width=px(SPLASH_W), height=px(SPLASH_H),
-                                bg=SPLASH_BG, highlightthickness=0, bd=0)
-        c.pack(fill="both", expand=True)
-        self._paint(c)
-        c.bind("<Configure>", lambda _e: self._paint(c))
-        _center_win(win, SPLASH_W, SPLASH_H)  # 严格水平 + 垂直居中
-        try:
-            win.attributes("-alpha", 0.0)
-        except tk.TclError:
-            # 极少数远程环境不支持窗口透明度：直接亮起并让 owner 尽快接手
-            win.attributes("-alpha", 1.0)
-            self._skipped = True
-        win.bind("<Button-1>", self._skip)
-        win.bind("<Key>", self._skip)
-        win.focus_force()
-        win.update_idletasks()
-        self._paint(c)  # 映射后按真实像素再绘一次
-
-    def _paint(self, c):
-        """在 560x340 的设计坐标系里绘制，再按画布实际尺寸等比缩放并居中。
-
-        所有坐标经 X()/Y() 平移缩放，文字用负字号（像素）跟随 k，
-        因此窗口尺寸或 DPR 如何变化，海报内容始终水平垂直居中且不拉伸。
-        """
-        S = self.S
-        c.delete("all")
-        W, H = c.winfo_width(), c.winfo_height()
-        if W < 2 or H < 2:  # 尚未映射：先用设计尺寸
-            W, H = px(SPLASH_W), px(SPLASH_H)
-        k = min(W / float(SPLASH_W), H / float(SPLASH_H))  # 等比，不拉伸版式
-        ox = (W - SPLASH_W * k) / 2.0  # 水平居中偏移
-        oy = (H - SPLASH_H * k) / 2.0  # 垂直居中偏移
-
-        def X(x):
-            return ox + x * k
-
-        def Y(y):
-            return oy + y * k
-
-        def P(v):  # 线宽 / 字号（像素）
-            return max(1, int(round(v * k)))
-
-        g, ln = SPLASH_GOLD, SPLASH_LINE
-        cx = X(SPLASH_W / 2.0)
-        # 细金外框
-        c.create_rectangle(X(11), Y(11), X(SPLASH_W - 11), Y(SPLASH_H - 11),
-                           outline=g, width=P(2))
-        # 四角回形小装饰（沿框延伸的短金线）
-        L = 22
-        for x0, y0, dx, dy in ((11, 11, 1, 0), (11, 11, 0, 1),
-                               (SPLASH_W - 11, 11, -1, 0), (SPLASH_W - 11, 11, 0, 1),
-                               (11, SPLASH_H - 11, 1, 0), (11, SPLASH_H - 11, 0, -1),
-                               (SPLASH_W - 11, SPLASH_H - 11, -1, 0),
-                               (SPLASH_W - 11, SPLASH_H - 11, 0, -1)):
-            c.create_line(X(x0), Y(y0), X(x0 + dx * L), Y(y0 + dy * L),
-                          fill=g, width=P(3))
-        # 主标题「卷帙」：楷体大字（负字号 = 像素，避免被 tk scaling 二次放大）
-        c.create_text(cx, Y(88), text=APP_CN, font=("KaiTi", -P(77)),
-                      fill=SPLASH_INK, anchor="n")
-        # 英文名（字母间隔拉宽，模拟字距）
-        c.create_text(cx, Y(172), text=" ".join(APP_EN), font=(FONT[0], -P(17)),
-                      fill=SPLASH_GOLD, anchor="n")
-        # 一句定位
-        c.create_text(cx, Y(212), text=S["sp_tag"],
-                      font=(FONT[0], -P(15)), fill=SPLASH_GRAY, anchor="n")
-        # 分隔线 + 底部信息
-        c.create_line(X(SPLASH_W / 2.0 - 90), Y(250),
-                      X(SPLASH_W / 2.0 + 90), Y(250), fill=ln, width=P(1))
-        c.create_text(cx, Y(272), text=S["sp_bottom"].format(APP_VER),
-                      font=(FONT[0], -P(12)), fill=SPLASH_DIM, anchor="n")
-
-    # ------------------------------------------------------------ 动画
-    def fade_in(self, done):
-        """从透明淡入到完全不透明，完成时调用 done()（供 owner 构建主窗）。"""
-        self._fade_done = done
-        self._step(0.0, 1.0)
-
-    def hold(self, ms, then):
-        """不透明状态停留 ms 后执行 then；停留期间点击可提前触发。"""
-        self._hold_then = then
-        self._fade_job = self.root.after(ms, self._fire_hold)
-
-    def _fire_hold(self):
-        self._fade_job = None
-        cb, self._hold_then = self._hold_then, None
-        if cb:
-            cb()
-
-    def _cancel_job(self):
-        if self._fade_job:
-            try:
-                self.root.after_cancel(self._fade_job)
-            except Exception:
-                pass
-            self._fade_job = None
-
-    def _step(self, a0, a1):
-        a = min(a1, a0 + 0.13) if not self._skipped else a1
-        try:
-            self.win.attributes("-alpha", a)
-        except tk.TclError:
-            a = a1
-        if a < a1 - 1e-9:
-            self._fade_job = self.root.after(20, lambda: self._step(a, a1))
-        else:
-            cb, self._fade_done = self._fade_done, None
-            if cb:
-                cb()
-
-    def close(self, then=None):
-        """从当前透明度淡出并销毁，完成后回调 then（进入主窗口）。"""
-        self._then = then
-        self._step_out()
-
-    def _step_out(self):
-        try:
-            cur = float(self.win.attributes("-alpha"))
-        except tk.TclError:
-            cur = 0.0
-        a = max(0.0, cur - 0.15)
-        try:
-            self.win.attributes("-alpha", a)
-        except tk.TclError:
-            a = 0.0
-        if a > 1e-9:
-            self._fade_job = self.root.after(18, self._step_out)
-        else:
-            self._destroy()
-
-    def _destroy(self):
-        self._fade_job = None
-        try:
-            self.win.destroy()
-        except tk.TclError:
-            pass
-        cb, self._then = self._then, None
-        if cb:
-            cb()
-
-    def _skip(self, _e=None):
-        """点击 / 按键：从当前阶段尽量跳到终点，可连点逐级推进。"""
-        self._cancel_job()
-        if self._fade_done:  # 淡入中：直接到最亮并继续原流程
-            self._skipped = True
-            try:
-                self.win.attributes("-alpha", 1.0)
-            except tk.TclError:
-                pass
-            cb, self._fade_done = self._fade_done, None
-            if cb:
-                cb()
-        elif self._hold_then:  # 停驻中：提前结束停留
-            self._fire_hold()
-        elif self._then:  # 淡出中：立即销毁收尾
-            self._destroy()
-
-
 def _boot(root):
-    app = App(root)
-    _center_win(root, 1080, 760)  # 与开屏海报同一套居中对齐逻辑
+    App(root)
+    _center_win(root, 1080, 760)
 
 
 def main():
     _set_dpi_aware()  # 必须在 tk.Tk() 之前：Tk 只初始化一次缩放
     root = tk.Tk()
     _init_metrics(root)  # 必须在任何控件/画布创建之前
-    if os.environ.get("JUANZHI_NO_SPLASH"):  # 测试/调试逃生门
-        _boot(root)
-        root.mainloop()
-        return
-    root.withdraw()
-    try:
-        sp = _Splash(root)
-    except Exception:
-        root.deiconify()
-        _boot(root)
-        root.mainloop()
-        return
-
-    def build_and_go():
-        _boot(root)  # 海报最亮时构建主窗，无感
-        sp.hold(550, lambda: sp.close(then=lambda: root.deiconify()))
-
-    sp.fade_in(build_and_go)
+    _boot(root)  # 直接进入主界面：不再有开屏等待
     root.mainloop()
 
 

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """卷帙 DeShelf — 本地文本整理核心逻辑层。
 
-仅依赖 Python 标准库。默认全程离线；只有用户勾选「插图链接校验」（逐条请求
-响应头判断是不是插图、有没有失效）或「下载插图链接」（把插图存到本机输出目录）
-时才会联网，正文与文件内容一律不上传。
+仅依赖 Python 标准库。默认不联网；只有用户勾选「插图链接校验」（逐条请求
+响应头判断是不是插图、有没有失效）、「下载插图链接」（把插图存到本机输出目录），
+或主动使用「下载网络封面」时才会联网，正文与文件内容一律不上传。
 """
 
 import hashlib
@@ -22,7 +22,7 @@ import zipfile
 
 APP_CN = "卷帙"
 APP_EN = "DeShelf"
-APP_VER = "v1.5.7"
+APP_VER = "v1.6.0M"
 INDEX_NAME = ".deshelf_index.json"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".deshelf_config.json")
 

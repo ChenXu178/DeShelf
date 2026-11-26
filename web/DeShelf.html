@@ -5,7 +5,7 @@
 <link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>卷帙 DeShelf · Web</title>
-<meta name="description" content="本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · 导出 EPUB / TXT。纯本地运行，不上传任何数据。">
+<meta name="description" content="本地 TXT 整理工具 — 扫描 · 清洗 · 分章 · 导出 EPUB / TXT。文件只在本机处理、不上传；仅在你主动勾选插图校验 / 下载插图时联网。">
 <style>
 :root{
   --bg:#e4e6e8; --panel:#f2f3f5; --card:#fafbfc; --line:#c9ccd1; --line2:#d8dade;
@@ -228,7 +228,7 @@ b.dark{color:var(--ink)}
 
 <header>
   <div class="logo"><span class="cn">卷帙</span> <span class="en">DeShelf</span></div>
-  <span class="ver">v1.5.7</span>
+  <span class="ver">v1.6.0M</span>
   <span class="spacer"></span>
   <button id="btnLang" title="Switch language / 切换语言">EN</button>
   <button id="btnHelp">帮助 Help</button>
@@ -730,10 +730,10 @@ const E = {
   runTitle:"Progress",
   log_found_all:"scan complete",
 };
-Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
+Z.aboutBody = '<p><b>卷帙 DeShelf · v1.6.0M</b></p>'
  +'<p>本地 TXT 整理工具：<b>扫描 · 清洗 · 分章 · 导出 EPUB / TXT</b>。</p>'
- +'<p>清洗规则 14 条：网址、<b>保留插图链接</b>（按 jpg/jpeg/png/webp/gif 后缀留下配图链接）、<b>插图链接校验</b>（逐条校验 Content-Type 与链接是否失效，默认关闭）、站点宣传、翻页残留、乱码、<b>标点单独占一行</b>（整行只有一个收尾引号、句号或逗号的，接回上一行；省略号/破折号独占一行不动，默认关闭）、<b>合并句中断行</b>（按手机屏宽硬断的文件，以空行为段落界接回去，默认关闭）、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0 许可，仅用于比对，不改写正文）。</p>'
- +'<p>本页纯本地运行：不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。会联网的只有两处、都由你主动触发：勾选「插图链接校验」后逐条请求文中链接（只读响应头判断是不是图片），以及在「封面 → 下载网络封面」里填入图片链接时去取那张图。正文内容不会发送出去；受浏览器跨域（CORS）限制，站点没给跨站许可的图片网页版读不到，这类图请用桌面版下载。</p>'
+ +'<p>清洗规则 14 条：网址、<b>保留插图链接</b>（按 jpg/jpeg/png/webp/gif 后缀留下配图链接）、<b>插图链接校验</b>（逐条校验 Content-Type 与链接是否失效，默认关闭）、站点宣传、翻页残留、乱码、<b>标点单独占一行</b>（整行只有一个收尾引号、句号或逗号的，接回上一行；省略号/破折号独占一行不动，默认关闭）、<b>合并句中断行</b>（按手机屏宽硬断的文件，以空行为段落界接回去，默认关闭）、空行、首尾空白、全半角、缩进，以及<b>简繁重复行</b>——同一段正文同时有简体和繁体时，删掉繁体那一份（相邻成对、整章重复都能认；全繁体的书不动它）。简繁对照表取自 <b>OpenCC</b>（Apache-2.0）与 <b>zhconv</b> 的 zh2Hans 字表（GPL-2.0-or-later），仅用于比对，不改写正文。</p>'
+ +'<p>本页以本地处理为主：默认不联网、不上传、不存储你的任何书籍内容。选中的文件只在你的浏览器里被处理，导出时由你亲自决定保存位置。会联网的只有两处、都由你主动触发：勾选「插图链接校验」后逐条请求文中链接（只读响应头判断是不是图片），以及在「封面 → 下载网络封面」里填入图片链接时去取那张图。正文内容不会发送出去；受浏览器跨域（CORS）限制，站点没给跨站许可的图片网页版读不到，这类图请用桌面版下载。</p>'
  +'<p>技术：单文件 HTML · File System Access（目录模式）/ 拖拽（全浏览器）· TextDecoder 编码识别 · 手写 EPUB 2.0 + ZIP（CompressionStream deflate）。</p>'
  +'<p>同一份 HTML 本地双击即用；放到 GitHub Pages 等 https 静态托管即是"在线版"，功能不变——数据始终不出本机。</p>'
  +'<p class="hint">桌面版（Windows EXE）支持原地覆盖写回与 .bak 备份，批量处理大书库建议用桌面版。</p>'
@@ -741,12 +741,12 @@ Z.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p class="hint">隐私：本页仅加载一个匿名访问计数器（不蒜子），用于统计访问次数；它不接触你的文件，书籍内容始终不出本机。离线打开时计数器不加载，功能不受影响。</p>'
  +'<p><b>许可与署名 / License</b></p>'
  +'<p>本页以 <b>MIT License</b> 发布：可自由使用、复制、修改、再分发，也包括商业用途——不用付费、不用事先告知。唯一的硬性条件是<b>保留作者署名</b>：任何副本或实质性部分都必须保留「© 2026 永远的兰兰 (Lanlan Eternal)」与完整的 MIT 许可文本（仓库根目录的 LICENSE）。可以改代码、改软件名、闭源分发，但不能删掉署名，也不能改成自己的名字后声称原创。</p>'
- +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0，仅用于比对，不改写正文）；封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
+ +'<p class="hint">第三方：OpenCC 简繁对照表（Apache License 2.0）与 zhconv zh2Hans 字表（GPL-2.0-or-later），均仅用于比对、不改写正文；可选访问计数由不蒜子（Busuanzi）提供，只统计页面访问次数。封面与正文使用系统自带楷体，不分发任何字体文件。完整声明见仓库根目录的 THIRD-PARTY-NOTICES.md。</p>'
  +'<p style="color:var(--muted);font-size:12px">© 永远的兰兰 · Lanlan Eternal</p>';
-E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
+E.aboutBody = '<p><b>卷帙 DeShelf · v1.6.0M</b></p>'
  +'<p>A local TXT organizing tool: <b>scan · clean · split · export EPUB / TXT</b>.</p>'
- +'<p>Fourteen cleaning rules: URLs, <b>keep illustration links</b> (jpg/jpeg/png/webp/gif suffixes), <b>verify illustration links</b> (checks Content-Type and dead links; off by default), site promos, pagination leftovers, corrupted lines, <b>punctuation alone on a line</b> (a line holding only a closing quote, full stop or comma is pulled back; ellipsis/dash-only lines are never touched; off by default), <b>join mid-sentence line breaks</b> (for files hard-wrapped at phone width — blank lines are treated as paragraph breaks; off by default), blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0, used for comparison only, never to rewrite text).</p>'
- +'<p>This page runs locally: no uploads, and it never stores your books. Files are processed only inside your browser, and you decide where exports are saved. Network access happens in exactly two places, both started by you: ticking “Verify illustration links” requests the links found in the text one by one to inspect their headers, and “Cover → Download cover from URL” fetches the image you paste. Book text itself is never sent anywhere. Because of browser CORS rules, images from sites that send no cross-origin header cannot be read here — use the desktop app for those.</p>'
+ +'<p>Fourteen cleaning rules: URLs, <b>keep illustration links</b> (jpg/jpeg/png/webp/gif suffixes), <b>verify illustration links</b> (checks Content-Type and dead links; off by default), site promos, pagination leftovers, corrupted lines, <b>punctuation alone on a line</b> (a line holding only a closing quote, full stop or comma is pulled back; ellipsis/dash-only lines are never touched; off by default), <b>join mid-sentence line breaks</b> (for files hard-wrapped at phone width — blank lines are treated as paragraph breaks; off by default), blanks, trailing spaces, full/half width, indentation, and <b>duplicate simplified/traditional lines</b> &mdash; when the same passage appears in both scripts, the traditional copy is dropped (works whether the copies alternate or a whole chapter is duplicated; all-traditional books are left untouched). The script table comes from <b>OpenCC</b> (Apache-2.0) plus <b>zhconv</b>&rsquo;s zh2Hans table (GPL-2.0-or-later), used for comparison only &mdash; text is never rewritten.</p>'
+ +'<p>This page is local-first: it uploads nothing and never stores your books. Files are processed only inside your browser, and you decide where exports are saved. Network access happens in exactly two places, both started by you: ticking “Verify illustration links” requests the links found in the text one by one to inspect their headers, and “Cover → Download cover from URL” fetches the image you paste. Book text itself is never sent anywhere. Because of browser CORS rules, images from sites that send no cross-origin header cannot be read here — use the desktop app for those.</p>'
  +'<p>Tech: single-file HTML · File System Access (directory mode) / drag &amp; drop (every browser) · TextDecoder encoding detection · hand-rolled EPUB 2.0 + ZIP (CompressionStream deflate).</p>'
  +'<p>Double-click the same HTML file for local use, or host it on any https static site (e.g. GitHub Pages) for an “online” version — behavior is identical, and data never leaves your machine.</p>'
  +'<p class="hint">The desktop app (Windows EXE) can overwrite files in place with .bak backup — prefer it for big in-place batch jobs.</p>'
@@ -754,7 +754,7 @@ E.aboutBody = '<p><b>卷帙 DeShelf · v1.5.7</b></p>'
  +'<p class="hint">Privacy: the page loads one anonymous visit counter (Busuanzi) to count page views. It never touches your files — book content stays on your machine. Offline, the counter simply does not load and everything still works.</p>'
  +'<p><b>License &amp; attribution</b></p>'
  +'<p>Released under the <b>MIT License</b>: use, copy, modify and redistribute freely, including commercially, with no fee and no need to ask first. The one hard requirement is to <b>keep the author&rsquo;s attribution</b> &mdash; every copy or substantial portion must retain &ldquo;&copy; 2026 Lanlan Eternal&rdquo; and the full MIT text (LICENSE at the repository root). You may change the code, rename the app or ship it closed-source, but you may not strip the credit or put your own name on it and claim it as original work.</p>'
- +'<p class="hint">Third-party: OpenCC character tables (Apache License 2.0, comparison only &mdash; text is never rewritten); covers and body text use the system KaiTi font, no font file is redistributed. Full notices: THIRD-PARTY-NOTICES.md at the repository root.</p>'
+ +'<p class="hint">Third-party: OpenCC character tables (Apache License 2.0) and zhconv&rsquo;s zh2Hans table (GPL-2.0-or-later), both used for comparison only &mdash; text is never rewritten; the optional visit counter is provided by Busuanzi and only counts page views. Covers and body text use the system KaiTi font, no font file is redistributed. Full notices: THIRD-PARTY-NOTICES.md at the repository root.</p>'
  +'<p style="color:var(--muted);font-size:12px">© Lanlan Eternal</p>';
 Z.helpBody = '<p><b>四个步骤</b></p><ol>'
  +'<li><b>书库</b>：Chrome/Edge 点「选择文件夹」授权目录（可整目录扫描、写缓存、批量保存）；其它浏览器或临时用，直接拖入文件即可。</li>'
