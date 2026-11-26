@@ -462,11 +462,141 @@ try {
     r.val && r.val.saved === r.val.want && r.val.closed && r.val.css && r.val.nameOk,
     JSON.stringify(r.err || r.val));
 
-  // 8e. 没勾「导出 EPUB」时，版面主题 / 封面整组置灰
+  // 8e. 封面设置窗：网格卡片（封面/书名/作者）+ 右键菜单 + 本地图片 + 确定提交
+  r = await evalv(`(async () => {
+    document.getElementById('btnCover').click();
+    await new Promise(r2=>setTimeout(r2,1500));
+    const cards=[...document.querySelectorAll('.cv-card')];
+    const c0=cards[0];
+    const out={n:cards.length,sel:St.books.filter(b=>b.sel).length,
+      name:!!(c0&&c0.querySelector('.cv-name').textContent.trim()),
+      auth:!!(c0&&c0.querySelector('.cv-auth')),
+      hasImg:!!(c0&&c0.querySelector('.cv-shot img')),
+      tip:(document.querySelector('.cv-tip')||{textContent:''}).textContent.length>0};
+    c0.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,
+      clientX:120,clientY:120}));
+    const menu=document.getElementById('cvMenu');
+    out.menu=menu?menu.children.length:0;
+    out.menuText=menu?menu.textContent:'';
+    out.wantPick=T('coverPickImg');out.wantDl=T('coverDl');
+    return out;
+  })()`);
+  ok("封面窗：卡片数 = 已选书籍数", r.val && r.val.n === r.val.sel && r.val.n === 1,
+    JSON.stringify(r.err || r.val));
+  ok("封面窗：卡片含封面图 / 书名 / 作者", r.val && r.val.hasImg && r.val.name && r.val.auth,
+    JSON.stringify(r.val));
+  ok("封面窗：右键菜单为「选择封面图片 / 下载网络封面」", r.val && r.val.menu === 2
+    && r.val.menuText.indexOf(r.val.wantPick) >= 0
+    && r.val.menuText.indexOf(r.val.wantDl) >= 0, JSON.stringify(r.val));
+
+  // 8e1b. 菜单项可点：点「下载网络封面」弹出链接输入框，取消后回到封面窗
+  r = await evalv(`(async () => {
+    const menu=document.getElementById('cvMenu');
+    const item=menu?[...menu.children][1]:null;
+    if(!item) return {noMenu:true};
+    item.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+    item.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+    await new Promise(r2=>setTimeout(r2,300));
+    const inp=document.getElementById('cvUrl');
+    const dlgs=[...document.querySelectorAll('.dlg')];
+    const top=dlgs[dlgs.length-1];
+    const out={menuClosed:!document.getElementById('cvMenu'),dialog:!!inp,
+      cards:dlgs.length,placeholder:inp?inp.placeholder:''};
+    const c=top?top.querySelector('[data-c]'):null;
+    if(c)c.click();
+    await new Promise(r2=>setTimeout(r2,250));
+    out.closedAfterCancel=!document.getElementById('cvUrl');
+    out.coverStillOpen=!!document.querySelector('.cv-card');
+    return out;
+  })()`);
+  ok("封面窗：菜单「下载网络封面」弹出链接输入框", r.val && r.val.menuClosed
+    && r.val.dialog && r.val.placeholder.indexOf('http') === 0, JSON.stringify(r.err || r.val));
+  ok("封面窗：取消链接输入框后回到封面窗", r.val && r.val.closedAfterCancel
+    && r.val.coverStillOpen, JSON.stringify(r.val));
+
+  // 8e1c. 跨域（CORS）挡下封面下载时：说明原因并引导用桌面版
+  r = await evalv(`(async () => {
+    const c0=document.querySelector('.cv-card');
+    const realF=Core.fetchImageBytes, realP=Core.probeImage;
+    Core.fetchImageBytes=async()=>null;      /* 模拟：字节读不到 */
+    Core.probeImage=async()=>"probe";        /* 模拟：<img> 能显示，说明图是活的 */
+    await cpDownload(c0,'https://cdn.example.com/cover.jpg');
+    await new Promise(r2=>setTimeout(r2,300));
+    Core.fetchImageBytes=realF;Core.probeImage=realP;
+    const dlgs=[...document.querySelectorAll('.dlg')];
+    const top=dlgs[dlgs.length-1];
+    const txt=top?top.textContent:'';
+    const out={title:top?(top.querySelector('.dh')||{}).textContent:'',
+      hasCors:/CORS|跨域/.test(txt), hasDesktop:/桌面版|desktop app/i.test(txt),
+      logged:logBox.textContent.indexOf('cover.jpg')>=0};
+    const btn=top?top.querySelector('[data-ok]'):null;
+    if(btn)btn.click();
+    await new Promise(r2=>setTimeout(r2,250));
+    out.closed=!(top&&document.body.contains(top));
+    out.coverStillOpen=!!document.querySelector('.cv-card');
+    return out;
+  })()`);
+  ok("封面下载被跨域拦下：提示原因并引导用桌面版", r.val && r.val.hasCors
+    && r.val.hasDesktop && r.val.closed && r.val.coverStillOpen, JSON.stringify(r.err || r.val));
+
+  // 8e2. 换成本地图片：转 JPEG、刷新缩略图、记进工作副本
+  r = await evalv(`(async () => {
+    const c0=document.querySelector('.cv-card');
+    const cv=document.createElement('canvas');cv.width=90;cv.height=120;
+    const g=cv.getContext('2d');g.fillStyle='#c0392b';g.fillRect(0,0,90,120);
+    const blob=await new Promise(r2=>cv.toBlob(r2,'image/png'));
+    const f=new File([blob],'my-cover.png',{type:'image/png'});
+    const got=await cpSetCoverFile(c0,f);
+    const cov=CP.tmp.get(c0.dataset.k);
+    const img=c0.querySelector('.cv-shot img');
+    return {got:!!got,mime:cov&&cov.mime,w:cov&&cov.w,h:cov&&cov.h,
+      isJpeg:!!(cov&&cov.mime==='image/jpeg'),
+      blobImg:!!(img&&String(img.src).startsWith('blob:'))};
+  })()`);
+  ok("封面窗：自选图片转成 JPEG 并刷新缩略图", r.val && r.val.got && r.val.isJpeg
+    && r.val.w === 90 && r.val.h === 120 && r.val.blobImg, JSON.stringify(r.err || r.val));
+
+  // 8e3. 确定后提交：封面映射落定、按钮变成「封面（已设 1 本）」
+  r = await evalv(`(async () => {
+    document.querySelector('.dlg [data-ok]').click();
+    await new Promise(r2=>setTimeout(r2,300));
+    const b=St.books[0];
+    const cov=St.coverMap.get(bookKey(b));
+    const same=await coverFor(b);
+    return {closed:!document.querySelector('.cv-card'),n:St.coverMap.size,
+      btn:document.getElementById('btnCover').textContent,
+      hasCov:!!cov, sameBytes:!!(cov&&same&&same.data===cov.data)};
+  })()`);
+  ok("封面窗：确定后关闭并提交封面", r.val && r.val.closed && r.val.n === 1 && r.val.hasCov,
+    JSON.stringify(r.err || r.val));
+  ok("封面窗：按钮显示已设数量", r.val && /1/.test(r.val.btn), JSON.stringify(r.val));
+
+  // 8e4. 导出的 EPUB 用的是封面窗里那份图（文件名按 MIME 归一成 cover.jpg）
+  r = await evalv(`(async () => {
+    const real=window.dlBytes; let cap=null;
+    window.dlBytes=(n,d)=>{ if(/\\.epub$/i.test(n)) cap=d; };
+    document.getElementById('fmtEpub').checked=true;
+    document.getElementById('fmtTxt').checked=false;
+    document.getElementById('fmtSplit').checked=false;
+    try{ await window.runExport(); }catch(e){}
+    await new Promise(r2=>setTimeout(r2,1500));
+    window.dlBytes=real;
+    let hasName=false,hasXhtml=false;
+    if(cap&&cap.length){
+      const s=new TextDecoder('latin1').decode(cap);
+      hasName=s.indexOf('OEBPS/cover.jpg')>=0;
+      hasXhtml=s.indexOf('OEBPS/cover.xhtml')>=0;
+    }
+    return {bytes:cap?cap.length:0,hasName,hasXhtml};
+  })()`);
+  ok("导出 EPUB 带上封面窗设置的封面", r.val && r.val.bytes > 400 && r.val.hasName && r.val.hasXhtml,
+    JSON.stringify(r.err || r.val));
+
+  // 8f. 没勾「导出 EPUB」时，版面主题 / 封面整组置灰
   r = await evalv(`(async () => {
     const ep=document.getElementById('fmtEpub');
     const st=()=>[document.getElementById('btnTheme').disabled,
-                  document.getElementById('selCover').disabled];
+                  document.getElementById('btnCover').disabled];
     ep.checked=false;ep.dispatchEvent(new Event('change'));
     const off=st();
     ep.checked=true;ep.dispatchEvent(new Event('change'));
@@ -476,6 +606,22 @@ try {
     r.val && r.val.off[0] === true && r.val.off[1] === true, JSON.stringify(r.err || r.val));
   ok("勾回 EPUB 后恢复可编辑",
     r.val && r.val.on[0] === false && r.val.on[1] === false, JSON.stringify(r.val));
+
+  // 8g. 运行日志：插图下载进度原地刷新（几百张图也只占一行）
+  r = await evalv(`(() => {
+    log('──进度测试开始──');
+    logProgress('插图下载中 1/3');
+    logProgress('插图下载中 2/3');
+    logProgress('插图下载中 3/3');
+    const lines=logBox.textContent.split('\\n').filter(x=>x.indexOf('插图下载中')>=0);
+    log('──进度测试结束──');
+    return {n:lines.length,last:lines[0]||'',
+      ended:logBox.textContent.indexOf('──进度测试结束──')>=0,
+      after:logBox.textContent.split('\\n').filter(x=>x.indexOf('插图下载中')>=0).length};
+  })()`);
+  ok("运行日志：插图进度只占一行且走到最后一张", r.val && r.val.n === 1
+    && /3\/3/.test(r.val.last) && r.val.after === 1 && r.val.ended,
+    JSON.stringify(r.err || r.val));
 
   // 收尾：恢复默认主题，避免影响后续人工使用
   await evalv("St.theme=Core.DEFAULT_THEME;cfgSet('theme',Core.DEFAULT_THEME);refreshThemeBtn();");

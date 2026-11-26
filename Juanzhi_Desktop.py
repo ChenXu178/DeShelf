@@ -56,6 +56,10 @@ FONT_S = ("Microsoft YaHei UI", 8)
 FONT_B = ("Microsoft YaHei UI", 9, "bold")
 MONO = ("Consolas", 9)
 
+# 运行日志里「插图下载中 3/57」的刷新间隔（秒）：太密会把界面刷成幻灯片，
+# 太稀又会让人以为卡住了；首条和末条一定输出，不受这个间隔限制。
+IMG_PROG_GAP = 0.3
+
 # ---- 开屏海报配色（书卷风深底 + 金线）----
 SPLASH_W, SPLASH_H = 560, 340
 SPLASH_BG = "#202838"
@@ -490,7 +494,7 @@ TEXTS = {
         "name_preview": "预览：{0}",
         "name_preview_title": "示例书名",
         "name_preview_author": "示例作者",
-        "f_theme": "版面主题", "f_cover": "封面",
+        "f_theme": "版面主题",
         "theme_pick": "选择版面主题",
         "theme_pick_hint": "点击右侧缩略图切换左侧预览；"
                            "确定后用于导出 EPUB。",
@@ -513,8 +517,28 @@ TEXTS = {
                             "HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP=1\n"
                             "HTML2IMAGE_CHROME_EXE=<浏览器完整路径>",
         "theme_none": "没有在 styles 下找到任何 .css 主题文件。",
-        "cov_auto": "自动：优先同名图片", "cov_default": "生成默认封面",
-        "cov_none": "不加封面",
+        "cov_none": "无封面",
+        # 封面设置窗口：逐本设置导出封面（右键菜单换图）
+        "cover_btn": "封面",
+        "cover_btn_n": "已设置 {0} 本",
+        "cover_pick": "设置导出封面",
+        "cover_pick_hint": "右键封面：选择本地图片 / 下载网络封面；"
+                           "确定后按这里的封面导出 EPUB。",
+        "cover_pick_img": "选择封面图片",
+        "cover_dl": "下载网络封面",
+        "cover_url_title": "下载网络封面",
+        "cover_url_hint": "图片链接",
+        "cover_url_bad": "请先填入图片链接。",
+        "cover_dl_wait": "正在下载封面…",
+        "cover_dl_ok": "封面已保存到：{0}",
+        "cover_dl_fail": "封面下载失败：链接不是图片，或者打不开。",
+        "cover_pick_fail": "这张图片读不出来，换一张试试。",
+        "cover_preparing": "正在准备封面…",
+        "cover_img_bad": "封面图打不开",
+        "cover_img_filter": "图片文件",
+        "cover_no_books": "没有已勾选的书籍",
+        "cover_no_books_msg": "请先在书库中勾选要导出的书，再设置封面。",
+        "log_cover_set": "封面设置已更新：{0} 本",
         "f_imgdl": "下载插图链接",
         "f_summary": "生成清洗内容汇总（按书籍分类，含原文行号）",
         "grp_out": "输出目录",
@@ -539,6 +563,7 @@ TEXTS = {
         "prog_done": "处理完成",
         "log_per_book": "[{0}/{1}] {2}：{3} 章，清洗删除 {4} 行",
         "log_book_fail": "[{0}/{1}] {2} 失败：{3}",
+        "log_img_prog": "  插图下载中《{0}》：{1}/{2}",
         "log_img_prefetch": "  插图链接：检查 {0} 条，认出 {1} 张",
         "log_img_save": "  插图已保存 {0} 张 → {1}",
         "log_img_skip": "  另有 {0} 条链接不是图片或打不开，已跳过",
@@ -738,7 +763,7 @@ TEXTS = {
         "name_preview": "Preview: {0}",
         "name_preview_title": "Sample Title",
         "name_preview_author": "Sample Author",
-        "f_theme": "Layout", "f_cover": "Cover",
+        "f_theme": "Layout",
         "theme_pick": "Choose Layout Theme",
         "theme_pick_hint": "Click a thumbnail to preview it on the left; "
                            "the choice is used for EPUB export.",
@@ -761,8 +786,27 @@ TEXTS = {
                             "HTML2IMAGE_TOGGLE_ENV_VAR_LOOKUP=1\n"
                             "HTML2IMAGE_CHROME_EXE=<full path to the browser>",
         "theme_none": "No .css theme files found under styles.",
-        "cov_auto": "Auto: same-name image first", "cov_default": "Generate default cover",
         "cov_none": "No cover",
+        "cover_btn": "Cover",
+        "cover_btn_n": "{0} cover(s) set",
+        "cover_pick": "Set Export Covers",
+        "cover_pick_hint": "Right-click a cover: choose a local image / download from URL; "
+                           "EPUB export uses exactly these covers.",
+        "cover_pick_img": "Choose cover image",
+        "cover_dl": "Download cover from URL",
+        "cover_url_title": "Download Cover",
+        "cover_url_hint": "Image URL",
+        "cover_url_bad": "Enter an image URL first.",
+        "cover_dl_wait": "Downloading cover…",
+        "cover_dl_ok": "Cover saved to: {0}",
+        "cover_dl_fail": "Download failed: the link is not an image, or cannot be opened.",
+        "cover_pick_fail": "This image cannot be read - try another one.",
+        "cover_preparing": "Preparing cover…",
+        "cover_img_bad": "Cover image unreadable",
+        "cover_img_filter": "Image files",
+        "cover_no_books": "No books selected",
+        "cover_no_books_msg": "Select the books to export in the library first.",
+        "log_cover_set": "Covers updated: {0}",
         "f_imgdl": "Download illustration links",
         "f_summary": "Write a cleanup summary (by book, with original line numbers)",
         "grp_out": "Output Folder",
@@ -786,6 +830,7 @@ TEXTS = {
         "prog_done": "Done",
         "log_per_book": "[{0}/{1}] {2}: {3} chapters, {4} lines removed",
         "log_book_fail": "[{0}/{1}] {2} failed: {3}",
+        "log_img_prog": "  Downloading illustrations for \"{0}\": {1}/{2}",
         "log_img_prefetch": "  Illustration links: {0} checked, {1} image(s) found",
         "log_img_save": "  {0} illustration(s) saved to {1}",
         "log_img_skip": "  {0} link(s) were not images or unreachable — skipped",
@@ -1110,6 +1155,74 @@ def _prune_cache(limit=160):
             os.remove(p)
         except OSError:
             pass
+
+
+# ============================================================ 导出封面
+#
+# 导出页不再给「封面策略」下拉框：点按钮开一个窗口，把本次要导出的书逐本列出来，
+# 每本书的封面默认走 cover_for_book(auto)（同名图优先，找不到画默认封面），
+# 右键可以换成本地图片或从网上下载。确定后整份封面交回主窗口，
+# 开始处理时按这份映射原样写进 epub。
+
+COVER_THUMB_W, COVER_THUMB_H = 132, 184      # 网格里每本书的缩略图上限
+COVER_CARD_PAD = 8                           # 卡片内留白（单边）
+COVER_GRID_GAP = 12                          # 卡片之间 / 与窗口边缘的留白
+COVER_PICKER_W, COVER_PICKER_H = 900, 720    # 窗口初始尺寸
+COVER_URL_W = 560                            # 网络封面输入框窗口宽度
+
+
+def _book_key(path):
+    """封面映射的键：同一本书换个相对/绝对写法也能对上。"""
+    try:
+        return os.path.normcase(os.path.abspath(path))
+    except Exception:
+        return str(path or "")
+
+
+def _source_from_bytes(data, name="cover.jpg"):
+    """把内存里的封面字节读成「可反复缩放」的源，交给 _fit_photo。"""
+    if not data:
+        return None
+    if _PILImage is not None:
+        try:
+            im = _PILImage.open(io.BytesIO(data))
+            im.load()
+            return ("pil", im.convert("RGB"))
+        except Exception:
+            pass
+    try:                    # 没有 Pillow：落个临时文件让 tk 自己认（只认 PNG/GIF）
+        path = os.path.join(_cache_dir(), "cover-view" + os.path.splitext(name)[1])
+        with open(path, "wb") as f:
+            f.write(data)
+        return ("tk", tk.PhotoImage(file=path))
+    except Exception:
+        return None
+
+
+def _fit_photo(src, w, h):
+    """封面等比缩进 (w, h) 的框里、四周补白：书封比例不一，硬拉伸会变形。"""
+    if src is None:
+        return None
+    w, h = max(1, int(w)), max(1, int(h))
+    kind, obj = src
+    if kind == "pil":
+        try:
+            im = obj.copy()
+            im.thumbnail((w, h), getattr(_PILImage, "LANCZOS", 1))
+            box = _PILImage.new("RGB", (w, h), "#FFFFFF")
+            box.paste(im, ((w - im.size[0]) // 2, (h - im.size[1]) // 2))
+            try:
+                from PIL import ImageTk
+                return ImageTk.PhotoImage(box)
+            except Exception:
+                buf = io.BytesIO()
+                box.save(buf, format="PNG", compress_level=1)
+                return tk.PhotoImage(
+                    data=base64.b64encode(buf.getvalue()).decode("ascii"))
+        except Exception:
+            return None
+    k = max(1, -(-obj.width() // w), -(-obj.height() // h))      # 向上取整
+    return obj.subsample(k, k) if k > 1 else obj
 
 
 class ThemePicker:
@@ -1768,10 +1881,369 @@ class ThemePicker:
         return self.result
 
 
+class CoverPicker:
+    """导出封面设置窗：网格列出本次要导出的书，右键逐本换封面。
+
+    打开先用 cover_for_book(..., "auto") 逐本准备封面（后台线程算一张贴一张，
+    几百本也不会把界面冻住）。右键菜单两项：「选择封面图片」挑本地图，只把
+    prepare_cover_image 的结果留在内存里；「下载网络封面」填链接自动下载，
+    转成 JPEG 后按书籍文件名存进导出目录。确定后整份映射交回主窗口，
+    导出 EPUB 时按这里看到的封面原样写进书里。
+    """
+
+    def __init__(self, parent, books, covers, outdir, lang, S):
+        self.books = list(books)
+        self.outdir = (outdir or "").strip()
+        self.lang = lang
+        self.S = S
+        self.result = None
+        self.covers = dict(covers or {})     # {书籍路径键: cover_for_book 元组}
+        self._cards = {}                     # 序号 -> 卡片控件
+        self._thumb = (px(COVER_THUMB_W), px(COVER_THUMB_H))
+        self._card_w = self._thumb[0] + 2 * px(COVER_CARD_PAD)
+        self._cols = 0
+        self._q = queue.Queue()              # 后台线程算好的自动封面
+        self._dlq = queue.Queue()            # 后台线程下载回来的封面
+        self._dead = False
+        self._build(parent)
+        threading.Thread(target=self._worker, daemon=True).start()
+        self._poll()
+
+    # -------------------------------------------------------- 界面
+    def _build(self, parent):
+        S = self.S
+        win = self._win = tk.Toplevel(parent)
+        win.title(S["cover_pick"])
+        win.transient(parent)
+        win.configure(bg=BG)
+        win.resizable(True, True)
+        win.minsize(px(520), px(420))
+        win.protocol("WM_DELETE_WINDOW", self._cancel)
+        win.bind("<Escape>", lambda _e: self._cancel())
+        _center_win(win, COVER_PICKER_W, COVER_PICKER_H)
+
+        bar = ttk.Frame(win)
+        bar.pack(side="bottom", fill="x", padx=px(12), pady=px(10))
+        ttk.Button(bar, text=S["d_ok"], style="Accent.TButton",
+                   command=self._ok).pack(side="right")
+        ttk.Button(bar, text=S["d_cancel"], style="Soft.TButton",
+                   command=self._cancel).pack(side="right", padx=px(6))
+        # 下载/读图的即时反馈：不弹窗也能看到结果（失败仍走警告框）
+        self._status = ttk.Label(win, text="", foreground=MUTED, font=FONT_S)
+        self._status.pack(side="bottom", fill="x", padx=px(12))
+        # 操作提示放顶部并跟随窗口宽度折行：塞在底栏里，窗口一窄就被挤掉半句
+        tip = ttk.Label(win, text=S["cover_pick_hint"], foreground=MUTED,
+                        font=FONT_S, justify="left")
+        tip.pack(side="top", fill="x", padx=px(12), pady=(px(8), 0))
+        tip.bind("<Configure>", _wrap_label)
+
+        wrap = ttk.Frame(win)
+        wrap.pack(side="top", fill="both", expand=True,
+                  padx=(px(12), px(4)), pady=(px(10), 0))
+        vsb = ttk.Scrollbar(wrap, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        cv = self._cv = tk.Canvas(wrap, bg=BG, highlightthickness=0, bd=0,
+                                  yscrollincrement=px(18))
+        vsb.configure(command=cv.yview)
+        cv.configure(yscrollcommand=vsb.set)
+        cv.pack(side="left", fill="both", expand=True)
+        inner = self._inner = ttk.Frame(cv)
+        self._cv_win = cv.create_window((0, 0), window=inner, anchor="nw")
+        cv.bind("<Configure>", self._on_cv_resize)
+        cv.bind("<MouseWheel>", self._wheel)
+        inner.bind("<MouseWheel>", self._wheel)
+        inner.bind("<Configure>",
+                   lambda _e: cv.configure(scrollregion=cv.bbox("all")))
+
+        for i, b in enumerate(self.books):
+            self._cards[i] = self._make_card(i, b)
+        self._arrange()
+
+    def _make_card(self, i, b):
+        """一本书一张卡：封面在上，书名、作者依次往下（整块可右键）。"""
+        S = self.S
+        pad, gap = px(COVER_CARD_PAD), px(COVER_GRID_GAP)
+        tw, th = self._thumb
+        card = tk.Frame(self._inner, bg=CARD, highlightthickness=1,
+                        highlightbackground=LINE, bd=0)
+        card.grid(row=0, column=0, padx=gap // 2, pady=gap // 2, sticky="n")
+        box = tk.Frame(card, bg="#FFFFFF", bd=0, width=tw, height=th)
+        box.pack_propagate(False)       # 尺寸固定，图片只往里缩
+        box.pack(padx=pad, pady=(pad, px(4)))
+        img = tk.Label(box, bd=0, bg="#FFFFFF")
+        hint = tk.Label(box, bg="#FFFFFF", fg=MUTED, font=FONT_S,
+                        text=S["cover_preparing"], justify="center",
+                        wraplength=tw - px(10))
+        hint.place(relx=.5, rely=.5, anchor="center")
+        title = tk.Label(card, text=b.get("title") or b.get("name") or "",
+                         bg=CARD, fg=INK, font=FONT_B, anchor="w",
+                         justify="left", wraplength=tw)
+        title.pack(fill="x", padx=pad)
+        author = tk.Label(card, text=b.get("author") or "",
+                          bg=CARD, fg=MUTED, font=FONT_S, anchor="w",
+                          justify="left", wraplength=tw)
+        author.pack(fill="x", padx=pad, pady=(0, pad))
+        for w in (card, box, img, hint, title, author):
+            w.bind("<Button-3>", lambda e, k=i: self._menu(e, k))
+            w.bind("<MouseWheel>", self._wheel)
+        return {"frame": card, "box": box, "img": img, "hint": hint,
+                "title": title, "author": author, "photo": None}
+
+    def _menu(self, e, i):
+        """右键菜单：换成本地图片，或从网络下载一张。"""
+        S = self.S
+        m = tk.Menu(self._win, tearoff=0)
+        m.add_command(label=S["cover_pick_img"],
+                      command=lambda: self.pick_image(i))
+        m.add_command(label=S["cover_dl"],
+                      command=lambda: self.download(i))
+        try:
+            m.tk_popup(e.x_root, e.y_root)
+        except tk.TclError:
+            pass
+
+    # -------------------------------------------------------- 自动封面
+    def _worker(self):
+        """逐本准备自动封面：已有的（用户改过的）直接用，不重算。
+
+        书籍目录和导出目录都扫（后者放的是下载下来的图），书籍目录优先。
+        """
+        for i, b in enumerate(self.books):
+            if self._dead:
+                return
+            key = _book_key(b.get("path"))
+            got = self.covers.get(key)
+            if got is None:
+                try:
+                    got = jzcore.cover_for_book(b.get("path") or "",
+                                                b.get("title") or "",
+                                                b.get("author") or "", "auto",
+                                                self.outdir)
+                except Exception:
+                    got = None
+                if got:
+                    self.covers[key] = got
+            self._q.put((i, got))
+
+    def _poll(self):
+        """主线程收后台结果：自动封面一张张贴，下载结果落到卡片上。"""
+        if self._dead:
+            return
+        try:
+            while True:
+                i, got = self._q.get_nowait()
+                self._show(i, got)
+        except queue.Empty:
+            pass
+        try:
+            while True:
+                i, got, dest = self._dlq.get_nowait()
+                if got:
+                    self._set_cover(i, got)
+                    self._status.configure(text=self.S["cover_dl_ok"].format(dest))
+                else:
+                    self._status.configure(text="")
+                    messagebox.showwarning(self.S["d_warn"],
+                                           self.S["cover_dl_fail"],
+                                           parent=self._win)
+        except queue.Empty:
+            pass
+        try:
+            self._win.after(80, self._poll)
+        except tk.TclError:
+            pass
+
+    def _show(self, i, got):
+        """自动封面到位：有图就贴，没有（没装 Pillow 又找不到同名图）写「无封面」。"""
+        card = self._cards.get(i)
+        if card is None:
+            return
+        if got and got[0]:
+            self._set_cover(i, got)
+            return
+        card["img"].place_forget()
+        card["hint"].configure(text=self.S["cov_none"], fg=MUTED)
+        card["hint"].place(relx=.5, rely=.5, anchor="center")
+
+    def _set_cover(self, i, got):
+        """把一本书的封面换成新图：记进映射并刷新卡片缩略图。"""
+        b = self.books[i]
+        self.covers[_book_key(b.get("path"))] = got
+        card = self._cards.get(i)
+        if card is None:
+            return
+        photo = _fit_photo(_source_from_bytes(got[0], got[1]), *self._thumb)
+        card["photo"] = photo            # 保住引用，否则 tk 图会被回收掉
+        if photo is not None:
+            card["hint"].place_forget()
+            card["img"].configure(image=photo)
+            card["img"].place(relx=.5, rely=.5, anchor="center")
+        else:
+            card["img"].place_forget()
+            card["hint"].configure(text=self.S["cover_img_bad"], fg=RED)
+            card["hint"].place(relx=.5, rely=.5, anchor="center")
+
+    # -------------------------------------------------------- 换封面
+    def pick_image(self, i):
+        """从本地挑一张图：只转格式留在内存里，不往磁盘写文件。"""
+        S = self.S
+        # 只列常见图片格式：选到别的文件也读不出来，不如直接把范围框死
+        path = filedialog.askopenfilename(
+            parent=self._win, title=S["cover_pick_img"],
+            filetypes=[(S["cover_img_filter"],
+                        "*.jpg *.jpeg *.png *.gif *.webp *.bmp")])
+        if not path:
+            return
+        got = jzcore.prepare_cover_image(path)
+        if not got:
+            messagebox.showwarning(S["d_warn"], S["cover_pick_fail"],
+                                   parent=self._win)
+            return
+        self._set_cover(i, got)
+        self._status.configure(text=os.path.basename(path))
+
+    def download(self, i):
+        """下载网络封面：先要链接，确认后下载、转 JPEG，按书籍文件名存进导出目录。"""
+        S = self.S
+        if not self.outdir:
+            messagebox.showwarning(S["d_no_out"], S["d_no_out_msg"],
+                                   parent=self._win)
+            return
+        url = self._ask_url()
+        if not url:
+            return
+        dest = self._cover_dest(self.books[i])
+        self._status.configure(text=S["cover_dl_wait"])
+        threading.Thread(target=self._dl_worker, args=(i, url, dest),
+                         daemon=True).start()
+
+    def _dl_worker(self, i, url, dest):
+        try:
+            got = jzcore.download_cover_image(url, dest)
+        except Exception:
+            got = None
+        self._dlq.put((i, got, dest))
+
+    def _cover_dest(self, b):
+        """导出目录下的封面文件：文件名取书籍文件名，统一 .jpg。"""
+        stem = os.path.splitext(b.get("name") or os.path.basename(b.get("path") or ""))[0]
+        stem = safe_name(stem, maxlen=80, fallback=self.S["unnamed"])
+        return os.path.join(self.outdir, stem + ".jpg")
+
+    def _ask_url(self):
+        """图片链接输入框：确认返回链接，取消返回 None。"""
+        S = self.S
+        w = tk.Toplevel(self._win)
+        w.title(S["cover_url_title"])
+        w.transient(self._win)
+        w.configure(bg=BG)
+        w.resizable(False, False)
+        got = {"url": None}
+        bar = ttk.Frame(w)
+        bar.pack(side="bottom", fill="x", padx=px(12), pady=px(10))
+
+        def _ok(_e=None):
+            url = var.get().strip()
+            if not url:
+                messagebox.showwarning(S["d_warn"], S["cover_url_bad"], parent=w)
+                return
+            got["url"] = url
+            w.destroy()
+
+        ttk.Button(bar, text=S["d_ok"], style="Accent.TButton",
+                   command=_ok).pack(side="right")
+        ttk.Button(bar, text=S["d_cancel"], style="Soft.TButton",
+                   command=w.destroy).pack(side="right", padx=px(6))
+        row = ttk.Frame(w)
+        row.pack(fill="x", padx=px(12), pady=px(12))
+        ttk.Label(row, text=S["cover_url_hint"]).pack(side="left")
+        var = tk.StringVar()
+        e = ttk.Entry(row, textvariable=var, width=52)
+        e.pack(side="left", fill="x", expand=True, padx=(px(6), 0))
+        e.bind("<Return>", _ok)
+        w.bind("<Escape>", lambda _e: w.destroy())
+        e.focus_set()
+        w.update_idletasks()
+        _center_win(w, COVER_URL_W,
+                    int(round(w.winfo_reqheight() / max(_SCALE, 0.01))))
+        w.grab_set()
+        self._win.wait_window(w)
+        return got["url"]
+
+    # -------------------------------------------------------- 随窗口重排
+    def _on_cv_resize(self, e):
+        try:
+            self._cv.itemconfigure(self._cv_win, width=e.width)
+        except tk.TclError:
+            return
+        self._arrange(e.width)
+
+    def _arrange(self, width=None):
+        """按可用宽度算几列；列数变了才重排一次网格。"""
+        if self._dead:
+            return
+        try:
+            w = width or self._cv.winfo_width()
+        except tk.TclError:
+            return
+        gap = px(COVER_GRID_GAP)
+        cols = max(1, int(max(1, w) // (self._card_w + gap)))
+        if cols == self._cols:
+            return
+        old, self._cols = self._cols, cols
+        for c in range(max(cols, old)):
+            on = c < cols
+            self._inner.grid_columnconfigure(
+                c, weight=1 if on else 0, uniform="cover" if on else "")
+        for i in sorted(self._cards):
+            self._cards[i]["frame"].grid_configure(
+                row=i // cols, column=i % cols)
+
+    def _wheel(self, e):
+        """滚轮：一格滚 3 个单位（触控板的小 delta 会按 1 个走）。"""
+        try:
+            first, last = self._cv.yview()
+        except Exception:
+            return
+        if first <= 0.0 and last >= 1.0:       # 内容不满一屏：不拦滚轮
+            return
+        delta = getattr(e, "delta", 0) or 0
+        step = max(1, int(abs(delta) / 40))
+        self._cv.yview_scroll(-step if delta > 0 else step, "units")
+
+    # -------------------------------------------------------- 结果
+    def _ok(self):
+        self.result = dict(self.covers)
+        self._close()
+
+    def _cancel(self):
+        self.result = None
+        self._close()
+
+    def _close(self):
+        self._dead = True
+        try:
+            self._win.destroy()
+        except tk.TclError:
+            pass
+
+    def show(self):
+        try:
+            self._win.grab_set()
+            self._win.wait_window()
+        except tk.TclError:
+            pass
+        finally:
+            self._dead = True
+        return self.result
+
+
 class App:
     def __init__(self, root):
         self.root = root
         self.books = []
+        # 封面设置窗的结果：{书籍路径键: cover_for_book 元组}，只在本进程有效
+        self.cover_map = {}
         self.q = queue.Queue()
         self.busy = False
         self.cancel = False
@@ -2399,16 +2871,15 @@ class App:
         self.themes = jzcore.list_themes()
         self.theme_by_id = {t["id"]: t for t in self.themes}
         self.theme_id = jzcore.DEFAULT_THEME
-        self.btn_theme = ttk.Button(row2, text="", width=18,
+        self.btn_theme = ttk.Button(row2, text="", width=10,
                                     style="Soft.TButton",
                                     command=self.choose_theme)
         self.btn_theme.pack(side="left", padx=(px(4), 0))
-        self.lb_cover = ttk.Label(row2, text=S["f_cover"])
-        self.lb_cover.pack(side="left", padx=(px(16), 0))
-        self.cover_names = [S["cov_auto"], S["cov_default"], S["cov_none"]]
-        self.cb_cover = ttk.Combobox(row2, state="readonly", width=20,
-                                     values=self.cover_names)
-        self.cb_cover.pack(side="left", padx=(px(4), 0))
+        # 封面与主题同一套按钮样式：点开窗口逐本设置，不再用下拉框选策略
+        self.btn_cover = ttk.Button(row2, text=S["cover_btn"], width=10,
+                                    style="Soft.TButton",
+                                    command=self.choose_covers)
+        self.btn_cover.pack(side="left", padx=(px(16), 0))
         # 插图下载：只影响 epub 打包与「插图/书名」目录，不改正文
         self.cb_imgdl = ttk.Checkbutton(row2, text=S["f_imgdl"],
                                         variable=self.img_dl_var)
@@ -2416,7 +2887,6 @@ class App:
         self.refresh_imgdl_state()
         self._restore_epub_opts()
         self.refresh_epub_opts_state()
-        self.cb_cover.bind("<<ComboboxSelected>>", lambda _e: self._save_epub_opts())
 
         g3 = ttk.LabelFrame(f, text=S["grp_out"], style="Card.TLabelframe")
         g3.pack(fill="x", padx=px(8), pady=px(6))
@@ -2442,15 +2912,10 @@ class App:
             self._cardify(g)
 
     def _restore_epub_opts(self):
-        """按配置恢复主题/封面选择（主题存的是 CSS 文件名）。"""
+        """按配置恢复版面主题（主题存的是 CSS 文件名）。"""
         self.theme_id = self._valid_theme(self.cfg.get("theme"))
         self._refresh_theme_btn()
-        cm = self.cfg.get("cover") or "auto"
-        key = {"auto": 0, "default": 1, "none": 2}.get(cm, 0)
-        try:
-            self.cb_cover.current(key)
-        except Exception:
-            pass
+        self._refresh_cover_btn()
 
     def _valid_theme(self, tid):
         """配置里的主题可能已被删除/移走：自定义 CSS 看文件还在不在，内置看列表。"""
@@ -2490,20 +2955,45 @@ class App:
             self._refresh_theme_btn()
             self._save_epub_opts()
 
-    def epub_opts(self):
-        """主线程取当前选择，返回 (theme_id, cover_mode)，可直接传给后台线程。"""
-        theme = self._valid_theme(self.theme_id)
+    def choose_covers(self):
+        """弹出封面设置窗口：网格列出已勾选的书，右键逐本换封面。
+
+        确定后把整份封面（字节已备好）留在 self.cover_map 里，开始处理时
+        按它写进 epub —— 与窗口里看到的封面完全一致。
+        """
+        S = self.S
+        sel = [b for b in self.books if b["sel"]]
+        if not sel:
+            messagebox.showinfo(S["cover_no_books"], S["cover_no_books_msg"])
+            return
+        got = CoverPicker(self.root, sel, self.cover_map,
+                          self.out_var.get().strip(), self.lang, S).show()
+        if got is None:                 # 取消：保留原来的设置
+            return
+        self.cover_map = got
+        self._refresh_cover_btn()
+        n = sum(1 for b in sel if _book_key(b["path"]) in self.cover_map)
+        self.log(S["log_cover_set"].format(n))
+
+    def _refresh_cover_btn(self):
+        """按钮上直接写「已设置 N 本」，一眼能看出封面配好没有。"""
+        btn = getattr(self, "btn_cover", None)
+        if not self._alive(btn):
+            return
+        n = sum(1 for b in self.books if b.get("sel")
+                and _book_key(b.get("path")) in self.cover_map)
         try:
-            ci = self.cb_cover.current()
-        except Exception:
-            ci = 0
-        cover = {0: "auto", 1: "default", 2: "none"}.get(ci, "auto")
-        return theme, cover
+            btn.configure(text=(self.S["cover_btn_n"].format(n) if n
+                                else self.S["cover_btn"]))
+        except tk.TclError:
+            pass
+
+    def epub_theme(self):
+        """主线程取当前版面主题（封面另有 cover_map，见 choose_covers）。"""
+        return self._valid_theme(self.theme_id)
 
     def _save_epub_opts(self):
-        theme, cover = self.epub_opts()
-        self.cfg["theme"] = theme
-        self.cfg["cover"] = cover
+        self.cfg["theme"] = self.epub_theme()
         jzcore.save_config(self.cfg)
 
     def _save_sum_opt(self):
@@ -2691,13 +3181,33 @@ class App:
     def log(self, msg):
         self.q.put(("log", msg))
 
+    def log_progress(self, msg):
+        """把日志最后一行原地改成 msg（插图下载进度）：几百张图也只占一行。
+
+        进度行用 tag 标记，下次刷新就按 tag 范围整行删掉重写，于是「3/57」会一路
+        走到「57/57」，不会把日志刷满、把前面的处理记录顶出视野。
+        """
+        box = self.logbox
+        try:
+            rng = box.tag_ranges("logprog")
+            if rng:
+                box.delete(rng[0], rng[1])
+            box.insert("end", msg + "\n", ("logprog",))
+            box.see("end")
+        except tk.TclError:
+            pass
+
     def poll(self):
         try:
             while True:
                 kind, payload = self.q.get_nowait()
                 if kind == "log":
+                    # 普通日志接在进度行后面：进度行就此定住，不再被改写
+                    self.logbox.tag_remove("logprog", "1.0", "end")
                     self.logbox.insert("end", payload + "\n")
                     self.logbox.see("end")
+                elif kind == "logprog":
+                    self.log_progress(payload)
                 elif kind == "book":
                     self.add_book(payload)
                 elif kind == "chaprow":
@@ -2885,6 +3395,7 @@ class App:
         if d:
             s += self.S["lib_info_dup"].format(d)
         self.info_var.set(s)
+        self._refresh_cover_btn()       # 勾选变了，封面按钮上的「已设置 N 本」跟着变
 
     def chap_cell(self, b):
         """书库「章节」列的显示值：未试分显示 -，试分后显示已切出的章数。
@@ -3306,8 +3817,8 @@ class App:
         值本身留着（取消勾选再勾回来不用重选），只是不让改。
         """
         on = bool(self.fmt_vars["epub"].get())
-        for w in (getattr(self, "lb_theme", None), getattr(self, "lb_cover", None),
-                  getattr(self, "btn_theme", None), getattr(self, "cb_cover", None)):
+        for w in (getattr(self, "lb_theme", None),
+                  getattr(self, "btn_theme", None), getattr(self, "btn_cover", None)):
             if self._alive(w):
                 w.state(["!disabled"] if on else ["disabled"])
 
@@ -3900,18 +4411,20 @@ class App:
         # 规则/正则必须在主线程预取：tk 变量在线程内读取会 RuntimeError
         rules = self.active_rules()
         custom = self.custom_re.get().strip() or None
-        theme, cover_mode = self.epub_opts()
+        theme = self.epub_theme()
         self._save_epub_opts()
+        # 封面在封面窗里定好了：后台线程只查表，不再自己挑图
+        covers = dict(self.cover_map)
         img_dl = self.img_download()
         want_sum = bool(self.sum_var.get())
         name_fmt = self.name_format()
         threading.Thread(target=self.run_worker,
                          args=(sel, fmts, mode, outdir, rules, custom,
-                               theme, cover_mode, img_dl, want_sum, name_fmt),
+                               theme, covers, img_dl, want_sum, name_fmt),
                          daemon=True).start()
 
     def run_worker(self, sel, fmts, mode, outdir, rules, custom,
-                   theme=jzcore.DEFAULT_THEME, cover_mode="auto", img_dl=False,
+                   theme=jzcore.DEFAULT_THEME, covers=None, img_dl=False,
                    want_sum=True, name_fmt=""):
         S = self.S
         custom = custom or ""       # 同上：后台线程不读 tk 变量
@@ -3955,7 +4468,11 @@ class App:
                 prefetch = None
                 if img_dl and outdir and raw is not None and "imgcheck" in rules:
                     pst = {}
-                    prefetch = jzcore.prefetch_images(raw, stats=pst)
+                    p_title = (b.get("title")
+                               or os.path.splitext(b.get("name") or "")[0]
+                               or S["unnamed"])
+                    prefetch = jzcore.prefetch_images(
+                        raw, stats=pst, progress=self.img_progress(p_title))
                     notes.append(S["log_img_prefetch"].format(
                         pst.get("links", 0), pst.get("images", 0)))
                 if raw is not None:
@@ -3980,7 +4497,8 @@ class App:
                 else:
                     base = safe_name(title, fallback=S["unnamed"])
                 # 插图先落到「输出目录/插图/书名」，epub 再照这份映射打包
-                images = (self.fetch_images(text, outdir, base, prefetch, notes)
+                images = (self.fetch_images(text, outdir, base, prefetch, notes,
+                                            title=title)
                           if (img_dl and outdir) else None)
                 if mode == "inplace":
                     bak = b["path"] + ".bak"
@@ -3997,11 +4515,16 @@ class App:
                         f.write(text)
                 if outdir:
                     if "epub" in fmts:
-                        try:
-                            cover = jzcore.cover_for_book(
-                                b["path"], title, b.get("author", ""), cover_mode)
-                        except Exception:
-                            cover = None
+                        # 封面窗里定过的直接用那份字节；没定过（没开过窗口）
+                        # 才回退到老行为：同名图优先，没有就画默认封面
+                        cover = (covers or {}).get(_book_key(b["path"]))
+                        if cover is None:
+                            try:
+                                cover = jzcore.cover_for_book(
+                                    b["path"], title, b.get("author", ""),
+                                    "auto", outdir)
+                            except Exception:
+                                cover = None
                         jzcore.write_epub(self.uniq(outdir, base + ".epub"),
                                           title, b["author"], chapters,
                                           cover=cover, theme=theme,
@@ -4071,7 +4594,25 @@ class App:
         blank_all = sum(int(g.get("blank") or 0) for g in groups)
         self.q.put(("log", S["log_summary_ok"].format(path, len(groups), n, blank_all)))
 
-    def fetch_images(self, text, outdir, base, prefetch=None, notes=None):
+    def img_progress(self, title):
+        """插图下载进度回调：把「第几张/共几张」原地刷到日志最后一行。
+
+        jzcore 每处理完一条链接调一次；一张图最长要等 20 秒超时，日志里有这行
+        才能分清「正在下图」和「程序卡死」。按 IMG_PROG_GAP 节流（首条与末条
+        一定输出），后台线程只往队列塞事件，不碰任何 tk 控件。
+        """
+        S = self.S
+        last = [0.0]
+
+        def report(done, total):
+            now = time.time()
+            if 1 < done < total and now - last[0] < IMG_PROG_GAP:
+                return
+            last[0] = now
+            self.q.put(("logprog", S["log_img_prog"].format(title, done, total)))
+        return report
+
+    def fetch_images(self, text, outdir, base, prefetch=None, notes=None, title=""):
         """把一本书的插图下载到「输出目录/插图/书名」，返回 {链接: 本地路径}。
 
         目录按书名复用：同一本书重跑只是覆盖同名编号文件，不会堆出「书名 (1)」。
@@ -4086,7 +4627,8 @@ class App:
             if prefetch is not None:
                 got = jzcore.save_images(prefetch, text, dest, st)
             else:
-                got = jzcore.download_images(text, dest, stats=st)
+                got = jzcore.download_images(text, dest, stats=st,
+                                             progress=self.img_progress(title or base))
         except Exception as e:
             self.q.put(("log", S["log_img_fail"].format(e)))
             return None

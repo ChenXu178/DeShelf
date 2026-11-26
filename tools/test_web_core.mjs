@@ -208,6 +208,34 @@ function zipEntries(zip) {
   ok("分章 zip 中文文件名", sent.every(e => e.name.includes("样例/") && e.name.endsWith(".txt")));
 }
 
+console.log("== 插图链接粗筛（明显不是图的本地拦掉） ==");
+{
+  const acc = [
+    "https://a.com/1.jpg",
+    "https://a.com/pic.png?x=1",
+    "http://a.com/showimg.php?id=9",
+    "https://a.com/images?q=tbn:abc",
+    "https://a.com/image/12345",
+    "www.a.com/x.gif",
+    "//cdn.a.com/x.webp",
+    "https://a.com/pic/1.JPEG",
+  ];
+  const rej = [
+    "https://zxcstxt.com/",
+    "https://zxcstxt.com",
+    "http://zxcstxt.com/book/",
+    "https://a.com/index.html",
+    "https://a.com/book.php",
+    "https://a.com/x.JSP",
+    "/img/1.jpg",          // 补不出完整地址
+    "",
+  ];
+  const badAcc = acc.filter(u => !Core.imgWorthTrying(u));
+  const badRej = rej.filter(u => Core.imgWorthTrying(u));
+  ok("该放行的链接都放行", badAcc.length === 0, badAcc);
+  ok("该拦掉的链接都拦掉", badRej.length === 0, badRej);
+}
+
 console.log("== 插图下载（伪造 fetch / Image） ==");
 {
   const realFetch = globalThis.fetch, realImage = globalThis.Image, realLoc = globalThis.location;
@@ -258,6 +286,21 @@ console.log("== 插图下载（伪造 fetch / Image） ==");
     calls = [];
     r = await Core.fetchImages("图 https://x.com/dead.jpg 尾", { limit: 2 });
     ok("404 不换协议重试", calls.length === 1, calls);
+
+    /* 粗筛：域名首页/目录页不发请求，也不占「检查条数」 */
+    calls = [];
+    r = await Core.fetchImages("首页 https://zxcstxt.com/ 目录 https://x.com/book/ 图 https://x.com/real.jpg",
+      { limit: 3 });
+    ok("首页/目录页不发请求", calls.length === 1 && String(calls[0]).includes("real.jpg"), calls);
+    ok("检查条数只算真候选", r.checked === 1 && r.images === 1,
+      { checked: r.checked, images: r.images });
+
+    /* 进度回调：done 从 1 递增到 total（界面靠它显示「正在下第几张」） */
+    const seen = [];
+    r = await Core.fetchImages("图1 https://x.com/1.jpg 图2 https://x.com/2.jpg",
+      { limit: 1, progress: (d, t) => seen.push(d + "/" + t) });
+    ok("进度回调按完成条数递增", seen.join(",") === "1/2,2/2", seen);
+    ok("进度回调不影响结果", r.images === 2, r.images);
 
     r = await Core.fetchImages("图1 https://x.com/1.jpg 图2 https://x.com/2.jpg", { limit: 2 });
     const imap = Core.imagesForEpub(r, "图1 https://x.com/1.jpg 图2 https://x.com/2.jpg");
@@ -351,6 +394,29 @@ function zipEntry(u8, name) {
   const bc = zipEntry(builtin, "OEBPS/style.css");
   ok("内置主题导出的 style.css 与文件一致",
     !!bc && bc.toString("utf8") === Core.THEME_CSS[Core.DEFAULT_THEME]);
+
+  /* 封面：epub 内部文件名按 MIME 归一，与传进来的 name 无关（与桌面版 write_epub 一致） */
+  const pngBytes = Uint8Array.from([0x89, 0x50, 0x4E, 0x47, 1, 2, 3, 4]);
+  const zc = await Core.buildEpub({
+    title: "T", author: "A", chapters: [{ t: "第1章", b: "正文" }],
+    theme: Core.DEFAULT_THEME, images: [],
+    cover: { data: pngBytes, name: "斗破苍穹.webp", mime: "image/png" },
+  });
+  const coverEntry = zipEntry(zc, "OEBPS/cover.png");
+  ok("封面文件名按 MIME 归一成 cover.png", !!coverEntry);
+  ok("封面字节原样打进 zip",
+    !!coverEntry && Buffer.compare(coverEntry, Buffer.from(pngBytes)) === 0);
+  ok("不沿用传进来的原名", zipEntry(zc, "OEBPS/斗破苍穹.webp") === null);
+  ok("opf 引用归一后的封面名",
+    zipEntry(zc, "OEBPS/content.opf").toString("utf8").includes('href="cover.png"'));
+  ok("cover.xhtml 指向归一后的封面",
+    zipEntry(zc, "OEBPS/cover.xhtml").toString("utf8").includes('src="cover.png"'));
+  const zn = await Core.buildEpub({
+    title: "T", author: "A", chapters: [{ t: "第1章", b: "正文" }],
+    theme: Core.DEFAULT_THEME, images: [],
+    cover: { data: new Uint8Array(0), name: "cover.jpg", mime: "image/jpeg" },
+  });
+  ok("空封面字节按无封面处理", zipEntry(zn, "OEBPS/cover.xhtml") === null);
 }
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);

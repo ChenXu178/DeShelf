@@ -95,6 +95,8 @@ root.update()
 check("开始处理按钮", app.btn_go, 60, 18)
 check("进度条", app.pb, 200, 10)
 check("文件名下拉框", app.cb_name, 80, 18)
+check("版面主题按钮", app.btn_theme, 60, 18)
+check("封面按钮", app.btn_cover, 60, 18)
 pats = app.name_pats()
 want_pats = ["", "author - book", "[author] book", app.S["name_pat_book_author"], None]
 ok = pats == want_pats

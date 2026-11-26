@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import zipfile
@@ -915,6 +916,42 @@ def _img_full_url(url):
     return ""
 
 
+# 明确是网页的扩展名：book.php / index.html 这种没有参数的，一眼就知道不是图
+_IMG_PAGE_EXT = (".htm", ".html", ".shtml", ".xhtml", ".php", ".asp", ".aspx",
+                 ".jsp", ".jspx", ".do", ".action", ".cgi", ".pl", ".txt", ".exe")
+
+
+def _img_worth_trying(url):
+    """本地粗筛：明显不可能是图片的链接就别发请求了。
+
+    一本书的正文里常有整篇的站点地址（https://www.xxxxx.com/、/book/1234/
+    这种域名或目录首页），以前每条都要 HEAD/GET 一次，几百条能把导出拖很久。
+    这里只拦「一眼假」的三种：
+      ① 补不出完整地址的（相对路径）；
+      ② 域名首页、目录页 —— 域名后面既没有文件名也没有查询参数；
+      ③ 带网页后缀且没有参数的（index.html、book.php?id= 这种有参数的照试）。
+    图床常见的不带图片后缀写法（/images?q=tbn:…、/showimg.php?id=9、
+    /image/12345）都有参数或非网页后缀，一律放行 —— 宁可多请求一次，
+    也不能把真插图漏掉。
+    """
+    full = _img_full_url(url)
+    if not full:
+        return False
+    try:
+        parts = urllib.parse.urlsplit(full)
+    except ValueError:
+        return False
+    path = parts.path or ""
+    if _IMG_SUFFIX.search(path):
+        return True                     # 带图片后缀：候选
+    if parts.query:
+        return True                     # 有查询参数：图床常这么写，放行
+    if not path or path.endswith("/"):
+        return False                    # 域名首页 / 目录页：www.xxxxx.com/、/book/
+    ext = os.path.splitext(path.rsplit("/", 1)[-1])[1].lower()
+    return ext not in _IMG_PAGE_EXT    # 认不出的路径照旧试一次（可能是 /image/12345）
+
+
 def _img_fetch(url, timeout=IMG_TIMEOUT, want_body=False, limit=0):
     """请求一次链接，返回 (归一化的 Content-Type, 正文)；失败一律返回 ("", b"")。
 
@@ -971,6 +1008,7 @@ def find_image_links(s, verify=False, timeout=IMG_TIMEOUT, cache=None):
     verify=True ：行内每个链接（含没有图片后缀的）都请求一次，响应头 Content-Type
                   是 image/jpeg、image/png、image/gif、image/webp 才算插图；
                   返回网页的、失效的都不算 —— 顺带完成失效检测。
+                  域名首页/目录页（www.xxxxx.com/、/book/）本地就判掉，不发请求。
     cache 传入 dict 可让同一条链接只判一次：键是 image_key(url)，值是布尔；
            verify_cache(prefetch_images(...)) 的结果可以直接传进来复用。
     """
@@ -980,7 +1018,8 @@ def find_image_links(s, verify=False, timeout=IMG_TIMEOUT, cache=None):
             key = image_key(url)
             hit = cache.get(key) if cache is not None else None
             if hit is None:
-                hit = _is_image_url(url, timeout)
+                # 首页/目录页一眼不是图，先本地拦掉再联网（同 prefetch_images）
+                hit = _img_worth_trying(url) and _is_image_url(url, timeout)
                 if cache is not None:
                     cache[key] = hit
             ok = hit
@@ -1144,28 +1183,45 @@ def _to_jpeg(data, ext, quality=88):
     return got[0], ".jpg"
 
 
-def prefetch_images(text, timeout=IMG_DL_TIMEOUT, stats=None):
+def prefetch_images(text, timeout=IMG_DL_TIMEOUT, stats=None, progress=None):
     """把正文候选链接各请求一次，返回 {链接键: (Content-Type, 字节, 后缀)}。
 
     「插图链接校验」与「下载插图链接」同时开着时用它：一趟请求既拿到图，
     又给出「这是不是插图」的判定，避免校验一次、下载再一次。
     字节为空即不是图。结果可交给 verify_cache / save_images 使用。
     stats 若传入 dict，会写入 links（检查条数）、images（认出张数）、bytes（暂存字节）。
+    progress 传入回调时，每处理完一条链接调用一次 progress(已完成, 总数)：
+             一张图可能 20 秒才超时，界面上有进度才不会让人以为程序卡住。
+    首页/目录页这类一眼不是图的链接先本地拦掉（见 _img_worth_trying），
+    既不浪费请求，也不占用 IMG_MAX_TRIES 的尝试名额。
     """
+    urls = [u for u in image_links_in_text(text) if _img_worth_trying(u)][:IMG_MAX_TRIES]
+    total = len(urls)
     out = {}
     held = 0
-    for url in image_links_in_text(text)[:IMG_MAX_TRIES]:
+    for i, url in enumerate(urls, 1):
         if held >= IMG_PREFETCH_BYTES:
             # 图太多的书不硬撑内存：剩下的照旧由清洗校验、由下载另取一次
             break
         hit = _fetch_image(url, timeout)
         held += len(hit[1])
         out[image_key(url)] = hit
+        _img_progress(progress, i, total)
     if stats is not None:
         stats["links"] = len(out)
         stats["images"] = sum(1 for v in out.values() if v[1])
         stats["bytes"] = held
     return out
+
+
+def _img_progress(progress, done, total):
+    """进度回调的唯一出口：回调是界面代码，出什么错都不该毁掉导出。"""
+    if progress is None:
+        return
+    try:
+        progress(done, total)
+    except Exception:
+        pass
 
 
 def verify_cache(prefetch):
@@ -1215,7 +1271,7 @@ def save_images(prefetch, text, dest_dir, stats=None):
     return out
 
 
-def download_images(text, dest_dir, timeout=IMG_DL_TIMEOUT, stats=None):
+def download_images(text, dest_dir, timeout=IMG_DL_TIMEOUT, stats=None, progress=None):
     """把正文里的插图按出现顺序下载到 dest_dir，返回 {链接键: 本地路径}。
 
     候选是行内全部链接（见 image_links_in_text），真图假图由响应头决定。
@@ -1223,8 +1279,11 @@ def download_images(text, dest_dir, timeout=IMG_DL_TIMEOUT, stats=None):
     同一条链接只下一次。jpg/png 以外（webp、gif、bmp）转成 jpg 再存，
     阅读器支持面更宽。下载失败的链接不进返回值，正文里那条链接就保持原样。
     stats 若传入 dict，会写入 links（候选链接数）与 saved（实际保存张数）。
+    progress 传入回调时，每试完一条链接调用一次 progress(已试, 总试数)：
+             一本书几百张图时，界面靠它显示「正在下第几张」。
+    首页/目录页这类一眼不是图的链接先本地拦掉，不浪费请求（同 prefetch_images）。
     """
-    urls = image_links_in_text(text)
+    urls = [u for u in image_links_in_text(text) if _img_worth_trying(u)]
     if stats is not None:
         stats["links"] = len(urls)
         stats["saved"] = 0
@@ -1235,6 +1294,7 @@ def download_images(text, dest_dir, timeout=IMG_DL_TIMEOUT, stats=None):
     except OSError:
         return {}
     out = {}
+    total = min(len(urls), IMG_MAX_TRIES)
     n = 0
     tries = 0
     for url in urls:
@@ -1243,18 +1303,17 @@ def download_images(text, dest_dir, timeout=IMG_DL_TIMEOUT, stats=None):
             break
         tries += 1
         data, ext = _download_image(url, timeout)
-        if not data:
-            continue
-        data, ext = _to_jpeg(data, ext)          # webp/gif/bmp 统一转 jpg
-        n += 1
-        path = os.path.join(dest_dir, "%03d%s" % (n, ext))
-        try:
-            with open(path, "wb") as f:
-                f.write(data)
-        except OSError:
-            n -= 1
-            continue
-        out[image_key(url)] = path
+        if data:
+            data, ext = _to_jpeg(data, ext)      # webp/gif/bmp 统一转 jpg
+            path = os.path.join(dest_dir, "%03d%s" % (n + 1, ext))
+            try:
+                with open(path, "wb") as f:
+                    f.write(data)
+                n += 1
+                out[image_key(url)] = path
+            except OSError:
+                pass                             # 写不进去就跳过这一张
+        _img_progress(progress, tries, total)
     if stats is not None:
         stats["saved"] = len(out)
     return out
@@ -3238,35 +3297,52 @@ def _book_stem(path):
     return base.strip()
 
 
-def find_cover_image(txt_path, title=""):
-    """找这本书同名的图片当封面（就是用户说的「当前目录下的同名图片」）。
-
-    只认同名：<主名>.jpg / <主名>.cover.jpg / <书名>.jpg。
-    不拿目录里随便一张 cover.jpg 兜底 —— 一个目录几十本书时会被全串成同一张。
-    """
-    folder = os.path.dirname(os.path.abspath(txt_path or "."))
-    if not os.path.isdir(folder):
-        return None
+def _cover_images_in(folder):
+    """目录里的图片 → {小写主名: 路径}，专供按主名回找封面用。"""
     try:
         names = os.listdir(folder)
     except OSError:
-        return None
+        return {}
     imgs = {}
     for n in names:
         stem, ext = os.path.splitext(n)
         if ext.lower() in _COVER_IMG_EXTS and stem.strip():
             imgs.setdefault(stem.strip().lower(), os.path.join(folder, n))
-    if not imgs:
-        return None
+    return imgs
+
+
+def find_cover_image(txt_path, title="", outdir=""):
+    """找这本书同名的图片当封面（就是用户说的「当前目录下的同名图片」）。
+
+    扫两处：书籍所在目录、导出目录（设置了才有）。同名图两处都存在时以
+    书籍目录为准 —— 导出目录多半放的是「下载网络封面」下来的图，
+    用户自己在书旁边放的图才是最准的那张。
+    只认同名：<主名>.jpg / <主名>.cover.jpg / <书名>.jpg。
+    不拿目录里随便一张 cover.jpg 兜底 —— 一个目录几十本书时会被全串成同一张。
+    """
     keys = []
     for cand in (_book_stem(txt_path), (title or "").strip()):
         cand = cand.strip().lower()
         if not cand:
             continue
         keys += [cand, cand + ".cover", cand + "-cover", cand + "_cover"]
-    for k in keys:
-        if k in imgs:
-            return imgs[k]
+    if not keys:
+        return None
+    folders = []
+    for folder in (os.path.dirname(os.path.abspath(txt_path or ".")), outdir):
+        folder = os.path.abspath(folder) if folder else ""
+        if not folder or not os.path.isdir(folder):
+            continue
+        # 导出目录就是书籍目录时不必再扫一遍
+        if any(os.path.normcase(folder) == os.path.normcase(f) for f in folders):
+            continue
+        folders.append(folder)
+    for folder in folders:
+        imgs = _cover_images_in(folder)
+        for k in keys:
+            hit = imgs.get(k)
+            if hit:
+                return hit
     return None
 
 
@@ -3417,21 +3493,60 @@ def make_cover(title, author="", size=COVER_SIZE):
     return buf.getvalue(), "cover.jpg", "image/jpeg", W, H
 
 
-def cover_for_book(txt_path, title, author="", mode="auto"):
+def cover_for_book(txt_path, title, author="", mode="auto", outdir=""):
     """按模式为这本书准备封面，返回 (data, name, mime, w, h) 或 None。
 
     mode: "none" 不带封面 / "default" 只生成默认封面 /
           "auto"（默认）先找同名图片，找不到再生成默认封面
+    outdir: 导出目录；给了就一起扫同名图（书籍目录优先，见 find_cover_image）
     """
     if mode == "none":
         return None
     if mode != "default":
-        found = find_cover_image(txt_path, title)
+        found = find_cover_image(txt_path, title, outdir)
         if found:
             got = prepare_cover_image(found)
             if got:
                 return got
     return make_cover(title, author)
+
+
+def download_cover_image(url, dest_path, timeout=IMG_DL_TIMEOUT):
+    """下载一张网络封面：转成 JPEG 后写到 dest_path。
+
+    返回 prepare_cover_image 的元组 (data, name, mime, w, h)；下载失败、
+    链接返回的不是图片、写盘失败一律返回 None，由界面提示用户重试。
+    请求走插图下载同一套逻辑（超时、体积上限、按文件头认格式）。
+    """
+    data, ext = _download_image(url, timeout)
+    if not data:
+        return None
+    tmp = None
+    got = None
+    try:
+        fd, tmp = tempfile.mkstemp(suffix=ext or ".jpg")
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        got = prepare_cover_image(tmp)
+    except Exception:
+        got = None
+    finally:
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    if not got:
+        return None
+    folder = os.path.dirname(dest_path)
+    try:
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        with open(dest_path, "wb") as f:
+            f.write(got[0])
+    except OSError:
+        return None
+    return got
 
 
 CONTAINER = """<?xml version='1.0' encoding='utf-8'?>
@@ -3441,6 +3556,11 @@ CONTAINER = """<?xml version='1.0' encoding='utf-8'?>
   </rootfiles>
 </container>
 """
+
+# epub 里的封面文件名按 MIME 归一：封面可能是用户自选的图、网上下载的图，
+# 原名带着书名或奇怪后缀（.webp/.bmp），装进 zip 容易被阅读器当成图片以外的东西。
+_COVER_EXT_BY_MIME = {"image/png": ".png", "image/gif": ".gif",
+                      "image/webp": ".webp", "image/bmp": ".bmp"}
 
 _COVER_PAGE = """<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE html>
@@ -3556,7 +3676,8 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
     """用标准库 zipfile 手写 EPUB 2.0（含 toc.ncx，兼容绝大多数阅读器）。
 
     cover: cover_for_book / make_cover / prepare_cover_image 的返回值，
-           None 表示不带封面（与旧版输出一致）
+           None 表示不带封面（与旧版输出一致）；epub 内部文件名按 MIME
+           统一成 cover.jpg / cover.png，与传进来的 name 无关
     theme: assets/styles 下的 CSS 文件名（主题 id），只影响 style.css；
            文件不存在时退回默认主题 01-minimal.css
     images: download_images 的返回值 {链接键: 本地图片路径}；None / 空表示不带插图，
@@ -3605,13 +3726,15 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
         manifest.append('    <item id="im%d" href="%s%s" media-type="%s"/>'
                         % (k, IMG_HREF_DIR, iname, imime))
 
-    has_cover = bool(cover)
+    has_cover = bool(cover and cover[0])
     cover_name = ""
     cover_meta = ""
     spine_cover = ""
     guide = ""
     if has_cover:
-        cdata, cover_name, cmime = cover[0], cover[1], cover[2]
+        cdata = cover[0]
+        cmime = (cover[2] if len(cover) > 2 else "") or "image/jpeg"
+        cover_name = "cover" + _COVER_EXT_BY_MIME.get(cmime, ".jpg")
         # EPUB2 认 <meta name="cover">；EPUB3 认 properties="cover-image"，
         # 两个都写，老阅读器和新阅读器都能取到缩略图。
         cover_meta = '    <meta name="cover" content="cover-img"/>\n'
