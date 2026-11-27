@@ -474,6 +474,20 @@ TEXTS = {
         "d_tree_outdir": "未设置输出目录",
         "d_tree_outdir_msg": "请先到「导出分发」页选择输出目录，再导出章节树。",
         "log_tree_export": "已导出章节树：{0}",
+        # 分章列表右键：删章只记在本书的删除清单里，源文件不动
+        "m_chap_del": "从目录删除该章节",
+        "m_chap_del_undo": "恢复已删除的章节",
+        "d_chap_del": "删除章节",
+        "d_chap_del_msg": "确定把「{1}」从《{0}》的目录里去掉吗？\n\n"
+                          "这一章的标题和正文会并到上一章正文末尾"
+                          "（它是第一章时并到下一章开头），正文不会丢失；"
+                          "源文件也不改动，右键菜单「恢复已删除的章节」可随时撤销。",
+        "d_chap_del_last": "全书只剩这一条目录了：删掉就没有章节承载正文了。\n"
+                           "要合并正文请先改分章规则或重新扫描。",
+        "log_chap_del": "已从目录去掉「{0}」，正文并入相邻章，本书剩余 {1} 章",
+        "log_chap_del_undo": "已恢复《{0}》被删除的 {1} 章",
+        "log_chap_del_reset": "分章规则已变更，之前的删章记录已清空（章节列表按新规则重排）",
+        "chap_del_sum": " · 已从目录去掉 {0} 章",
         "chap_res": "点「试分章节」查看结果",
         "chap_all_done": "试分 {0} 本：共 {1} 章，异常 {2} 本（见日志）",
         "chap_dbl_hint": "　双击任意一行进入该书单本试分",
@@ -747,6 +761,22 @@ TEXTS = {
         "d_tree_outdir": "No output folder",
         "d_tree_outdir_msg": "Please choose an output folder on the \u201cExport\u201d page first.",
         "log_tree_export": "Chapter tree exported: {0}",
+        "m_chap_del": "Remove this chapter from TOC",
+        "m_chap_del_undo": "Restore deleted chapters",
+        "d_chap_del": "Delete chapter",
+        "d_chap_del_msg": "Remove \u201c{1}\u201d from the TOC of \u201c{0}\u201d?\n\n"
+                          "Its title and text are appended to the end of the previous chapter "
+                          "(to the start of the next one when it is the first chapter), so no "
+                          "text is lost. The source file is untouched \u2014 use \u201cRestore "
+                          "deleted chapters\u201d in the right-click menu to undo.",
+        "d_chap_del_last": "This is the only TOC entry left: removing it would leave no chapter "
+                           "to carry the text.\nChange the chapter rule or rescan first.",
+        "log_chap_del": "Removed \u201c{0}\u201d from the TOC (text merged into a neighbour), "
+                        "{1} chapter(s) left",
+        "log_chap_del_undo": "Restored {1} deleted chapter(s) of \u201c{0}\u201d",
+        "log_chap_del_reset": "Chapter rule changed \u2014 previous chapter deletions were cleared "
+                              "(the list is rebuilt with the new rule)",
+        "chap_del_sum": " \u00b7 {0} removed from TOC",
         "chap_res": "Click \u201cTry Split\u201d to preview",
         "chap_all_done": "Tried {0} books: {1} chapters in total, {2} failed (see log)",
         "chap_dbl_hint": "  double-click a row to open that book",
@@ -1270,6 +1300,15 @@ COVER_CARD_PAD = 8  # 卡片内留白（单边）
 COVER_GRID_GAP = 12  # 卡片之间 / 与窗口边缘的留白
 COVER_PICKER_W, COVER_PICKER_H = 900, 720  # 窗口初始尺寸
 COVER_URL_W = 560  # 网络封面输入框窗口宽度
+
+
+def _join_blocks(*parts):
+    """把几段正文（标题、前/后一章的正文）用空行接起来，去掉多余的首尾空行。
+
+    「删除章节」只删目录条目：被删章的「标题+正文」就靠它并进上一章正文末尾
+    （书开头被删则并到下一章开头），正文一个字都不丢。
+    """
+    return "\n\n".join(p.strip("\n") for p in parts if p and p.strip())
 
 
 def _book_key(path):
@@ -2479,6 +2518,8 @@ class App:
         self.q = queue.Queue()
         self.busy = False
         self.cancel = False
+        # 后台线程改了书籍字典（分章规则 / 删章）需要落盘索引的标记
+        self._idx_dirty = False
         self.cfg = jzcore.load_config()
         self.lang = pick_lang()
         self.S = TEXTS[self.lang]
@@ -2489,7 +2530,10 @@ class App:
         last = self.cfg.get("lastdir", "")
         self.dir_var = tk.StringVar(value=last)
         self.out_var = tk.StringVar(value=self.cfg.get("outdir", ""))
+        # 全局分章正则：所有书共用（本书没写专用规则时用它）。改一下就标记
+        # 索引待落盘 —— 它跟着 .deshelf_index.json 顶层 chap_re 走，不在书条目里。
         self.custom_re = tk.StringVar()
+        self.custom_re.trace_add("write", lambda *_a: setattr(self, "_idx_dirty", True))
         self.mode_var = tk.StringVar(value=self.cfg.get("mode", "new") or "new")
         self.rule_vars = {r["id"]: tk.BooleanVar(value=r["id"] in jzcore.DEFAULT_ON)
                           for r in jzcore.RULES}
@@ -3061,7 +3105,12 @@ class App:
         self.tv_chap.tag_configure("bad", foreground=RED)
         # 批量试分的结果行：双击进入这本书的单本试分
         self._chap_rows = {}
+        # 表格里当前展示的是哪本书的单本结果（删章按它走，不看下拉框现选）
+        self._chap_view_book = None
+        self._chap_row_index = {}  # 行 → 完整切分结果里的下标（删章即记这个）
         self.tv_chap.bind("<Double-1>", self.on_chap_double)
+        # 右键单章菜单：删除这一章（只影响当前这本书）
+        self.tv_chap.bind("<Button-3>", self.popup_chap)
         sb = ttk.Scrollbar(wrap, orient="vertical", command=self.tv_chap.yview)
         self.tv_chap.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
@@ -3574,6 +3623,9 @@ class App:
         cfg["outdir"] = self.out_var.get()
         cfg["mode"] = self.mode_var.get()
         jzcore.save_config(cfg)
+        # 全局分章规则 / 删章记录改过但还没落盘（比如只改了规则没试分）就补一次
+        if self._idx_dirty:
+            self._save_books_index()
         self.root.destroy()
 
     def pick_dir(self):
@@ -3943,11 +3995,19 @@ class App:
         self.status_var.set(S["st_add_files"].format(added, extra))
 
     def save_index_now(self, root):
-        """立刻落盘索引：手动添加/删除书籍后，下次打开不用重扫也能看到。"""
+        """立刻落盘索引：手动添加/删除书籍后，下次打开不用重扫也能看到。
+
+        全局分章规则（所有书共用）写在顶层 chap_re，书条目里只留本书自己的
+        book_re / chap_del，两者互不影响。_chap_re 这类下划线开头的字段是
+        运行期状态（上次切分用的规则、清洗快照等），不写进索引。
+        """
+        self._idx_dirty = False
         try:
             jzcore.save_index(root, {
                 "root": root, "scanned": time.time(),
-                "books": [{k: v for k, v in b.items() if k != "path"}
+                "chap_re": self.custom_re.get().strip(),  # 全局规则：所有书共用
+                "books": [{k: v for k, v in b.items()
+                           if k != "path" and k != "_chap_re"}
                           for b in self.books]})
         except OSError:
             pass
@@ -4005,9 +4065,18 @@ class App:
         books = data.get("books") or []
         if not books:
             return False
+        # 全局分章规则存在索引顶层（所有书共用），打开书库时恢复回输入框；
+        # 旧索引若把它塞进了书条目，按「本书规则」迁移，别污染全局规则
+        if "chap_re" in data:
+            self.custom_re.set(data.get("chap_re") or "")
+        self._idx_dirty = False  # 刚读进来的东西不用再写回去
         self.clear_books()
         missing = 0
         for b in books:
+            old_re = b.pop("chap_re", None)  # 旧字段：本书规则
+            if old_re and not b.get("book_re"):
+                b["book_re"] = old_re
+            b.pop("chap_re_used", None)  # 旧字段：生效规则由 book_re/顶层 chap_re 算
             p = os.path.join(root, b.get("rel", ""))
             if not os.path.exists(p):
                 missing += 1
@@ -4044,9 +4113,7 @@ class App:
             self.mark_dup()
             self.status_var.set(S["st_scan_done"].format(got, total))
             self.log(S["log_scan_done"].format(got, S["log_stopped"] if self.cancel else ""))
-            jzcore.save_index(root, {
-                "root": root, "scanned": time.time(),
-                "books": [{k: v for k, v in b.items() if k != "path"} for b in self.books]})
+            self.save_index_now(root)  # 与手动增删书同一套写法（含顶层全局规则）
         elif kind == "run":
             _s, ok, fail, outdir = payload
             self.reload_rows()  # 回写实际切分章数/字数后重灌书库列表
@@ -4074,6 +4141,9 @@ class App:
             self.status_var.set(st + (S["log_stopped"] if cancelled else ""))
             self.log(S["log_chap_done"].format(ok_n, bad, sum_n) + extra
                      + (S["log_stopped"] if cancelled else ""))
+        # 后台线程只改书籍字典（分章规则 / 删章记录），落盘统一回主线程做
+        if self._idx_dirty:
+            self._save_books_index()
 
     # ------------------------------------------------------------ 预览
     def first_selected(self):
@@ -4396,11 +4466,14 @@ class App:
         self.chap_pick_text.set(cur or "")
 
     def _re_for(self, b, fallback=None):
-        """这本书用的分章正则：自己有就用自己的，否则用全局（或调用方传入的 fallback）。
+        """这本书实际生效的分章正则，按顺序取：
 
+        1. 本书规则 b["book_re"]（只对这一本生效，随书条目落盘）；
+        2. 全局规则 self.custom_re（所有书共用，随索引顶层 chap_re 落盘）；
+        3. 都没有 → 内置默认规则库（返回 None，split_chapters 内部用内置规则）。
         后台线程不能读 tk 变量，所以调用方必须把全局值经 fallback 传进来。
         """
-        own = (b.get("chap_re") or "").strip()
+        own = (b.get("book_re") or "").strip()
         if own:
             return own
         return fallback if fallback is not None else (self.custom_re.get().strip() or None)
@@ -4410,11 +4483,18 @@ class App:
         self.store_book_re()
         b = self.picked_book()
         self._re_book = b
-        self.book_re_var.set((b.get("chap_re") or "") if b else "")
+        self.book_re_var.set((b.get("book_re") or "") if b else "")
         self.refresh_re_state()
 
     def store_book_re(self):
-        """把输入框内容写回当前书（空则清掉，回到用全局）。"""
+        """把「本书规则」输入框写回它对应的那本书（空则清掉，回到用全局规则）。
+
+        只动书条目里的 book_re：全局规则是 self.custom_re（索引顶层 chap_re），
+        所有书共用，这里一个字都不改。
+        本书规则一改，章节列表就按新规则重排：旧的删章下标随即作废。
+        """
+        # 只认 _re_book（输入框当前展示的是哪本书）：没对齐时写回等于拿旧内容
+        # 覆盖别的书，宁可不动 —— 对齐由 sync_book_re / _re_align 负责
         b = self._re_book
         if not b:
             return
@@ -4423,10 +4503,30 @@ class App:
             val = self.book_re_var.get().strip()
         except Exception:
             return
+        if val == (b.get("book_re") or ""):
+            self.refresh_re_state()
+            return  # 没改动：不写索引、不清记录
         if val:
-            b["chap_re"] = val
+            b["book_re"] = val
         else:
-            b.pop("chap_re", None)
+            b.pop("book_re", None)  # 切回全局规则
+        # 列表随规则重排：按下标记的删章记录跟着作废
+        if b.pop("chap_del", None):
+            self.log(self.S["log_chap_del_reset"])
+        self._save_books_index()
+        self.refresh_re_state()
+
+    def _re_align(self, b):
+        """切分前把「本书规则」输入框对齐到这本书，避免张冠李戴。
+
+        对的就是这本 → 把可能的改动写回去；还没对齐（刚打开程序/刚载入索引）
+        → 先把书里存的规则载入输入框，绝不能反过来拿输入框的旧内容覆盖它。
+        """
+        if self._re_book is b:
+            self.store_book_re()
+            return
+        self._re_book = b
+        self.book_re_var.set((b.get("book_re") or "") if b else "")
         self.refresh_re_state()
 
     def clear_book_re(self):
@@ -4436,7 +4536,7 @@ class App:
     def refresh_re_state(self):
         try:
             b = self._re_book
-            self.re_state.set(self.S["book_re_on"] if (b and b.get("chap_re")) else "")
+            self.re_state.set(self.S["book_re_on"] if (b and b.get("book_re")) else "")
         except Exception:
             pass
 
@@ -4519,22 +4619,95 @@ class App:
             return
         if idx == 2:
             self._fill_chap_pick()
+            self.sync_book_re()  # 「本书规则」输入框对齐到下拉选中的那本书
         elif idx == 0:
             self.refresh_chap_col()
 
     def _chap_build(self, b):
-        """按当前规则切这本书并校验，返回 (chapters, ck, 生效的章节正则)。"""
-        self.store_book_re()
+        """按当前规则切这本书，返回 (完整切分结果, 生效的章节正则)。
+
+        这里不剔除「已删除的章节」：删除记录随时会变，统一由 _chap_final 处理。
+        """
+        self._re_align(b)
         custom = self._re_for(b, self.custom_re.get().strip() or None)
+        if self._chap_rule_sync(b, custom):
+            self.log(self.S["log_chap_del_reset"])
+        if self._idx_dirty:
+            self._save_books_index()  # 全局规则改过：顺手把顶层 chap_re 写回索引
         text = b.get("_clean")
         if text is None:
             text = jzcore.load_text(b["path"])
             rules = self.active_rules()
             if rules:
                 text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
-        chapters = jzcore.split_chapters(text, custom)
+        return jzcore.split_chapters(text, custom), custom
+
+    def _chap_rule_sync(self, b, custom, save=True):
+        """记住这本书的列表是按哪条规则切出来的（只在内存，不写索引）。
+
+        生效规则本来就能由 book_re / 顶层 chap_re / 内置规则算出来，不用另存；
+        但「删除章节」记的是下标，规则一换下标就指向别的章，所以拿上一次切分
+        用的规则比一下，变了才把删除记录清掉。
+        只碰内存标记和 chap_del：全局规则与本书 book_re 都不改。
+        save=False 供后台线程用：线程里不碰 tk，落盘交给主线程（见 on_done）。
+        """
+        used = (custom or "").strip()
+        prev = b.get("_chap_re")  # 上次切分用的规则，私有字段，不落盘
+        b["_chap_re"] = used
+        if prev is None or prev == used:
+            return False  # 首次切分（含刚载入索引）：按现规则认，删章记录仍有效
+        had_del = bool(b.pop("chap_del", None))
+        if had_del:
+            if save:
+                self._save_books_index()
+            else:
+                self._idx_dirty = True
+        return had_del
+
+    def _chap_apply_del(self, b, chapters):
+        """只从目录里去掉被删的章，正文一条不丢地并进相邻章节。
+
+        规则：有上一章 → 「标题 + 正文」追加到上一章正文末尾；
+        书开头就被删（没有上一章）→ 接到下一章正文开头（仍按阅读顺序）；
+        极端情况整本条目都被删（界面上会拦住最后一条）→ 收成一章保住正文。
+        返回 (目录里的章节, 各自在原切分结果里的下标)：
+        下标只用于把表格行对回原书，同名的章互不牵连（见 _chap_rule_sync）。
+        """
+        dels = {int(x) for x in (b.get("chap_del") or [])
+                if isinstance(x, int) and not isinstance(x, bool)}
+        if not dels:
+            return list(chapters), list(range(len(chapters)))
+        kept, idx, pending = [], [], []
+        for i, (title, body) in enumerate(chapters):
+            if i in dels:
+                # 标题 + 正文按原文那样紧挨着（空行留给「与上一章正文之间」）
+                block = title if not body.strip() else title + "\n" + body.strip("\n")
+                if kept:
+                    kept[-1] = (kept[-1][0], _join_blocks(kept[-1][1], block))
+                else:
+                    pending.append(block)  # 还没有上一章：攒着，等下一章开头再放
+                continue
+            if pending:
+                body = _join_blocks(*(pending + [body]))
+                pending = []
+            kept.append((title, body))
+            idx.append(i)
+        if not kept:
+            # 全书条目都被删：正文不能跟着消失，用第一章的标题收成一章
+            first = chapters[0][0]
+            rest = [_join_blocks(t, bd) for t, bd in chapters[1:]]
+            kept = [(first, _join_blocks(chapters[0][1], *rest))]
+            idx = [0]
+        return kept, idx
+
+    def _chap_final(self, b, full):
+        """由完整切分结果得到「最终章节」：(chapters, ck, 去掉了几个目录条目, 各章下标)。
+
+        列表、导出章节树、EPUB/分章 TXT 都走这一个出口，所以目录与列表永远一致。
+        """
+        chapters, idx = self._chap_apply_del(b, full)
         ck = jzcore.check_chapters([t for t, _body in chapters], self.lang)
-        return chapters, ck, custom
+        return chapters, ck, len(full) - len(chapters), idx
 
     def export_chap_tree(self):
         """把下拉框选中这本书的章节树导出到书库目录：原名_章节树.txt。"""
@@ -4554,15 +4727,22 @@ class App:
                     and cache.get("lang") == self.lang
                     and cache.get("custom") == self._re_for(
                         b, self.custom_re.get().strip() or None)):
-                chapters, ck = cache["chapters"], cache["ck"]
+                full = cache["full"]
             else:
-                chapters, ck, _custom = self._chap_build(b)
+                full, _custom = self._chap_build(b)
+            chapters, ck, gone, idx = self._chap_final(b, full)
         except ValueError as e:
             messagebox.showerror(S["d_re_bad"], str(e))
             return
         except Exception as e:
             messagebox.showerror(S["d_export_fail"], str(e))
             return
+        # 底部章节列表还是空的（没先点「试分章节」），或者展示的是别的书：顺手把这次
+        # 切出来的结果列出来，免得导出了文件、界面上却一片空白看不出切成了什么
+        if (not self.tv_chap.get_children()
+                or (not getattr(self, "_chap_batch", False)
+                    and getattr(self, "_chap_view_path", None) != b["path"])):
+            self._fill_chap_table(b, chapters, ck, gone, idx)
         titles = [t for t, _body in chapters]
         total = sum(len(x[1]) for x in chapters)
         head = (S["tr_book"].format(b["title"] or b["name"]),
@@ -4612,18 +4792,32 @@ class App:
             messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
         try:
-            chapters, ck, custom = self._chap_build(b)
+            full, custom = self._chap_build(b)
+            chapters, ck, gone, idx = self._chap_final(b, full)
         except ValueError as e:
             messagebox.showerror(S["d_re_bad"], str(e))
             return
         except Exception as e:
             messagebox.showerror(S["d_chap_fail"], str(e))
             return
-        # 缓存：导出章节树时不必重新切一遍（换书/换正则/换语言后自动失效）
+        # 缓存完整切分结果：删章重刷 / 导出章节树都不必再读盘切一遍
+        # （换书/换正则/换语言后自动失效）
         self._chap_cache = {"path": b["path"], "custom": custom, "lang": self.lang,
-                            "chapters": chapters, "ck": ck}
+                            "full": full}
+        self._fill_chap_table(b, chapters, ck, gone, idx)
+
+    def _fill_chap_table(self, b, chapters, ck, gone=0, idx=None):
+        """把单本试分结果写进底部表格 + 汇总行（「试分章节」与「导出章节树」共用）。
+
+        idx 是每行在完整切分结果里的下标（删章按它记，不看标题）。
+        """
+        S = self.S
+        self._chap_cols(False)
         for i in self.tv_chap.get_children():
             self.tv_chap.delete(i)
+        self._chap_view_path = b["path"]  # 表格里当前展示的是哪本书
+        self._chap_view_book = b
+        self._chap_row_index = {}  # 行 → 完整切分结果里的下标
         # 校验：异常章整行标红并在「校验」栏写原因，正常的照原样显示；
         # 二级以上（含）的章节树，上级章节（非最里层）在校验栏标出自己处在第几级
         marks, lvmap = ck["marks"], ck["lv"]
@@ -4634,16 +4828,102 @@ class App:
             text = msg or ck["ok"]
             if lv:
                 text = S["chap_ck_lv"].format(lv) + " " + text
-            self.tv_chap.insert("", "end", tags=("bad",) if msg else (),
-                                values=(i, t, "{:,}".format(len(body)), text))
+            iid = self.tv_chap.insert("", "end", tags=("bad",) if msg else (),
+                                      values=(i, t, "{:,}".format(len(body)), text))
+            self._chap_row_index[iid] = idx[i - 1] if idx else i - 1
         total = sum(len(x[1]) for x in chapters)
+        # 汇总行带上「已删除 N 章」，免得用户以为是自己把书切坏了
         self.chap_var.set(S["chap_sum"].format(b["title"], len(chapters), "{:,}".format(total))
-                          + (S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else ""))
+                          + (S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else "")
+                          + (S["chap_del_sum"].format(gone) if gone else ""))
         self._set_book_chaps(b, len(chapters))  # 写回书籍状态 → ① 书库「章节」列同步
         # 日志给全本书的章节树概况：多少级、多少章（章数就是切出的章数）
         self.log("《%s》试分 %d 章%s%s" % (b["title"], len(chapters),
                                          S["chap_tree"].format(ck["levels"]),
                                          S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else ""))
+
+    def popup_chap(self, event):
+        """分章列表右键菜单：删除选中的这一章（只作用于当前这本书）。"""
+        S = self.S
+        if getattr(self, "_chap_batch", False):
+            return  # 批量试分的一行是一本书，没有单章可删
+        row = self.tv_chap.identify_row(event.y)
+        if not row:
+            return
+        self.tv_chap.selection_set(row)
+        title = self.tv_chap.set(row, "title")
+        # 认表格里正在展示的那本书：下拉框可能已经切到别的书但没重试分，
+        # 直接按下拉框取会把这章记到另一本书头上
+        b = self._chap_view_book or self.picked_book()
+        idx = (getattr(self, "_chap_row_index", None) or {}).get(row)
+        if not b or not title or idx is None:
+            return
+        m = tk.Menu(self.root, tearoff=0)
+        m.add_command(label=S["m_chap_del"],
+                      command=lambda: self.del_chapter(b, idx, title))
+        if b.get("chap_del"):
+            m.add_separator()
+            m.add_command(label=S["m_chap_del_undo"],
+                          command=lambda: self.undel_chapters(b))
+        m.tk_popup(event.x_root, event.y_root)
+
+    def del_chapter(self, b, idx, title):
+        """把一章从目录里去掉（正文并进邻章）：只记下标，源文件一个字都不动。
+
+        按下标（不是标题）记，同名章节不会一起被删。
+        """
+        S = self.S
+        book = b["title"] or os.path.splitext(b["name"])[0]
+        # 只剩一条目录时删了就没地方承载正文了（并进邻章也无邻章可并）
+        if len(self.tv_chap.get_children()) <= 1:
+            messagebox.showinfo(S["d_chap_del"], S["d_chap_del_last"],
+                                parent=self.root)
+            return
+        if not messagebox.askyesno(S["d_chap_del"],
+                                   S["d_chap_del_msg"].format(book, title),
+                                   parent=self.root):
+            return
+        dels = {x for x in (b.get("chap_del") or [])
+                if isinstance(x, int) and not isinstance(x, bool)}
+        dels.add(int(idx))
+        b["chap_del"] = sorted(dels)
+        self._save_books_index()  # 与「修改书名」一致：立刻落盘，重开仍在
+        left = self._chap_refresh(b)
+        self.log(S["log_chap_del"].format(title, left))
+
+    def undel_chapters(self, b):
+        """恢复本书被删除的全部章节（源文件本来就完好，只是被清单挡住了）。"""
+        S = self.S
+        n = len(b.get("chap_del") or [])
+        if not n:
+            return
+        b.pop("chap_del", None)
+        self._save_books_index()
+        self._chap_refresh(b)
+        self.log(S["log_chap_del_undo"].format(b["title"] or b["name"], n))
+
+    def _chap_refresh(self, b):
+        """按最新删除记录重刷底部表格：有缓存就复用，不为删一章重读整本书。"""
+        cache = getattr(self, "_chap_cache", None)
+        full = None
+        if (cache and cache.get("path") == b["path"]
+                and cache.get("lang") == self.lang
+                and cache.get("custom") == self._re_for(
+                    b, self.custom_re.get().strip() or None)):
+            full = cache.get("full")
+        if full is None:
+            self.preview_chap(b)
+            return len(self.tv_chap.get_children())
+        chapters, ck, gone, idx = self._chap_final(b, full)
+        self._fill_chap_table(b, chapters, ck, gone, idx)
+        return len(chapters)
+
+    def _save_books_index(self):
+        """书籍字典里改了内容（删章 / 分章规则）就立刻落盘索引，下次打开仍生效。"""
+        self._idx_dirty = False
+        d = self.dir_var.get().strip()
+        if d and os.path.isdir(d):
+            self.save_index_now(d)
 
     def _chap_cols(self, batch):
         """分章表格列头：False=单本预览(章序/标题/字数/校验)，True=批量试分(序号/书名/章节/校验)。"""
@@ -4707,8 +4987,13 @@ class App:
                     text = jzcore.load_text(b["path"])
                     if rules:
                         text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
-                chapters = jzcore.split_chapters(
-                    text, self._re_for(b, custom))  # 本书有自己的规则就用自己的
+                # 本书有自己的规则就用自己的；规则变了先作废旧的删章下标
+                re_used = self._re_for(b, custom)
+                self._chap_rule_sync(b, re_used, save=False)
+                full = jzcore.split_chapters(text, re_used)
+                # 手动删掉的章只去掉目录条目（正文并进邻章），批量章数与导出一致
+                chapters, _kept = self._chap_apply_del(b, full)
+                gone = len(full) - len(chapters)
                 ck = jzcore.check_chapters([t for t, _body in chapters], self.lang)
             except Exception as e:
                 bad += 1
@@ -4723,7 +5008,8 @@ class App:
             # 日志带本书的章节树概况：多少级、多少章（章数由 {3} 给出）
             self.q.put(("log", S["log_chap_per_book"].format(
                 i, total, name, len(chapters), "{:,}".format(len(text)))
-                        + S["chap_tree"].format(ck["levels"])))
+                        + S["chap_tree"].format(ck["levels"])
+                        + (S["chap_del_sum"].format(gone) if gone else "")))
         self.q.put(("prog", (total, total, S["prog_done"])))
         self.q.put(("done", ("chap", ok_n, sum_n, bad, self.cancel, ck_bad)))
 
@@ -4835,7 +5121,13 @@ class App:
                         if want_sum:
                             trace = st.get("trace")
                             blank_n = st.get("blank", 0)
-                chapters = jzcore.split_chapters(text, self._re_for(b, custom))
+                re_used = self._re_for(b, custom)
+                self._chap_rule_sync(b, re_used, save=False)  # 规则变了先作废删章下标
+                full = jzcore.split_chapters(text, re_used)
+                # 「试分章节」里右键删掉的章只在目录里消失，正文已并进邻章，
+                # TOC 与列表保持一致
+                chapters, _kept = self._chap_apply_del(b, full)
+                gone = len(full) - len(chapters)
                 b["chapters"] = len(chapters)  # 实际切分结果回写，供①书库展示
                 title = b["title"] or os.path.splitext(b["name"])[0]
                 if name_fmt:
@@ -4850,6 +5142,8 @@ class App:
                 images = (self.fetch_images(text, outdir, base, prefetch, notes,
                                             title=title)
                           if (img_dl and outdir) else None)
+                # 落盘的「整理后 TXT」是整本清洗原文（删章只作用于章节树：
+                # EPUB 目录 / 分章 TXT 不再收录被删的章，源文件和整本 TXT 保持原样）
                 if mode == "inplace":
                     bak = b["path"] + ".bak"
                     if not os.path.exists(bak):
@@ -4887,7 +5181,8 @@ class App:
                         jzcore.save_txt(chapters,
                                         self.uniq(outdir, base + ".txt", also_dir=True),
                                         merge=False)
-                self.q.put(("log", S["log_per_book"].format(i, total, title, len(chapters), removed)))
+                self.q.put(("log", S["log_per_book"].format(i, total, title, len(chapters), removed)
+                           + (S["chap_del_sum"].format(gone) if gone else "")))
                 for m in notes:
                     self.q.put(("log", m))
                 if want_sum:
