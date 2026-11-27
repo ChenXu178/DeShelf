@@ -2017,8 +2017,14 @@ const Core = (() => {
       }
       if(hit!==null){
         const body=buf.join("\n").trim();
-        if(body){chapters.push({t:cur,b:body});cur=hit;}
-        else cur=(cur==="开篇")?hit:cur+" "+hit;
+        /* 上一章：有正文就收下；没正文但本来就是标题（连续标题）也单独成条 ——
+           绝不把多级标题压成一行。「开篇」的空占位不留。 */
+        if(body||cur!=="开篇") chapters.push({t:cur,b:body});
+        /* 一行里写了多级（「第一部 风起云涌 第一卷 新手村 第1章 初出茅庐」）：
+           每级各占一条，正文归最里面那一级；上级没有自己的正文行。 */
+        const heads=splitTitleLevels(hit);
+        for(let k=0;k<heads.length-1;k++) chapters.push({t:heads[k],b:""});
+        cur=heads.length?heads[heads.length-1]:hit;
         buf.length=0;
         /* 同行正文归到这一章，缩进照原文留 */
         if(rest){const lead=(raw.match(/^\s*/)||[""])[0];buf.push(lead+rest);}
@@ -2026,8 +2032,7 @@ const Core = (() => {
     }
     const body=buf.join("\n").trim();
     if(body) chapters.push({t:cur,b:body});
-    else if(chapters.length&&cur!=="开篇")
-      chapters[chapters.length-1]={t:chapters[chapters.length-1].t,b:chapters[chapters.length-1].b+"\n"+cur};
+    else if(cur!=="开篇") chapters.push({t:cur,b:""});   /* 文末只有标题也要留在目录里 */
     /* 「开篇」只装着书名/作者这类元信息时不留成章（epub metadata 已有） */
     if(chapters.length&&chapters[0].t==="开篇"){
       const keep=chapters[0].b.split(/\r\n|\r|\n/)
@@ -3125,8 +3130,11 @@ p.cap {
     slots.forEach(function(it,i){esc=esc.split(IMG_PH+i+IMG_PH).join(picTag(it[0],it[1]));});
     return "    <p>"+esc+"</p>";
   }
-  async function buildEpub({title,author,chapters,cover,theme,images}){
+  async function buildEpub({title,author,chapters,cover,theme,images,lang}){
     title=title||"未命名";author=author||"佚名";
+    /* 书里写死的提示文案跟界面语言走（与桌面版 write_epub 的 lang 参数一致）。
+       核心段不依赖外层变量，所以由调用方传进来。 */
+    const EMPTY_CHAPTER=lang==="en"?"(No text in this chapter)":"（本章无正文）";
     const uid="urn:uuid:"+cryptoRandomUuid();
     const hasCover=!!(cover&&cover.data&&cover.data.length);
     /* epub 里的封面文件名按 MIME 归一（与桌面版一致）：封面可能是自选图、网图，
@@ -3135,9 +3143,10 @@ p.cap {
       "image/webp":".webp","image/bmp":".bmp"};
     const coverName=hasCover?"cover"+(COVER_EXT_BY_MIME[cover.mime]||".jpg"):"";
     const hasImg=!!(images&&images.size);
-    const manifest=[],spine=[],navpoints=[],pages=[];
+    const manifest=[],spine=[],pages=[];
     if(hasCover){
-      manifest.push('    <item id="cover-img" href="'+coverName+'" media-type="'+cover.mime+'"/>');
+      manifest.push('    <item id="cover-img" href="'+coverName+'" media-type="'+cover.mime+
+        '" properties="cover-image"/>');
       manifest.push('    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>');
     }
     if(hasImg){
@@ -3152,26 +3161,28 @@ p.cap {
       const n=i+1;
       let paras=ch.b.split(/\r\n|\r|\n/).map(x=>x.trim()).filter(Boolean)
         .map(x=>paraWithImages(x,images)||("    <p>"+xmlEsc(x)+"</p>")).join("\n");
-      if(!paras) paras="    <p>（本章无正文）</p>";
+      if(!paras) paras="    <p>"+EMPTY_CHAPTER+"</p>";
       pages.push({i:n,t:ch.t,html:paras});
       manifest.push('    <item id="c'+n+'" href="c'+pad4(n)+'.xhtml" media-type="application/xhtml+xml"/>');
       spine.push('    <itemref idref="c'+n+'"/>');
-      navpoints.push('    <navPoint id="np'+n+'" playOrder="'+n+'">\n'+
-        '      <navLabel><text>'+xmlEsc(ch.t)+'</text></navLabel>\n'+
-        '      <content src="c'+pad4(n)+'.xhtml"/>\n    </navPoint>');
     });
+    /* 目录树：nav（EPUB3）与 NCX（EPUB2 兼容）都按它逐级嵌套，侧边栏可展开 */
+    const tocNodes=chapterTocNodes(pages.map(p=>p.t));
+    const modified=new Date().toISOString().replace(/\.\d{3}Z$/,"Z");
     const coverMeta=hasCover?'    <meta name="cover" content="cover-img"/>\n':'';
     const spineHead=hasCover?'    <itemref idref="cover"/>\n':'';
     const guide=hasCover?'  <guide>\n    <reference type="cover" title="封面" href="cover.xhtml"/>\n  </guide>\n':'';
     const opf="<?xml version='1.0' encoding='utf-8'?>\n"+
-      "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"2.0\" unique-identifier=\"BookId\">\n"+
+      "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"BookId\">\n"+
       '  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">\n'+
       "    <dc:title>"+xmlEsc(title)+"</dc:title>\n"+
       '    <dc:creator opf:role="aut">'+xmlEsc(author)+"</dc:creator>\n"+
       "    <dc:language>zh-CN</dc:language>\n"+
       '    <dc:identifier id="BookId">'+uid+"</dc:identifier>\n"+
+      '    <meta property="dcterms:modified">'+modified+"</meta>\n"+
       coverMeta+
       "  </metadata>\n  <manifest>\n"+
+      '    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>\n'+
       '    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>\n'+
       '    <item id="css" href="style.css" media-type="text/css"/>\n'+
       manifest.join("\n")+"\n  </manifest>\n"+
@@ -3182,11 +3193,19 @@ p.cap {
       '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-01-01">\n'+
       '  <head><meta name="dtb:uid" content="'+uid+'"/></head>\n'+
       "  <docTitle><text>"+xmlEsc(title)+"</text></docTitle>\n"+
-      "  <navMap>\n"+navpoints.join("\n")+"\n  </navMap>\n</ncx>\n";
+      "  <navMap>\n"+ncxPoints(tocNodes,2,{n:0}).join("\n")+"\n  </navMap>\n</ncx>\n";
+    const nav="<?xml version='1.0' encoding='utf-8'?>\n"+
+      "<!DOCTYPE html>\n"+
+      '<html xmlns="http://www.w3.org/1999/xhtml" '+
+      'xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh-CN">\n'+
+      "<head>\n  <meta charset=\"utf-8\"/>\n  <title>目录</title>\n</head>\n"+
+      "<body>\n  <nav epub:type=\"toc\" id=\"toc\">\n    <h1>目录</h1>\n"+
+      navList(tocNodes,2).join("\n")+"\n  </nav>\n</body>\n</html>\n";
     const entries=[{name:"mimetype",data:"application/epub+zip",stored:true}];
     entries.push({name:"META-INF/container.xml",data:CONTAINER});
     entries.push({name:"OEBPS/content.opf",data:opf});
     entries.push({name:"OEBPS/toc.ncx",data:ncx});
+    entries.push({name:"OEBPS/nav.xhtml",data:nav});
     let css=themeCss(theme);
     if(hasImg){
       /* 主题自己写了插图规则就一字不动，只给没写的补最小兜底 */
@@ -3590,15 +3609,16 @@ p.cap {
     return total+section+num;
   }
   /* 序号只认结构位置上的：标题开头、分隔符之后、或紧接上一个序号；
-     「卷册」类量词（部/卷/集/篇）右侧还必须是分隔符或结尾，否则整句正文会被当上级 */
-  function parseChapNumbers(title){
+     「卷册」类量词（部/卷/集/篇）右侧还必须是分隔符或结尾，否则整句正文会被当上级。
+     返回 [[起,止,值,单位字]]：位置供 splitTitleLevels 按层级切标题。 */
+  function chapNumberSpans(title){
     const s=String(title||"").replace(LITERAL_ESC,"").trim();
     if(!s)return [];
     const head=s.slice(0,40);
     const em=head.match(EXTRA_NO_RE);
     if(em&&(em.index===0||SEP_CHARS.has(head[em.index-1]))){
       const v=cnToInt(em[2]);
-      if(v!==null)return [[v,em[1]]];
+      if(v!==null)return [[em.index,em.index+em[0].length,v,em[1]]];
     }
     const cands=[];
     CHAP_NO_RE.lastIndex=0;
@@ -3618,13 +3638,32 @@ p.cap {
       const rightOk=(en>=head.length||SEP_CHARS.has(head[en])
         ||(i+1<cands.length&&cands[i+1][0]===en));
       if(!rightOk&&!(st===0&&CHAP_LIKE.has(u)))continue;
-      out.push([v,u]);last=en;
+      out.push([st,en,v,u]);last=en;
     }
     if(!out.length){
       const lm=head.match(LEAD_NO_RE);
-      if(lm){const v=cnToInt(lm[1]);if(v!==null)out.push([v,"章"]);}
+      if(lm){const v=cnToInt(lm[1]);if(v!==null)out.push([lm.index,lm.index+lm[0].length,v,"章"]);}
     }
     return out;
+  }
+  function parseChapNumbers(title){
+    return chapNumberSpans(title).map(x=>[x[2],x[3]]);
+  }
+  /* 把一行标题按层级序号切成多段，每段只装自己这一级（与桌面版 split_title_levels 一致）：
+     「第一部 风起云涌 第一卷 新手村 第1章 初出茅庐」→ 三段。
+     只有一个序号或抽不到序号时原样返回一段。 */
+  function splitTitleLevels(title){
+    const s=String(title||"").replace(LITERAL_ESC,"").trim();
+    const spans=chapNumberSpans(s);
+    if(spans.length<=1)return s?[s]:[];
+    const segs=[];
+    for(let i=0;i<spans.length;i++){
+      const begin=i===0?0:spans[i][0];
+      const end=i+1<spans.length?spans[i+1][0]:s.length;
+      const seg=s.slice(begin,end).trim();
+      if(seg)segs.push(seg);
+    }
+    return segs.length?segs:[s];
   }
   function isExtraTitle(title){return CHAPTER_EXTRA_RE.test(String(title||""));}
 
@@ -3894,12 +3933,9 @@ p.cap {
       tree:main.length+extra.length,levels:Math.max(r1.levels,r2.levels),
       lv:lv,depths:depths};
   }
-  function chapterTreeReport(titles,ck,head,lang){
-    const R=RP_LABEL[lang]||RP_LABEL.zh;
-    titles=Array.from(titles||[]);
-    if(!ck)ck=checkChapters(titles,lang);
-    const marks=ck.marks||{},lvmap=ck.lv||{},depths=ck.depths||{};
-    const okText=ck.ok||R.ok;
+  /* 每一行的「显示层级 / 参与编号的章序 / 序号链」：一行里写了多级时按最外层算。
+     章节树导出与 EPUB 目录树共用，保证两边看到的层级一致（与桌面版 _report_meta 一致） */
+  function reportMeta(titles,depths){
     const meta=[];
     let seq=0;
     for(let i=1;i<=titles.length;i++){
@@ -3908,6 +3944,15 @@ p.cap {
       if(d===undefined)meta.push([0,0,toks]);
       else{seq++;meta.push([Math.max(1,d-Math.max(0,toks.length-1)),seq,toks]);}
     }
+    return meta;
+  }
+  function chapterTreeReport(titles,ck,head,lang){
+    const R=RP_LABEL[lang]||RP_LABEL.zh;
+    titles=Array.from(titles||[]);
+    if(!ck)ck=checkChapters(titles,lang);
+    const marks=ck.marks||{},lvmap=ck.lv||{},depths=ck.depths||{};
+    const okText=ck.ok||R.ok;
+    const meta=reportMeta(titles,depths);
     const lines=[R.title];
     for(const h of (head||[]))lines.push(String(h));
     lines.push("");
@@ -3939,12 +3984,61 @@ p.cap {
     return lines.join("\n")+"\n";
   }
 
+  /* 把章节标题整理成嵌套目录树，nav / NCX 共用（与桌面版 chapter_toc_nodes 一致）：
+     {title, page, kids}，page 是 1 基的章节页序号。层级不跳级（新层最多比上一章深一层），
+     序号抽不到的占位章按顶层算。 */
+  function chapterTocNodes(titles){
+    titles=Array.from(titles||[]);
+    if(!titles.length)return [];
+    const depths=checkChapters(titles).depths||{};
+    const roots=[],stack=[];
+    reportMeta(titles,depths).forEach(function(it,i){
+      let d=it[0]||1;
+      if(stack.length)d=Math.min(d,stack[stack.length-1][0]+1);
+      d=Math.max(1,d);
+      while(stack.length&&stack[stack.length-1][0]>=d)stack.pop();
+      const node={title:String(titles[i]||"").trim(),page:i+1,kids:[]};
+      (stack.length?stack[stack.length-1][1]:roots).push(node);
+      stack.push([d,node.kids]);
+    });
+    return roots;
+  }
+  /* 目录树 → 嵌套 <navPoint>：子层写进父层里，playOrder 按先序递增 */
+  function ncxPoints(nodes,ind,seq){
+    const pad="  ".repeat(ind),out=[];
+    for(const nd of nodes){
+      seq.n++;
+      const n=seq.n;
+      out.push(pad+'<navPoint id="np'+n+'" playOrder="'+n+'">');
+      out.push(pad+"  <navLabel><text>"+xmlEsc(nd.title)+"</text></navLabel>");
+      out.push(pad+'  <content src="c'+pad4(nd.page)+'.xhtml"/>');
+      if(nd.kids.length)out.push.apply(out,ncxPoints(nd.kids,ind+1,seq));
+      out.push(pad+"</navPoint>");
+    }
+    return out;
+  }
+  /* 目录树 → 嵌套 <ol>（EPUB3 nav 导航文档） */
+  function navList(nodes,ind){
+    const pad="  ".repeat(ind),out=[pad+"<ol>"];
+    for(const nd of nodes){
+      const href="c"+pad4(nd.page)+".xhtml",t=xmlEsc(nd.title);
+      if(nd.kids.length){
+        out.push(pad+'  <li><a href="'+href+'">'+t+"</a>");
+        out.push.apply(out,navList(nd.kids,ind+2));
+        out.push(pad+"  </li>");
+      }else out.push(pad+'  <li><a href="'+href+'">'+t+"</a></li>");
+    }
+    out.push(pad+"</ol>");
+    return out;
+  }
+
   return {detectEnc,decodeBytes,countChars,humanSize,guessMeta,cleanName,
     RULES,DEFAULT_ON,cleanText,cleanTextAsync,verifyImageLinks,findImageLinks,
     imageLinksInText,fetchImages,imagesForEpub,
     imgWorthTrying,imgFullUrl,probeImage,fetchImageBytes,
     toHalfwidth,splitChapters,scanParaIssues,
-    cnToInt,parseChapNumbers,isExtraTitle,checkChapters,chapterTreeReport,
+    cnToInt,parseChapNumbers,splitTitleLevels,isExtraTitle,checkChapters,chapterTreeReport,
+    chapterTocNodes,
     buildZip,deflateRawBytes,buildEpub,buildMergedTxt,buildSplitZip,safeFileName,
     applyNameFormat,hasBookToken,nameFmtBadChars,
     buildCleanSummary,lineCount,nowStamp,SUM_KINDS,SUM_TEXT,
@@ -4763,10 +4857,13 @@ function renderChapList(chs,ck){
     const lv=ck.lv[no];
     let state=msg||ck.ok;
     if(lv)state=fill(T("chkLv"),{0:lv})+" "+state;
+    /* 按章节树层级缩进：部 → 卷 → 章 逐级右移（多级标题已在切分时拆成独立条目） */
+    const depth=ck.depths[no]||1;
+    const indent=depth>1?' style="padding-left:'+((depth-1)*16)+'px"':'';
     const d=document.createElement("div");
     d.className="ch"+(msg?" bad":"")+(lv?" lv":"");
     d.innerHTML='<span class="no">'+no+'</span>'
-      +'<span class="ti">'+esc(c.t)+'</span>'
+      +'<span class="ti"'+indent+'>'+esc(c.t)+'</span>'
       +'<span class="ct">'+fmtNum(Core.countChars(c.b))+'</span>'
       +'<span class="ck">'+esc(state)+'</span>';
     d.title=c.t+(state?"  |  "+state:"");
@@ -5620,7 +5717,7 @@ async function runExport(){
       if(fmts.includes("epub")){
         /* 封面窗里定过的直接用那份字节；没定过才回退到同名图 / 默认封面 */
         const u8=await Core.buildEpub({title:b.title||base,author:b.author||"",chapters,
-          theme:themeId(),cover:await coverFor(b),images:epubImages});
+          theme:themeId(),cover:await coverFor(b),images:epubImages,lang:CUR});
         files.push({name:base+".epub",data:u8,mime:"application/epub+zip"});
         if(hasImgs) log(fill(T("logImgSaved"),{name:b.title||b.name,n:epubImages.size}));
       }

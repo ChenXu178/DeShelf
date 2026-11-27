@@ -679,15 +679,19 @@ try {
     try{ await window.runExport(); }catch(e){}
     await new Promise(r2=>setTimeout(r2,1500));
     window.dlBytes=real;
-    let hasName=false,hasXhtml=false;
+    let hasName=false,hasXhtml=false,hasNav=false,hasNcx=false;
     if(cap&&cap.length){
       const s=new TextDecoder('latin1').decode(cap);
       hasName=s.indexOf('OEBPS/cover.jpg')>=0;
       hasXhtml=s.indexOf('OEBPS/cover.xhtml')>=0;
+      hasNav=s.indexOf('OEBPS/nav.xhtml')>=0;
+      hasNcx=s.indexOf('OEBPS/toc.ncx')>=0;
     }
-    return {bytes:cap?cap.length:0,hasName,hasXhtml};
+    return {bytes:cap?cap.length:0,hasName,hasXhtml,hasNav,hasNcx};
   })()`);
   ok("导出 EPUB 带上封面窗设置的封面", r.val && r.val.bytes > 400 && r.val.hasName && r.val.hasXhtml,
+    JSON.stringify(r.err || r.val));
+  ok("导出 EPUB 含 nav 导航文档与 NCX", r.val && r.val.hasNav && r.val.hasNcx,
     JSON.stringify(r.err || r.val));
 
   // 8f. 没勾「导出 EPUB」时，版面主题 / 封面整组置灰
@@ -720,6 +724,50 @@ try {
   ok("运行日志：插图进度只占一行且走到最后一张", r.val && r.val.n === 1
     && /3\/3/.test(r.val.last) && r.val.after === 1 && r.val.ended,
     JSON.stringify(r.err || r.val));
+
+  // 8h. 多级章节（部/卷/章）：拆成独立条目，列表按层级缩进
+  //     放在最后：dropFilesToLib 会用这本新书替换整个书库，前面的断言不受影响
+  r = await evalv(`(async () => {
+    const text = "第一部 风起云涌\\n\\n第一卷 新手村\\n\\n第1章 初出茅庐\\n\\n正文甲。\\n\\n"
+      + "第2章 名声鹊起\\n\\n正文乙。\\n\\n第二卷 剑指中原\\n\\n第1章 再起\\n\\n正文丙。\\n";
+    const f = new File([text], "多层章节书.txt", {type:"text/plain"});
+    await window.dropFilesToLib([f], false);
+    await new Promise(r2=>setTimeout(r2,1200));
+    window.fillChapBook();
+    const sel=document.getElementById("chapBook");
+    sel.value="0";sel.dispatchEvent(new Event("change"));
+    await new Promise(r2=>setTimeout(r2,200));
+    await window.tryChapters();
+    await new Promise(r2=>setTimeout(r2,600));
+    const rows=[...document.querySelectorAll("#chapList .ch")];
+    const ti=n=>rows[n-1]?rows[n-1].querySelector(".ti"):null;
+    const ck=n=>rows[n-1]?rows[n-1].querySelector(".ck"):null;
+    return {
+      titles: window._lastTry ? window._lastTry.chs.map(c=>c.t) : [],
+      bodies: window._lastTry ? window._lastTry.chs.map(c=>c.b) : [],
+      n: rows.length,
+      ck1: ck(1) ? ck(1).textContent : "",
+      ck2: ck(2) ? ck(2).textContent : "",
+      pad1: ti(1) ? ti(1).style.paddingLeft : "",
+      pad2: ti(2) ? ti(2).style.paddingLeft : "",
+      pad3: ti(3) ? ti(3).style.paddingLeft : ""
+    };
+  })()`);
+  console.log("  · 多级章节:", JSON.stringify(r.err || r.val));
+  ok("网页版多级标题各占一行",
+    r.val && r.val.titles.join("|") ===
+      "第一部 风起云涌|第一卷 新手村|第1章 初出茅庐|第2章 名声鹊起|第二卷 剑指中原|第1章 再起",
+    JSON.stringify(r.val && r.val.titles));
+  ok("网页版部/卷没有正文，正文落在第章",
+    r.val && r.val.bodies[0] === "" && r.val.bodies[1] === ""
+      && /正文甲/.test(r.val.bodies[2]) && /正文乙/.test(r.val.bodies[3]),
+    JSON.stringify(r.val && r.val.bodies));
+  ok("章节列表按层级缩进（部顶格、卷 +16、章 +32）",
+    r.val && r.val.pad1 === "" && r.val.pad2 === "16px" && r.val.pad3 === "32px",
+    JSON.stringify(r.val && [r.val.pad1, r.val.pad2, r.val.pad3]));
+  ok("校验栏标出部/卷的层级",
+    r.val && /第1级/.test(r.val.ck1) && /第2级/.test(r.val.ck2),
+    JSON.stringify(r.val && [r.val.ck1, r.val.ck2]));
 
   // 收尾：恢复默认主题，避免影响后续人工使用
   await evalv("St.theme=Core.DEFAULT_THEME;cfgSet('theme',Core.DEFAULT_THEME);refreshThemeBtn();");

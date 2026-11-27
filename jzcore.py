@@ -2109,6 +2109,10 @@ def split_chapters_located(text, custom=None):
     正文预览要按原文行号定位章节、并逐行原样显示（空行、缩进都不能动），
     所以不能再拿「章节正文的行数」去累加——正文被 strip 过、章与章之间的
     空行也不在正文里。起始行号在切分时顺手记下最准。
+
+    多级章节树的每一级都是独立条目，绝不压成一行：一行里写了「第一部 …
+    第一卷 … 第1章 …」会拆成三条；连续几行各是一个标题时也各占一条。
+    上级条目（部/卷）没有自己的正文，正文归最里面那一级；标题不会丢。
     """
     if custom:
         try:
@@ -2148,17 +2152,17 @@ def split_chapters_located(text, custom=None):
                             break
         if hit is not None:
             body = "\n".join(buf).strip()
-            if body:
+            # 上一章：有正文就收下；没正文但本来就是标题（连续标题）也单独成条 ——
+            # 绝不把多级标题压成一行。「开篇」的空占位不留。
+            if body or cur_title != "开篇":
                 chapters.append((cur_title, body, cur_start))
-                cur_title = hit
-                cur_start = i
-            else:
-                # 连续标题或误判：合并标题，绝不丢弃已有的标题文字
-                if cur_title == "开篇":
-                    cur_title = hit
-                    cur_start = i
-                else:
-                    cur_title = cur_title + " " + hit
+            # 一行里写了多级（「第一部 风起云涌 第一卷 新手村 第1章 初出茅庐」）：
+            # 每级各占一条，正文行归最里面那一级；上级没有自己的正文行。
+            heads = split_title_levels(hit)
+            for h in heads[:-1]:
+                chapters.append((h, "", i))
+            cur_title = heads[-1] if heads else hit
+            cur_start = i
             buf = []
             # 同行正文归到这一章，缩进照原文留
             if tail:
@@ -2168,9 +2172,9 @@ def split_chapters_located(text, custom=None):
     body = "\n".join(buf).strip()
     if body:
         chapters.append((cur_title, body, cur_start))
-    elif chapters and cur_title not in ("开篇",):
-        chapters[-1] = (chapters[-1][0], chapters[-1][1] + "\n" + cur_title,
-                        chapters[-1][2])
+    elif cur_title not in ("开篇",):
+        # 最后一章只有标题、没有正文：标题仍要留在目录里
+        chapters.append((cur_title, "", cur_start))
     # 「开篇」只装着书名/作者/简介这类元信息时不留成章：epub 的 metadata 已有这些
     if chapters and chapters[0][0] == "开篇":
         keep = [ln for ln in chapters[0][1].splitlines()
@@ -2290,12 +2294,11 @@ _SEP_CHARS = set(
 _CHAP_LIKE_UNITS = set("章节節回话話折")
 
 
-def parse_chap_numbers(title):
-    """从一个章节标题里取出全部序号，返回 [(值, 单位字)]，按出现顺序。
+def chapter_number_spans(title):
+    """从一个章节标题里取出全部序号及其位置，返回 [(起, 止, 值, 单位字)]。
 
-    一行里可以有多级（「第一部 第二卷 第三十一章」→ 三个号）。抽不到返回 []。
-    单位字只是「这个号属于哪一类」的标识，不参与层级排序 —— 层级由
-    check_chapters 按本书实际的数字变化动态推断。
+    规则与 parse_chap_numbers 完全一致，只是多带序号在（strip 过的）标题里
+    的起止下标，供 split_title_levels 按层级把一行标题切成多段。抽不到返回 []。
     """
     s = _LITERAL_ESC.sub("", title or "").strip()
     if not s:
@@ -2305,7 +2308,8 @@ def parse_chap_numbers(title):
     if m and (m.start() == 0 or head[m.start() - 1] in _SEP_CHARS):
         v = cn_to_int(m.group("n"))
         if v is not None:
-            return [(v, m.group("u"))]       # 单位字用标记词本身：番外/后记各成一条
+            # 单位字用标记词本身：番外/后记各成一条
+            return [(m.start(), m.end(), v, m.group("u"))]
     cands = []
     for m in _CHAP_NO_RE.finditer(head):
         if m.group("u1"):
@@ -2328,15 +2332,44 @@ def parse_chap_numbers(title):
                     or (i + 1 < len(cands) and cands[i + 1][0] == en))
         if not right_ok and not (st == 0 and u in _CHAP_LIKE_UNITS):
             continue
-        out.append((v, u))
+        out.append((st, en, v, u))
         last = en
     if not out:                              # 「12、」「十二、」这类没有量词的写法
         m = _LEAD_NO_RE.match(head)
         if m:
             v = cn_to_int(m.group("n"))
             if v is not None:
-                out.append((v, "章"))
+                out.append((m.start(), m.end(), v, "章"))
     return out
+
+
+def parse_chap_numbers(title):
+    """从一个章节标题里取出全部序号，返回 [(值, 单位字)]，按出现顺序。
+
+    一行里可以有多级（「第一部 第二卷 第三十一章」→ 三个号）。抽不到返回 []。
+    单位字只是「这个号属于哪一类」的标识，不参与层级排序 —— 层级由
+    check_chapters 按本书实际的数字变化动态推断。
+    """
+    return [(v, u) for _st, _en, v, u in chapter_number_spans(title)]
+
+
+def split_title_levels(title):
+    """把一行标题按层级序号切成多段，每段只装自己这一级。
+    只有一个序号（普通章节）或抽不到序号时原样返回一段，不受影响。
+    序号前零星不属于序号的文字（如「【免费】第1章 …」）跟着第一段走，不丢字。
+    """
+    s = _LITERAL_ESC.sub("", title or "").strip()
+    spans = chapter_number_spans(s)
+    if len(spans) <= 1:
+        return [s] if s else []
+    segs = []
+    for i, (st, _en, _v, _u) in enumerate(spans):
+        begin = 0 if i == 0 else st
+        end = spans[i + 1][0] if i + 1 < len(spans) else len(s)
+        seg = s[begin:end].strip()
+        if seg:
+            segs.append(seg)
+    return segs or [s]
 
 
 def is_extra_title(title):
@@ -2882,6 +2915,67 @@ def chapter_tree_report(titles, ck=None, head=(), indent="    ", lang="zh"):
                      % (indent * (disp - 1) if disp else "", num,
                         (titles[i - 1] or "").strip(), chain, state))
     return "\n".join(lines) + "\n"
+
+
+def chapter_toc_nodes(titles):
+    """把章节标题整理成嵌套的目录树（EPUB 的 nav / NCX 共用）。
+
+    返回顶层节点列表，节点形如 {"title", "page", "kids"}，page 是 1 基的
+    章节页序号。层级用 check_chapters 推断的 depths，与「导出章节树」是同一
+    套判断，所以阅读器侧边栏的嵌套顺序和源文档的部/卷/章结构一致。
+    序号抽不到的占位章按顶层算；层级不跳级（新层最多比上一章深一层），
+    免得目录里凭空少一层、子节点挂到看不见的地方去。
+    """
+    titles = list(titles or ())
+    if not titles:
+        return []
+    depths = check_chapters(titles).get("depths") or {}
+    roots, stack = [], []  # stack: [(层深, 该层的子节点列表)]
+    for i, (disp, _num, _toks) in enumerate(_report_meta(titles, depths), 1):
+        d = disp or 1
+        if stack:
+            d = min(d, stack[-1][0] + 1)
+        d = max(1, d)
+        while stack and stack[-1][0] >= d:
+            stack.pop()
+        node = {"title": (titles[i - 1] or "").strip(), "page": i, "kids": []}
+        (stack[-1][1] if stack else roots).append(node)
+        stack.append((d, node["kids"]))
+    return roots
+
+
+def _ncx_points(nodes, ind, seq):
+    """把目录树摊成嵌套的 <navPoint>：子层写进父层里，playOrder 按先序递增。"""
+    pad = "  " * ind
+    out = []
+    for nd in nodes:
+        seq[0] += 1
+        n = seq[0]
+        out.append('%s<navPoint id="np%d" playOrder="%d">' % (pad, n, n))
+        out.append("%s  <navLabel><text>%s</text></navLabel>"
+                   % (pad, _esc(nd["title"])))
+        out.append('%s  <content src="c%04d.xhtml"/>' % (pad, nd["page"]))
+        if nd["kids"]:
+            out.extend(_ncx_points(nd["kids"], ind + 1, seq))
+        out.append("%s</navPoint>" % pad)
+    return out
+
+
+def _nav_list(nodes, ind):
+    """把目录树摊成嵌套的 <ol>（EPUB3 nav 导航文档用）。"""
+    pad = "  " * ind
+    out = [pad + "<ol>"]
+    for nd in nodes:
+        href = "c%04d.xhtml" % nd["page"]
+        title = _esc(nd["title"])
+        if nd["kids"]:
+            out.append('%s  <li><a href="%s">%s</a>' % (pad, href, title))
+            out.extend(_nav_list(nd["kids"], ind + 2))
+            out.append("%s  </li>" % pad)
+        else:
+            out.append('%s  <li><a href="%s">%s</a></li>' % (pad, href, title))
+    out.append(pad + "</ol>")
+    return out
 
 
 # ---------------------------------------------------------------- 导出
@@ -3913,9 +4007,23 @@ def _para_with_images(line, images):
     return "    <p>%s</p>" % _put_back(_esc(s), slots)
 
 
+# EPUB 里写给读者的固定文案，跟界面语言走（见 write_epub 的 lang 参数）
+_EPUB_LABEL = {
+    "zh": {"empty": "（本章无正文）"},
+    "en": {"empty": "(No text in this chapter)"},
+}
+
+
 def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
-               images=None):
-    """用标准库 zipfile 手写 EPUB 2.0（含 toc.ncx，兼容绝大多数阅读器）。
+               images=None, lang="zh"):
+    """用标准库 zipfile 手写 EPUB 3（nav 导航文档 + NCX 双份，兼容旧阅读器）。
+
+    目录按源文档的章节树逐级嵌套：nav.xhtml 写多层 <ol>，toc.ncx 写嵌套
+    navPoint，阅读器侧边栏可一层层展开；层级取自 chapter_toc_nodes，与
+    「导出章节树」用的是同一套判断。
+
+    lang: 界面语言（"zh"/"en"），只影响书里写死的提示文案，比如空白章那句
+          「本章无正文」在英文界面下写成英文
 
     cover: cover_for_book / make_cover / prepare_cover_image 的返回值，
            None 表示不带封面（与旧版输出一致）；epub 内部文件名按 MIME
@@ -3926,8 +4034,11 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
            给了就把正文里的插图链接换成 images/xxx 并把图片一起打进 epub
     """
     uid = "urn:uuid:" + str(uuid.uuid4())
+    # EPUB3 的 metadata 必须带 dcterms:modified（格式固定为 UTC 的 ISO 8601）
+    modified = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     title = title or "未命名"
     author = author or "佚名"
+    L = _EPUB_LABEL.get(lang) or _EPUB_LABEL["zh"]
     # 先把图片读进内存：读失败的直接不算，正文里那条链接就保持原样
     img_files = []                 # [(epub 内文件名, mime, 字节)]
     img_map = {}                   # 链接键 -> epub 内 href
@@ -3950,20 +4061,15 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
             if p:
                 paras.append(_para_with_images(p, img_map)
                              or ("    <p>%s</p>" % _esc(p)))
-        pages.append((i, ctitle, "\n".join(paras) or "    <p>（本章无正文）</p>"))
+        pages.append((i, ctitle, "\n".join(paras) or "    <p>%s</p>" % L["empty"]))
 
     manifest = []
     spine = []
-    navpoints = []
-    for i, ctitle, _ in pages:
+    for i, _ctitle, _ in pages:
         manifest.append('    <item id="c%d" href="c%04d.xhtml" media-type="application/xhtml+xml"/>' % (i, i))
         spine.append('    <itemref idref="c%d"/>' % i)
-        navpoints.append(
-            '    <navPoint id="np%d" playOrder="%d">\n'
-            "      <navLabel><text>%s</text></navLabel>\n"
-            '      <content src="c%04d.xhtml"/>\n'
-            "    </navPoint>" % (i, i, _esc(ctitle), i)
-        )
+    # 目录树：nav（EPUB3）与 NCX（EPUB2）都按它逐级嵌套
+    toc_nodes = chapter_toc_nodes([ctitle for _i, ctitle, _ in pages])
     for k, (iname, imime, _data) in enumerate(img_files, 1):
         manifest.append('    <item id="im%d" href="%s%s" media-type="%s"/>'
                         % (k, IMG_HREF_DIR, iname, imime))
@@ -3980,8 +4086,8 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
         # EPUB2 认 <meta name="cover">；EPUB3 认 properties="cover-image"，
         # 两个都写，老阅读器和新阅读器都能取到缩略图。
         cover_meta = '    <meta name="cover" content="cover-img"/>\n'
-        manifest.insert(0, '    <item id="cover-img" href="%s" media-type="%s"/>'
-                        % (cover_name, cmime))
+        manifest.insert(0, '    <item id="cover-img" href="%s" media-type="%s" '
+                           'properties="cover-image"/>' % (cover_name, cmime))
         manifest.insert(1, '    <item id="cover" href="cover.xhtml" '
                            'media-type="application/xhtml+xml"/>')
         spine_cover = '    <itemref idref="cover"/>\n'
@@ -3991,16 +4097,19 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
 
     opf = (
         "<?xml version='1.0' encoding='utf-8'?>\n"
-        '<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="BookId">\n'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="BookId">\n'
         '  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" '
         'xmlns:opf="http://www.idpf.org/2007/opf">\n'
         "    <dc:title>%s</dc:title>\n"
         "    <dc:creator opf:role=\"aut\">%s</dc:creator>\n"
         "    <dc:language>zh-CN</dc:language>\n"
         "    <dc:identifier id=\"BookId\">%s</dc:identifier>\n"
+        '    <meta property="dcterms:modified">%s</meta>\n'
         "%s"
         "  </metadata>\n"
         "  <manifest>\n"
+        '    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" '
+        'properties="nav"/>\n'
         '    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>\n'
         '    <item id="css" href="style.css" media-type="text/css"/>\n'
         "%s\n"
@@ -4008,7 +4117,7 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
         '  <spine toc="ncx">\n%s%s\n  </spine>\n'
         "%s"
         "</package>\n"
-    ) % (_esc(title), _esc(author), uid, cover_meta,
+    ) % (_esc(title), _esc(author), uid, modified, cover_meta,
          "\n".join(manifest), spine_cover, "\n".join(spine), guide)
 
     ncx = (
@@ -4017,7 +4126,22 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
         "  <head><meta name=\"dtb:uid\" content=\"%s\"/></head>\n"
         "  <docTitle><text>%s</text></docTitle>\n"
         "  <navMap>\n%s\n  </navMap>\n</ncx>\n"
-    ) % (uid, _esc(title), "\n".join(navpoints))
+    ) % (uid, _esc(title), "\n".join(_ncx_points(toc_nodes, 2, [0])))
+
+    # EPUB3 导航文档：目录本身就是一棵 <ol> 嵌套树，阅读器侧边栏据此逐级展开
+    nav = (
+        "<?xml version='1.0' encoding='utf-8'?>\n"
+        "<!DOCTYPE html>\n"
+        '<html xmlns="http://www.w3.org/1999/xhtml" '
+        'xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh-CN">\n'
+        "<head>\n  <meta charset=\"utf-8\"/>\n  <title>目录</title>\n</head>\n"
+        "<body>\n"
+        '  <nav epub:type="toc" id="toc">\n'
+        "    <h1>目录</h1>\n"
+        "%s\n"
+        "  </nav>\n"
+        "</body>\n</html>\n"
+    ) % "\n".join(_nav_list(toc_nodes, 2))
 
     with zipfile.ZipFile(path, "w") as z:
         info = zipfile.ZipInfo("mimetype")
@@ -4026,6 +4150,7 @@ def write_epub(path, title, author, chapters, cover=None, theme=DEFAULT_THEME,
         z.writestr("META-INF/container.xml", CONTAINER, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/content.opf", opf, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/toc.ncx", ncx, zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/nav.xhtml", nav, zipfile.ZIP_DEFLATED)
         css = theme_css(theme)
         if img_files:
             # 主题自己写了插图规则就一字不动，只给没写的补最小兜底：

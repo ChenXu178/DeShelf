@@ -4971,6 +4971,7 @@ class App:
 
         规则：有上一章 → 「标题 + 正文」追加到上一章正文末尾；
         书开头就被删（没有上一章）→ 接到下一章正文开头（仍按阅读顺序）；
+        只有标题没有正文的上级章节条目 → 直接去掉，不往正文里塞标题；
         极端情况整本条目都被删（界面上会拦住最后一条）→ 收成一章保住正文。
         返回 (目录里的章节, 各自在原切分结果里的下标)：
         下标只用于把表格行对回原书，同名的章互不牵连（见 _chap_rule_sync）。
@@ -4982,8 +4983,12 @@ class App:
         kept, idx, pending = [], [], []
         for i, (title, body) in enumerate(chapters):
             if i in dels:
+                if not body.strip():
+                    # 只有标题、没有正文（「部/卷」这类上级章节条目）：
+                    # 目录里删掉即可，没有正文要并进邻章，别把标题混进正文。
+                    continue
                 # 标题 + 正文按原文那样紧挨着（空行留给「与上一章正文之间」）
-                block = title if not body.strip() else title + "\n" + body.strip("\n")
+                block = title + "\n" + body.strip("\n")
                 if kept:
                     kept[-1] = (kept[-1][0], _join_blocks(kept[-1][1], block))
                 else:
@@ -5185,6 +5190,7 @@ class App:
         # 校验：异常章整行标红并在「校验」栏写原因，正常的照原样显示；
         # 二级以上（含）的章节树，上级章节（非最里层）在校验栏标出自己处在第几级
         marks, lvmap = ck["marks"], ck["lv"]
+        depths = ck.get("depths") or {}
         for i, (t, body) in enumerate(chapters[:2000], 1):
             msg = marks.get(i)
             lv = lvmap.get(i)
@@ -5192,8 +5198,12 @@ class App:
             text = msg or ck["ok"]
             if lv:
                 text = S["chap_ck_lv"].format(lv) + " " + text
+            # 按章节树层级缩进：部 → 卷 → 章 逐级右移，嵌套关系一眼可见
+            # （多级标题在切分时已拆成独立条目，这里只需按深度缩进）
+            depth = depths.get(i) or 1
+            shown = ("    " * (depth - 1) + t) if depth > 1 else t
             iid = self.tv_chap.insert("", "end", tags=("bad",) if msg else (),
-                                      values=(i, t, "{:,}".format(len(body)), text))
+                                      values=(i, shown, "{:,}".format(len(body)), text))
             self._chap_row_index[iid] = idx[i - 1] if idx else i - 1
         total = sum(len(x[1]) for x in chapters)
         # 汇总行带上「已删除 N 章」，免得用户以为是自己把书切坏了
@@ -5216,7 +5226,8 @@ class App:
         if not row:
             return
         self.tv_chap.selection_set(row)
-        title = self.tv_chap.set(row, "title")
+        # 标题列按层级缩进过：确认框/日志里用去掉缩进的原标题
+        title = (self.tv_chap.set(row, "title") or "").strip()
         # 认表格里正在展示的那本书：下拉框可能已经切到别的书但没重试分，
         # 直接按下拉框取会把这章记到另一本书头上
         b = self._chap_view_book or self.picked_book()
@@ -5537,7 +5548,7 @@ class App:
                         jzcore.write_epub(self.uniq(outdir, base + ".epub"),
                                           title, b["author"], chapters,
                                           cover=cover, theme=theme,
-                                          images=images)
+                                          images=images, lang=self.lang)
                     # “输出到新目录”落盘的 TXT 与合并 TXT 内容等价，避免生成重复文件
                     if "merge" in fmts and mode != "new":
                         jzcore.save_txt(chapters, self.uniq(outdir, base + ".txt"), merge=True)
