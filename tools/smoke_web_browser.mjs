@@ -18,6 +18,7 @@ const PORT = await new Promise(res => {
   s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => res(p)); });
 });
 const PROFILE = path.join(process.env.TEMP || "/tmp", "deshelf_smoke_" + Date.now());
+const SHOT = "web/_ui_shot.png";   // 调试截图，跑完自动删
 
 const results = [];
 function ok(name, cond, extra) {
@@ -285,8 +286,8 @@ try {
     await sleep(400);
     const shot = await send("Page.captureScreenshot", { format: "png" });
     if (shot.result && shot.result.data) {
-      fs.writeFileSync("web/_ui_shot.png", Buffer.from(shot.result.data, "base64"));
-      console.log("  分章页截图已存 web/_ui_shot.png");
+      fs.writeFileSync(SHOT, Buffer.from(shot.result.data, "base64"));
+      console.log("  分章页截图已存 " + SHOT + "（跑完自动清理）");
     }
   } catch (e) { console.error("截图失败:", e.message); }
 
@@ -733,6 +734,10 @@ try {
   process.exitCode = 1;
 } finally {
   try { edge.kill(); } catch (_) {}
+  await sleep(300);   // 等 Edge 退出、释放 user-data-dir 里的锁
+  // 清理测试产物：临时浏览器档案（%TEMP%）与调试截图
+  try { fs.rmSync(PROFILE, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (_) {}
+  try { fs.rmSync(SHOT, { force: true }); } catch (_) {}
 }
 const failed = results.filter(x => x.startsWith("✗")).length;
 console.log("\n冒烟结果：" + (results.length - failed) + " 通过 / " + failed + " 失败");

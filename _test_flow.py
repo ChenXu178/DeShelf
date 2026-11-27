@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """端到端流程测试：真实调用 App.run_worker，覆盖 输出到新目录 / 原地覆盖 两种去向。"""
+import atexit
 import os
 import re
 import shutil
@@ -14,6 +15,11 @@ os.environ["JUANZHI_LANG"] = "zh"
 import tkinter as tk
 
 import jzcore
+
+# 测试不能受本机配置影响：用户配置里的「上次目录」会自动载入书库索引，
+# 而索引顶层的全局分章正则（chap_re）会盖掉默认规则，让分章结果对不上
+jzcore.load_config = lambda: {}
+jzcore.save_config = lambda cfg: None
 
 os.startfile = lambda p: None  # 防止测试时弹出资源管理器
 
@@ -33,8 +39,12 @@ _D.messagebox.showwarning = _stub_showinfo
 _D.messagebox.showerror = lambda *a, **k: _errors.append(a)
 
 BASE = os.path.join(HERE, "_flow")
-if os.path.isdir(BASE):
-    shutil.move(BASE, BASE + "_" + time.strftime("%H%M%S"))
+# 旧版把上次目录挪成 _flow_HHMMSS（越攒越多）：直接删干净，跑完也整目录删掉
+shutil.rmtree(BASE, ignore_errors=True)
+for _name in os.listdir(HERE):
+    if _name.startswith("_flow"):
+        shutil.rmtree(os.path.join(HERE, _name), ignore_errors=True)
+atexit.register(shutil.rmtree, BASE, ignore_errors=True)
 SRC = os.path.join(BASE, "src")
 IPSRC = os.path.join(BASE, "inplace")
 OUT = os.path.join(BASE, "out_整理")

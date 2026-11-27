@@ -15,8 +15,10 @@
 
 用法：python _test_cover.py   （不需要联网；图片走本机临时 HTTP 服务）
 """
+import atexit
 import http.server
 import os
+import shutil
 import socketserver
 import struct
 import sys
@@ -92,6 +94,8 @@ def make_png(path, w, h, rgb):
 
 # ---------------------------------------------------------------- 造样本
 BASE = tempfile.mkdtemp(prefix="deshelf_cover_")
+# 样本 / 导出产物全在 BASE 下：跑完连目录一起删，不在临时目录里留垃圾
+atexit.register(shutil.rmtree, BASE, ignore_errors=True)
 LIB = os.path.join(BASE, "lib")
 OUT = os.path.join(BASE, "out")
 SRV = os.path.join(BASE, "srv")

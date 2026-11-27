@@ -1,19 +1,23 @@
 # -*- coding: utf-8 -*-
 """卷帙核心逻辑自测：造样本 → 编码识别 / 清洗 / 分章 / EPUB / 元信息。"""
+import atexit
 import os
 import shutil
 import sys
-import time
+import tempfile
 import zipfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 import jzcore
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_sample")
-if os.path.isdir(ROOT):
-    # 沙箱拦截一切删除，用 move 把旧样本挪开（rename 不被拦截）
-    shutil.move(ROOT, ROOT + "_" + time.strftime("%H%M%S"))
-os.makedirs(ROOT, exist_ok=True)
+# 样本建在系统临时目录里，跑完自动删干净，不再往仓库留 _sample* 目录
+ROOT = tempfile.mkdtemp(prefix="deshelf_core_")
+atexit.register(shutil.rmtree, ROOT, ignore_errors=True)
+# 顺手清掉旧版测试留下的样本目录（以前是挪成 _sample_HHMMSS，越攒越多）
+for _name in os.listdir(HERE):
+    if _name.startswith("_sample"):
+        shutil.rmtree(os.path.join(HERE, _name), ignore_errors=True)
 
 BODY_GBK = """斗破苍穹
 作者：天蚕土豆
