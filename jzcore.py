@@ -2100,6 +2100,16 @@ def split_chapters(text, custom=None):
 
     custom 非空时只使用自定义正则，否则使用内置中文规则库。
     """
+    return [(t, b) for t, b, _ln in split_chapters_located(text, custom)]
+
+
+def split_chapters_located(text, custom=None):
+    """同 split_chapters，但每章多带一个「起始行号」（0 基，原文行号）。
+
+    正文预览要按原文行号定位章节、并逐行原样显示（空行、缩进都不能动），
+    所以不能再拿「章节正文的行数」去累加——正文被 strip 过、章与章之间的
+    空行也不在正文里。起始行号在切分时顺手记下最准。
+    """
     if custom:
         try:
             re.compile(custom)
@@ -2108,10 +2118,11 @@ def split_chapters(text, custom=None):
         pats = [custom]
     else:
         pats = CHAPTER_PATTERNS
-    chapters = []
+    chapters = []  # [(标题, 正文, 起始行号)]
     cur_title = "开篇"
+    cur_start = 0
     buf = []
-    for raw in text.splitlines():
+    for i, raw in enumerate(text.splitlines()):
         s = _LITERAL_ESC.sub("", raw.strip())
         hit = None
         tail = ""
@@ -2138,11 +2149,16 @@ def split_chapters(text, custom=None):
         if hit is not None:
             body = "\n".join(buf).strip()
             if body:
-                chapters.append((cur_title, body))
+                chapters.append((cur_title, body, cur_start))
                 cur_title = hit
+                cur_start = i
             else:
                 # 连续标题或误判：合并标题，绝不丢弃已有的标题文字
-                cur_title = hit if cur_title == "开篇" else cur_title + " " + hit
+                if cur_title == "开篇":
+                    cur_title = hit
+                    cur_start = i
+                else:
+                    cur_title = cur_title + " " + hit
             buf = []
             # 同行正文归到这一章，缩进照原文留
             if tail:
@@ -2151,9 +2167,10 @@ def split_chapters(text, custom=None):
             buf.append(raw)
     body = "\n".join(buf).strip()
     if body:
-        chapters.append((cur_title, body))
+        chapters.append((cur_title, body, cur_start))
     elif chapters and cur_title not in ("开篇",):
-        chapters[-1] = (chapters[-1][0], chapters[-1][1] + "\n" + cur_title)
+        chapters[-1] = (chapters[-1][0], chapters[-1][1] + "\n" + cur_title,
+                        chapters[-1][2])
     # 「开篇」只装着书名/作者/简介这类元信息时不留成章：epub 的 metadata 已有这些
     if chapters and chapters[0][0] == "开篇":
         keep = [ln for ln in chapters[0][1].splitlines()
@@ -2161,7 +2178,7 @@ def split_chapters(text, custom=None):
         if not keep:
             chapters.pop(0)
     if not chapters:
-        chapters = [("全文", text.strip())]
+        chapters = [("全文", text.strip(), 0)]
     return chapters
 
 

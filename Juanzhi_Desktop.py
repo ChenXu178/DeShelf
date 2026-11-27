@@ -491,6 +491,11 @@ TEXTS = {
         "chap_res": "点「试分章节」查看结果",
         "chap_all_done": "试分 {0} 本：共 {1} 章，异常 {2} 本（见日志）",
         "chap_dbl_hint": "　双击任意一行进入该书单本试分",
+        # 双击某一章 → 逐行正文窗口（只渲染目标章附近的若干行，滚动续载）
+        "chap_win_title": "正文预览 · {0}",
+        "chap_win_meta": "{0} · 第 {1}/{2} 章 · 全书 {3} 行",
+        "chap_win_loaded": "已载入第 {0}–{1} 行 / 共 {2} 行",
+        "chap_read_hint": "　双击任意一章查看正文",
         "chap_sum": "《{0}》共切出 {1} 章，正文合计 {2} 字",
         "prog_chap": "试分中 {0}/{1}：《{2}》",
         "st_chap_done": "试分完成：{0} 本成功 · 共 {1} 章 · 异常 {2} 本",
@@ -780,6 +785,10 @@ TEXTS = {
         "chap_res": "Click \u201cTry Split\u201d to preview",
         "chap_all_done": "Tried {0} books: {1} chapters in total, {2} failed (see log)",
         "chap_dbl_hint": "  double-click a row to open that book",
+        "chap_win_title": "Text preview \u00b7 {0}",
+        "chap_win_meta": "{0} \u00b7 chapter {1}/{2} \u00b7 {3} lines in total",
+        "chap_win_loaded": "Lines {0}\u2013{1} of {2} loaded",
+        "chap_read_hint": "  double-click a chapter to read its text",
         "chap_sum": "\u201c{0}\u201d: {1} chapters, {2} chars total",
         "prog_chap": "Splitting {0}/{1}: {2}",
         "st_chap_done": "Split done: {0} books · {1} chapters · {2} failed",
@@ -2503,6 +2512,294 @@ class CoverPicker:
         finally:
             self._dead = True
         return self.result
+
+
+# ============================================================ 分章正文预览
+#
+# 双击分章列表里的一章 → 开窗逐行看原文。窗口里的一行就是原文 splitlines()
+# 的一行：不 strip、不折叠、不跳空行，行号也是原文行号，所以预览与源文本
+# 严格逐行对应，空行/缩进/行尾空白/特殊空白字符全部原样保留。
+# 整本书几十万字一次性塞进 Text 会卡，因此只放「双击那一章附近」的一段：
+# 打开时先垫 CHAP_VIEW_BACK 行、往下铺 CHAP_VIEW_CHUNK 行，滚到顶/底再各补
+# 一段，续载按原文行号算，不会错位。
+
+CHAP_VIEW_CHUNK = 600   # 每次续载多少行
+CHAP_VIEW_BACK = 120    # 打开时在目标章上方先垫多少行（能看到上一章结尾）
+CHAP_VIEW_EDGE = 0.01   # 距顶/底多近就触发续载（占当前已载入内容的比例）
+
+
+class ChapterReader:
+    """逐行正文窗口：按需插入原文行、滚动续载，打开即定位到指定章。"""
+
+    def __init__(self, master, book, text, starts, target=0, S=None):
+        self.S = S or TEXTS[ZH]
+        # 原文逐行原样留着：不 strip、不合并空行，空行也各占一行、也有行号
+        self.lines = text.splitlines() or [""]
+        self.rows = len(self.lines)
+        # 各章起始行（0 基原文行号）：用于定位，也用来认出「哪一行是章节标题」
+        self.starts = [min(max(int(x), 0), self.rows - 1)
+                       for x in (starts or [0])] or [0]
+        self._title_rows = set(self.starts)  # 只染色，不改原文一个字
+        self._lo = self._hi = 0     # 已插入控件的行范围 [lo, hi)
+        self._loading = False
+        self._closed = False        # 窗口已关：延迟续载的回调直接作废
+        self._pending = None
+        self._pos = (0.0, 1.0)
+        self._target = 0            # 双击的那一章（布局完成后还要再居中一次）
+        self._centered = False
+        self._center_hooked = False
+        self._build(master, book)
+        self.jump_to(target)
+
+    # -------------------------------------------------------- 界面
+    def _build(self, master, book):
+        S = self.S
+        name = book.get("title") or os.path.splitext(book.get("name") or "")[0] or ""
+        win = self.win = tk.Toplevel(master)
+        win.title(S["chap_win_title"].format(name))
+        win.transient(master)
+        win.configure(bg=BG)
+        win.minsize(px(560), px(420))
+        _center_win(win, 920, 720)
+        win.bind("<Escape>", lambda _e: self._close())
+
+        # 底栏与提示先占位，正文区再吃剩余高度（否则会被挤没）
+        bar = ttk.Frame(win)
+        bar.pack(side="bottom", fill="x", padx=px(10), pady=px(10))
+        ttk.Button(bar, text=S["re_close"], style="Soft.TButton",
+                   command=self._close).pack(side="right")
+        self.stat = tk.Label(bar, text="", bg=BG, fg=MUTED, font=FONT_S, anchor="w")
+        self.stat.pack(side="left")
+
+        head = tk.Frame(win, bg=CARD, highlightthickness=1, highlightbackground=LINE)
+        head.pack(fill="x", padx=px(10), pady=(px(10), px(6)))
+        tk.Label(head, text=name, bg=CARD, fg=INK, font=FONT_B, anchor="w",
+                 padx=px(10), pady=px(3)).pack(fill="x")
+        self.meta = tk.Label(head, text="", bg=CARD, fg=MUTED, font=FONT_S,
+                             anchor="w", padx=px(10), pady=px(3))
+        self.meta.pack(fill="x")
+
+        body = ttk.Frame(win)
+        body.pack(fill="both", expand=True, padx=px(10), pady=(0, px(4)))
+        # 正文一律同一套字体/行距，不做标题加粗、不加段间距：原文什么样就显示什么样
+        self.txt = tk.Text(body, wrap="word", font=FONT, bg="#FFFFFF", fg=INK,
+                           relief="flat", borderwidth=0, highlightthickness=1,
+                           highlightbackground=LINE, highlightcolor=BLUE,
+                           insertwidth=0, cursor="arrow", padx=px(8), pady=px(6),
+                           height=10, width=40)
+        # 行号列（灰、等宽）：折行后第二行起用 lmargin2 缩进，看起来仍是「一列」
+        self.txt.tag_configure("num", foreground="#A8ADB4", font=MONO)
+        self.txt.tag_configure("body", lmargin2=px(52))
+        # 章节标题行只换字体/颜色做高亮：不加 spacing，段间距仍与原文一致
+        self.txt.tag_configure("title", font=FONT_B, foreground=BLUE)
+        # 行选中：只设底色。用内置 sel 标记会触发 Tk 反复重排文本（每点一次
+        # 总高度都在涨、画面慢慢漂），自定义 tag 没有这个毛病
+        self.txt.tag_configure("rowsel", background="#D8E4F2")
+        self.txt.configure(state="disabled")
+        self.txt.bind("<MouseWheel>", self._wheel)
+        # 单击选中整行（列表式交互）：默认的字符级选区和插入光标在这里都别要；
+        # 双击/三击也不让它退回「选词/选段」，否则整行选中会被默认绑定拆掉。
+        # 按住左键拖动一律拦掉：Text 的 <B1-Motion> 会自己拉一条字符选区出来
+        self.txt.bind("<Button-1>", self._click_row)
+        self.txt.bind("<Double-1>", self._click_row)
+        self.txt.bind("<Triple-1>", self._click_row)
+        self.txt.bind("<B1-Motion>", self._no_drag)
+        self.txt.bind("<Shift-Button-1>", self._no_drag)
+        self.txt.bind("<Control-Button-1>", self._no_drag)
+        self.sb = ttk.Scrollbar(body, orient="vertical", command=self._yview)
+        self.txt.configure(yscrollcommand=self._on_scroll)
+        self.sb.pack(side="right", fill="y")
+        self.txt.pack(side="left", fill="both", expand=True)
+
+    # -------------------------------------------------------- 行数据
+    def _walk(self, a, b):
+        """[a, b) 行：按原文原样给出，一行一项（空行给空串，不跳过、不合并）。
+
+        章节标题行多带一个 "title" 标签，只影响字体与颜色，文本还是原文那一行。
+        """
+        for r in range(max(0, a), min(b, self.rows)):
+            yield r, self.lines[r], "title" if r in self._title_rows else "body"
+
+    def _emit(self, a, b, prepend=False):
+        """把 [a, b) 行写进控件：整段拼成一次 insert，减少 Tcl 往返（大块才不卡）。
+
+        正文严格照原文插入：不 rstrip、不丢空行，行首缩进、行尾空白、制表符
+        与全角空格都原样写进去；行号只是我们在行首加的列表栏，不改正文。
+        """
+        args = []
+        for n, line, kind in self._walk(a, b):
+            args.append("{:>6}  ".format(n + 1))
+            args.append(("num",))
+            args.append(line + "\n")
+            args.append((kind,))
+        if args:
+            self.txt.insert("1.0" if prepend else "end", *args)
+
+    # -------------------------------------------------------- 装载 / 定位
+    def jump_to(self, pos):
+        """打开时定位到第 pos 章：先只装载这一章附近的一段，再把它滚到窗口中间。"""
+        pos = min(max(int(pos), 0), len(self.starts) - 1)
+        target = self.starts[pos]
+        a = max(0, target - CHAP_VIEW_BACK)
+        b = min(self.rows, a + CHAP_VIEW_CHUNK)
+        self._load(a, b, before=False)
+        self._center_on(target)
+        # 标题栏里的章名直接取原文那一行：与正文逐字一致，不做二次拼装
+        self.meta.configure(text=self.S["chap_win_meta"].format(
+            self.lines[target].strip() or "—", pos + 1, len(self.starts),
+            "{:,}".format(self.rows)))
+        self._safe(self.txt.focus_set)
+
+    def _center_on(self, target):
+        """把目标章滚到窗口垂直中间（上下各留半屏），而不是贴在首行。"""
+        self._target = target
+        idx = max(1, target - self._lo + 1)
+        self._safe(lambda: self.txt.yview("%d.0" % idx))
+        if self._center_now(idx):
+            self._centered = True
+            return
+        # 刚建好的窗口还没完成布局（控件高度是 1）：等拿到真实尺寸再对一次
+        if not self._center_hooked:
+            self._center_hooked = True
+            self._safe(lambda: self.txt.bind("<Configure>", self._center_evt, add="+"))
+
+    def _center_evt(self, _e=None):
+        if self._centered or self._closed:
+            return
+        if self._center_now(max(1, self._target - self._lo + 1)):
+            self._centered = True
+            self._safe(lambda: self.txt.unbind("<Configure>"))
+
+    def _center_now(self, idx):
+        """按「显示行」对半屏：长段落折行后一行逻辑行占好几行像素，按逻辑行会滚过头。"""
+        try:
+            h = self.txt.winfo_height()
+            if h <= 1:
+                return False
+            n = self.txt.count("@0,0", "@0,%d" % (h - 1), "displaylines")
+            half = (int(n[0]) if n else 0) // 2
+            if half <= 0:
+                return False
+            self.txt.yview(self.txt.index("%d.0 - %d display lines" % (idx, half)))
+        except (tk.TclError, ValueError):
+            return False
+        return True
+
+    def _load(self, a, b, before):
+        """插入 [a, b) 行：before=True 往上方补，False 往下方补。"""
+        if a >= b or self._loading or self._closed:
+            return
+        self._loading = True
+        top = 0
+        try:
+            if before:
+                # 记下原来贴顶的逻辑行：插到它上方后要把它顶回原位，画面才不跳
+                try:
+                    top = int(self.txt.index("@0,0").split(".")[0])
+                except (tk.TclError, ValueError):
+                    top = 0
+            self.txt.configure(state="normal")
+            self._emit(a, b, prepend=before)
+            self.txt.configure(state="disabled")
+            if before:
+                added = self._lo - a
+                self._lo = a
+                self._safe(lambda: self.txt.yview("%d.0" % (top + added)))
+            else:
+                if self._hi <= self._lo:  # 控件还是空的：第一次装载
+                    self._lo = a
+                self._hi = b
+            self._update_stat()
+        finally:
+            self._loading = False
+        # 内容还没铺满一屏时不会产生滚动，这里主动再补一块，直到铺满
+        try:
+            first, last = self.txt.yview()
+        except tk.TclError:
+            return
+        self._pos = (first, last)
+        if last >= 1.0 - CHAP_VIEW_EDGE and self._hi < self.rows:
+            self._later(self._maybe_load, 20)
+
+    def _update_stat(self):
+        self.stat.configure(text=self.S["chap_win_loaded"].format(
+            self._lo + 1, self._hi, self.rows))
+
+    # -------------------------------------------------------- 滚动续载
+    def _on_scroll(self, first, last):
+        try:
+            self.sb.set(first, last)
+        except tk.TclError:
+            return
+        self._pos = (float(first), float(last))
+        if self._pending is None and not self._loading:
+            self._pending = self._later(self._maybe_load, 40)
+
+    def _maybe_load(self):
+        self._pending = None
+        if self._loading or self._closed:
+            return
+        first, last = self._pos
+        # 先看下方：内容不满一屏时 first=0/last=1，也该继续往下铺
+        if last >= 1.0 - CHAP_VIEW_EDGE and self._hi < self.rows:
+            self._load(self._hi, min(self.rows, self._hi + CHAP_VIEW_CHUNK), before=False)
+        elif first <= CHAP_VIEW_EDGE and self._lo > 0:
+            self._load(max(0, self._lo - CHAP_VIEW_CHUNK), self._lo, before=True)
+
+    def _click_row(self, e):
+        """单击选中整行（列表式交互）：折行的行连带它折下去的几行一起选中。"""
+        try:
+            line = int(self.txt.index("@%d,%d" % (e.x, e.y)).split(".")[0])
+            self.txt.tag_remove("rowsel", "1.0", "end")
+            self.txt.tag_add("rowsel", "%d.0" % line, "%d.0" % (line + 1))
+            # 插入标记跟着落在这行：获得焦点时 Tk 会 see(insert)，不先挪过来
+            # 的话点一行就被滚走；顺带方向键/翻页也从这一行继续
+            self.txt.mark_set("insert", "%d.0" % line)
+            self.txt.focus_set()
+        except (tk.TclError, ValueError):
+            pass
+        return "break"  # 不落到默认绑定：否则会变成字符级选择 + 插入光标
+
+    def _no_drag(self, _e=None):
+        """拖动/带修饰键的点击：一律不进入字符级选择，选行只认单击。"""
+        self._safe(lambda: self.txt.tag_remove("sel", "1.0", "end"))
+        return "break"
+
+    def _wheel(self, e):
+        """滚轮：一格走 3 行（触控板的小 delta 按 1 格算），并让续载逻辑有机会触发。"""
+        try:
+            self.txt.yview_scroll(-3 if (getattr(e, "delta", 0) or 0) > 0 else 3,
+                                  "units")
+        except tk.TclError:
+            pass
+        return "break"
+
+    def _yview(self, *args):
+        self._safe(lambda: self.txt.yview(*args))
+
+    # -------------------------------------------------------- 杂项
+    def _later(self, func, ms):
+        """窗口可能已经关掉：after 也要包一层，别让 TclError 冒到主循环。"""
+        try:
+            return self.win.after(ms, func)
+        except tk.TclError:
+            return None
+
+    def _safe(self, func):
+        try:
+            func()
+        except tk.TclError:
+            pass
+
+    def _close(self):
+        self._closed = True
+        if self._pending is not None:
+            try:
+                self.win.after_cancel(self._pending)
+            except Exception:
+                pass
+            self._pending = None
+        self._safe(self.win.destroy)
 
 
 class App:
@@ -4624,8 +4921,10 @@ class App:
             self.refresh_chap_col()
 
     def _chap_build(self, b):
-        """按当前规则切这本书，返回 (完整切分结果, 生效的章节正则)。
+        """按当前规则切这本书，返回 (完整切分结果, 生效的章节正则, 各章起始行, 原文)。
 
+        起始行是每章标题在原文里的行号（0 基），正文预览按它定位并按原文
+        逐行显示（空行、缩进、特殊空白一律原样保留，不做任何压缩）。
         这里不剔除「已删除的章节」：删除记录随时会变，统一由 _chap_final 处理。
         """
         self._re_align(b)
@@ -4640,7 +4939,10 @@ class App:
             rules = self.active_rules()
             if rules:
                 text, _r = jzcore.clean_text(text, rules, None, self.custom_rules)
-        return jzcore.split_chapters(text, custom), custom
+        located = jzcore.split_chapters_located(text, custom)
+        chapters = [(t, body) for t, body, _ln in located]
+        starts = [ln for _t, _body, ln in located]
+        return chapters, custom, starts, text
 
     def _chap_rule_sync(self, b, custom, save=True):
         """记住这本书的列表是按哪条规则切出来的（只在内存，不写索引）。
@@ -4729,7 +5031,7 @@ class App:
                         b, self.custom_re.get().strip() or None)):
                 full = cache["full"]
             else:
-                full, _custom = self._chap_build(b)
+                full, _custom, _starts, _text = self._chap_build(b)
             chapters, ck, gone, idx = self._chap_final(b, full)
         except ValueError as e:
             messagebox.showerror(S["d_re_bad"], str(e))
@@ -4767,15 +5069,23 @@ class App:
         messagebox.showinfo(S["d_export_ok"], S["d_export_ok_msg"].format(out))
 
     def on_chap_double(self, evt=None):
-        """批量试分列表里双击一行 → 切到这本书的单本试分。"""
-        if not getattr(self, "_chap_batch", False):
-            return
+        """双击一行：批量列表 → 切到这本书的单本试分；单本列表 → 看这一章正文。"""
         iid = ""
         if evt is not None:
             iid = self.tv_chap.identify_row(evt.y)
         if not iid:
             sel = self.tv_chap.selection()
             iid = sel[0] if sel else ""
+        if not iid:
+            return
+        if not getattr(self, "_chap_batch", False):
+            # 行序就是章节在 _chap_final 结果里的序（同名章靠行序区分，不看标题）
+            try:
+                pos = int(self.tv_chap.index(iid))
+            except (ValueError, tk.TclError):
+                return
+            self.show_chap_content(pos)
+            return
         b = (getattr(self, "_chap_rows", None) or {}).get(iid)
         if not b:
             return
@@ -4783,6 +5093,60 @@ class App:
         self.chap_pick_text.set(b["title"] or os.path.splitext(b["name"])[0])
         self.sync_book_re()
         self.preview_chap(b)
+
+    def _chap_source(self, b):
+        """当前表格对应的章节 + 各章在原文里的起始行 + 原文全文。
+
+        有缓存就复用，不为双击重读全书；删章只改目录，起始行按下标取，
+        所以预览窗口里的行号始终是原文行号。
+        """
+        cache = getattr(self, "_chap_cache", None)
+        custom = self._re_for(b, self.custom_re.get().strip() or None)
+        if (cache and cache.get("path") == b["path"]
+                and cache.get("lang") == self.lang
+                and cache.get("custom") == custom
+                and "starts" in cache):
+            full, starts, text = cache["full"], cache["starts"], cache["text"]
+        else:
+            full, custom, starts, text = self._chap_build(b)
+            self._chap_cache = {"path": b["path"], "custom": custom,
+                                "lang": self.lang, "full": full,
+                                "starts": starts, "text": text}
+        chapters, _ck, _gone, idx = self._chap_final(b, full)
+        return chapters, [starts[i] for i in idx], text
+
+    def show_chap_content(self, pos):
+        """双击某一章 → 打开逐行正文窗口，定位到这一章（只载入附近的行）。
+
+        正文窗口只渲染目标章上下若干行，滚动时再向上/下补，避免整本书一次性
+        插进 Text：几十万字的书开窗也不会卡顿。
+        """
+        S = self.S
+        b = self._chap_view_book or self.picked_book()
+        if not b:
+            messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
+            return
+        try:
+            chapters, starts, text = self._chap_source(b)
+        except ValueError as e:
+            messagebox.showerror(S["d_re_bad"], str(e))
+            return
+        except Exception as e:
+            messagebox.showerror(S["d_chap_fail"], str(e))
+            return
+        if not chapters or not starts or not text:
+            return
+        # 同一时间只留一个正文窗口：再双击直接换成新的一章，不堆一屏子窗口
+        old = getattr(self, "_chap_win", None)
+        if old is not None:
+            try:
+                old._close()
+            except Exception:
+                pass
+        try:
+            self._chap_win = ChapterReader(self.root, b, text, starts, pos, S)
+        except tk.TclError:
+            self._chap_win = None
 
     def preview_chap(self, book=None):
         S = self.S
@@ -4792,7 +5156,7 @@ class App:
             messagebox.showinfo(S["d_no_sel"], S["d_no_sel_msg"])
             return
         try:
-            full, custom = self._chap_build(b)
+            full, custom, starts, text = self._chap_build(b)
             chapters, ck, gone, idx = self._chap_final(b, full)
         except ValueError as e:
             messagebox.showerror(S["d_re_bad"], str(e))
@@ -4800,10 +5164,10 @@ class App:
         except Exception as e:
             messagebox.showerror(S["d_chap_fail"], str(e))
             return
-        # 缓存完整切分结果：删章重刷 / 导出章节树都不必再读盘切一遍
+        # 缓存完整切分结果：删章重刷 / 导出章节树 / 正文预览都不必再读盘切一遍
         # （换书/换正则/换语言后自动失效）
         self._chap_cache = {"path": b["path"], "custom": custom, "lang": self.lang,
-                            "full": full}
+                            "full": full, "starts": starts, "text": text}
         self._fill_chap_table(b, chapters, ck, gone, idx)
 
     def _fill_chap_table(self, b, chapters, ck, gone=0, idx=None):
@@ -4835,7 +5199,8 @@ class App:
         # 汇总行带上「已删除 N 章」，免得用户以为是自己把书切坏了
         self.chap_var.set(S["chap_sum"].format(b["title"], len(chapters), "{:,}".format(total))
                           + (S["chap_ck_bad"].format(ck["bad"]) if ck["bad"] else "")
-                          + (S["chap_del_sum"].format(gone) if gone else ""))
+                          + (S["chap_del_sum"].format(gone) if gone else "")
+                          + S["chap_read_hint"])
         self._set_book_chaps(b, len(chapters))  # 写回书籍状态 → ① 书库「章节」列同步
         # 日志给全本书的章节树概况：多少级、多少章（章数就是切出的章数）
         self.log("《%s》试分 %d 章%s%s" % (b["title"], len(chapters),
