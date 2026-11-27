@@ -1109,11 +1109,13 @@ def _center_win(win, w, h):
     w/h 以 96 DPI 逻辑像素传入，内部按 DPR 换算并按工作区夹取：
     · 不再有硬编码的 -12 偏移，所以是真正的几何居中；
     · 用工作区而不是整屏，任务栏不会把视觉中心顶高。
+
+    这里**只算几何、不处理任何事件**：旧版开头调用了 update_idletasks()，
+    而 Tk 在第一次空闲处理时就会把顶层窗口映射到屏幕，于是窗口先以窗口
+    管理器的默认位置出现在左上（屏幕中央偏上）再被 geometry() 挪到中间，
+    用户就能看到一次明显的跳动。首次显示前要居中的窗口应由调用方先
+    withdraw()，居中的几何落定后再 deiconify()（见 main()）。
     """
-    try:
-        win.update_idletasks()
-    except Exception:
-        pass
     W, H = px(w), px(h)
     area = _work_area()
     if area:
@@ -5016,8 +5018,16 @@ def _boot(root):
 def main():
     _set_dpi_aware()  # 必须在 tk.Tk() 之前：Tk 只初始化一次缩放
     root = tk.Tk()
+    # 先撤窗再建界面：Tk 在第一次空闲处理时就会把主窗映射到屏幕，而建控件的
+    # 过程中本来就有 update_idletasks()（规则滚动区、主题按钮量宽等都会调），
+    # 所以不撤窗的话窗口会先按窗口管理器的默认位置露一次面，再被 _center_win()
+    # 挪到中间——这就是「启动时先显示、再移动到居中」的来源。
+    # 撤窗期间照常建控件和布局（都不要求窗口已映射），居中几何算好后 deiconify()，
+    # 窗口第一次出现在屏幕上时尺寸与位置已经落定，不会再有可见位移。
+    root.withdraw()
     _init_metrics(root)  # 必须在任何控件/画布创建之前
     _boot(root)  # 直接进入主界面：不再有开屏等待
+    root.deiconify()  # 建完再露面：首次显示即为最终居中位置
     root.mainloop()
 
 
