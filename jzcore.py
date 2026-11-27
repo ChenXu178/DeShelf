@@ -364,21 +364,26 @@ def _only_kind(s):
     return None
 
 
-def fix_line_heads(lines):
+def fix_line_heads(lines, keep=None):
     """标点单独占一行 / 跑到行首 → 接回上一行。返回 (新行, 修好的行数)。
 
     只动两种坏行：整行只有收尾引号或逗号句号的、行首就是标点的。
     **省略号/破折号独占一行一律不碰** —— 290 个真实样本里这类共 153 行，
     绝大多数是作者故意的（“……”单独一行表示沉默），贴上去等于改人家的排版。
+
+    keep 是「不许动」的行下标集合（用户手动创建的章节标题行）：这些行既不
+    往外并、也不许被上一行吸走，否则那一章的分章锚点就找不回来了。
     """
-    out, n = [], 0
-    for raw in lines:
+    out, n, prot = [], 0, []
+    for i, raw in enumerate(lines):
         s = raw.strip()
-        if not s or _is_block_line(s):
+        mine = keep is not None and i in keep
+        if not s or mine or _is_block_line(s):
             out.append(raw)
+            prot.append(mine)
             continue
         prev = out[-1] if out else ""
-        if prev and not _is_block_line(prev.strip()):
+        if prev and not (prot[-1] if prot else False) and not _is_block_line(prev.strip()):
             if len(s) <= _ONLY_MAX and _ONLY_PUNCT.match(s):
                 if _only_kind(s) in ("close", "hard"):
                     # 收尾引号上一行已经有了，就别再叠一个
@@ -391,6 +396,7 @@ def fix_line_heads(lines):
                 n += 1
                 continue
         out.append(raw)
+        prot.append(False)
     return out, n
 
 
@@ -437,11 +443,14 @@ def scan_para_issues(lines):
     return {"lone": lone, "blocks": blocks}
 
 
-def unwrap_paragraphs(lines, max_len=UNWRAP_MAX):
+def unwrap_paragraphs(lines, max_len=UNWRAP_MAX, keep=None):
     """把空行之间被硬断的行接回去。返回 (新行, 合并处数, 跳过段数)。
 
     空行＝段落界，段内无条件全并 —— 不能靠“行尾有没有标点”判断，因为硬断点
     经常正好落在句号/问号后面（实测图2 那样会把整段并错）。
+
+    keep 是「不许动」的行下标集合（用户手动创建的章节标题行）：这些行自己
+    单独成段，也不接下一行 —— 内容一字不改，分章锚点才定位得回来。
     """
     out, merged, skipped, block = [], 0, 0, []
 
@@ -465,12 +474,12 @@ def unwrap_paragraphs(lines, max_len=UNWRAP_MAX):
             out.extend(block)
         block = []
 
-    for raw in lines:
+    for i, raw in enumerate(lines):
         s = raw.strip()
         if not s:
             flush()
             out.append(raw)
-        elif _is_block_line(s):
+        elif _is_block_line(s) or (keep is not None and i in keep):
             flush()                 # 标题单独成段，硬断点止于此
             out.append(raw)
         else:
@@ -1404,8 +1413,16 @@ def _ad_split(s, use_url, use_site, why=None):
     return "keep", 0
 
 
+def _keep_idx(lines, keep):
+    """受保护行（内容原样匹配）在当前行列表里的下标集合。"""
+    if not keep:
+        return None
+    got = {i for i, ln in enumerate(lines) if ln.strip() in keep}
+    return got or None
+
+
 def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=False,
-               want_trace=False):
+               want_trace=False, protect_lines=None):
     """按启用的规则清洗文本，返回 (新文本, 删除行数)。
 
     stats 若传入 dict，会写入 trimmed（只裁了行尾广告、正文得以保留的行数）、
@@ -1424,9 +1441,13 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
     （url / site / nav / moji / jsdup / custom），label 只给自定义规则用
     （规则名或正则）。纯空格与空行不留记录。它只服务于「清洗内容汇总」的
     误删排查，平时不生成。
+    protect_lines 是「用户手动创建的章节标题行」的原文文本（已 strip）：这些
+    行任何规则都不许删、也不参与断行合并 —— 章节锚点一旦被洗掉，那一章就
+    再也定位不回来了。
     """
     on = set(enabled or [])
     cust = compile_custom(custom)
+    shield = {x.strip() for x in (protect_lines or ()) if (x or "").strip()}
     # 预览标红用：只有预览会传 want_del，批量清洗不记录，省内存也省时间
     del_lines = set() if want_del else None
     cut_map = {} if want_del else None
@@ -1455,9 +1476,10 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
     if "punct" in on or "unwrap" in on:
         lines = text.splitlines()
         if "punct" in on:
-            lines, glued = fix_line_heads(lines)
+            lines, glued = fix_line_heads(lines, _keep_idx(lines, shield))
         if "unwrap" in on:
-            lines, merged, wrap_skip = unwrap_paragraphs(lines)
+            lines, merged, wrap_skip = unwrap_paragraphs(
+                lines, UNWRAP_MAX, _keep_idx(lines, shield))
         text = "\n".join(lines)
     prev_blank = False
     use_url = "url" in on
@@ -1471,6 +1493,13 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
     # out_src 与 out 一一对应：记每行来自原文的第几行（简繁去重要靠它回找行号）
     out, out_src = [], []
     for i_raw, raw in enumerate(text.splitlines(), 1):
+        if shield and raw.strip() in shield:
+            # 用户手动创建的章节标题行：原样保留，任何规则都不碰它。
+            # 那一章的起止全靠这一行定位（见 split_chapters_located 的 manual）。
+            out.append(raw)
+            out_src.append(i_raw)
+            prev_blank = False
+            continue
         s = raw
         lead = 0
         if "trim" in on:
@@ -1609,6 +1638,13 @@ def clean_text(text, enabled, stats=None, custom=None, img_cache=None, want_del=
     js_gone = set()          # 简繁去重删掉的行在 out 里的下标
     if "jsdup" in on and out:
         kept, dels = dedupe_script_dup(out, js_gone)
+        if shield:
+            # 受保护的标题行也不许被简繁去重吃掉：它一没，那一章就只剩行号了
+            safe = {k for k, s in enumerate(out) if s.strip() in shield}
+            if safe & js_gone:
+                js_gone -= safe
+                kept = [s for k, s in enumerate(out) if k not in js_gone]
+                dels = [out[k] for k in sorted(js_gone)]
         if dels:
             jsdup_n = len(dels)
             removed += jsdup_n
@@ -2091,19 +2127,47 @@ CHAP_TPL = [
      r"|序章|序言|楔子|引子|尾声|尾聲|后记|後記|终章|終章|番外)"),
 ]
 
-# 开头这几行算元信息：只由它们组成的「开篇」不单独成章
+# 开头这几行是「书名/作者/简介」这类皮书头元信息（仍照旧进「开篇」，
+# 另有一处用处：在页首手动建章时，它们不被算进那一章的正文）
 _META_LINE = re.compile(r"^(?:书名|标题|题\s*目|小说名|作\s*者|著\s*者|简介|内容简介|内容介绍)\s*[:：]")
 
+# 页首也常见不带标签的书名/作者行（「斗破苍穹」「天蚕土豆」）：短、不带句读，
+# 照样算元信息 —— 有它们才配叫「开篇」，见 _meta_head_line。
+_META_BARE_MAX = 24
+_META_BARE_NOPUNCT = "。！？!?；;，,、…：:.“”\"'（）()"
 
-def split_chapters(text, custom=None):
+
+def _meta_head_line(s):
+    """页首这一行像不像「书名 / 作者 / 简介」这类元信息（空行不打断元信息区）。
+
+    「开篇」只装这类东西：开头没有它们、只有第X章…这类章节标题和正文时，
+    分章不另立「开篇」，免得目录第一行挂个空壳或一堆不该有的正文。
+    判据只用于**章节标题之前**的那几行：带「书名：/作者：」标签的算；
+    短、不带句读的裸行（常见的不带标签书名/作者）也算；其余（成句的长行、
+    网址）一律当正文。
+    """
+    s = (s or "").strip()
+    if not s:
+        return True
+    if _META_LINE.match(s):
+        return True
+    if len(s) > _META_BARE_MAX:
+        return False
+    if "www." in s.lower() or "http" in s.lower():
+        return False
+    return not any(ch in s for ch in _META_BARE_NOPUNCT)
+
+
+def split_chapters(text, custom=None, manual=None):
     """切分章节，返回 [(标题, 正文)]。
 
     custom 非空时只使用自定义正则，否则使用内置中文规则库。
+    manual 是用户手动创建的章节 {行号: 章节名}，见 split_chapters_located。
     """
-    return [(t, b) for t, b, _ln in split_chapters_located(text, custom)]
+    return [(t, b) for t, b, _ln in split_chapters_located(text, custom, manual)]
 
 
-def split_chapters_located(text, custom=None):
+def split_chapters_located(text, custom=None, manual=None):
     """同 split_chapters，但每章多带一个「起始行号」（0 基，原文行号）。
 
     正文预览要按原文行号定位章节、并逐行原样显示（空行、缩进都不能动），
@@ -2113,6 +2177,11 @@ def split_chapters_located(text, custom=None):
     多级章节树的每一级都是独立条目，绝不压成一行：一行里写了「第一部 …
     第一卷 … 第1章 …」会拆成三条；连续几行各是一个标题时也各占一条。
     上级条目（部/卷）没有自己的正文，正文归最里面那一级；标题不会丢。
+
+    manual = {行号: 章节名} 是用户在正文预览里手动创建的章节：正文第「行号」
+    行就是这一章的标题行，标题用给的名字（原文那行写什么不作数）；正文从
+    它的下一行起、到下一章标题行为止。手工章节与正则切出来的章完全同权，
+    因而多级标题、校验栏、EPUB / 分章 TXT 都照常处理。
     """
     if custom:
         try:
@@ -2122,16 +2191,52 @@ def split_chapters_located(text, custom=None):
         pats = [custom]
     else:
         pats = CHAPTER_PATTERNS
+    # 手工章节按行号落位：正则认不出的行也能当标题（用户说它是它就是）
+    forced = {}
+    for k, v in (manual or {}).items():
+        try:
+            k = int(k)
+        except (TypeError, ValueError):
+            continue
+        name = (v or "").strip()
+        if name and k >= 0:
+            forced[k] = name
+    raw_lines = text.splitlines()
+
+    def _title_line(s):
+        """这一行本身会不会被当成章节标题（元信息区不能把它吃进去）。
+
+        既看本书生效的正则，也看内置规则库：本书规则可能只认「第N章」，
+        但「第一部 …」「第一卷 …」这类行同样是章节目录，不能被当成书名/作者
+        那种元信息 —— 否则页首元信息区会一路吞到第一个章节标题那里，把
+        标题下面的正文也一并吞掉。
+        """
+        if not s or len(s) > MAX_TITLE_LEN or s.endswith("。"):
+            return False
+        if any(re.match(p, s) for p in pats):
+            return True
+        return any(re.match(p, s) for p in CHAPTER_PATTERNS)
+
+    # 页首元信息区：开头连续的「书名/作者/简介…」行。这块属于「开篇」，
+    # 在正文开头手动建章时「开篇」会被那一章取代，届时要靠这段范围把
+    # 书名/作者从新章正文里摘出去。
+    # 「开篇」立不立只看一条：第一个章节之前有没有内容（见下面的 append）。
+    head_end = 0
+    while head_end < len(raw_lines):
+        s = raw_lines[head_end].strip()
+        if not _meta_head_line(s) or _title_line(s):
+            break           # 成句的正文 / 章节标题：元信息区到此为止
+        head_end += 1
     chapters = []  # [(标题, 正文, 起始行号)]
     cur_title = "开篇"
     cur_start = 0
     buf = []
-    for i, raw in enumerate(text.splitlines()):
+    for i, raw in enumerate(raw_lines):
         s = _LITERAL_ESC.sub("", raw.strip())
-        hit = None
+        hit = forced.get(i)
         tail = ""
         # 以句号结尾的通常是正文而非标题，避免“序章内容。”这类误判
-        if s and len(s) <= MAX_TITLE_LEN and not s.endswith("。"):
+        if hit is None and s and len(s) <= MAX_TITLE_LEN and not s.endswith("。"):
             for p in pats:
                 if re.match(p, s):
                     hit = s
@@ -2154,6 +2259,8 @@ def split_chapters_located(text, custom=None):
             body = "\n".join(buf).strip()
             # 上一章：有正文就收下；没正文但本来就是标题（连续标题）也单独成条 ——
             # 绝不把多级标题压成一行。「开篇」的空占位不留。
+            # 第一个章节（正则认出的、内置规则认出的、用户手动建的都算）之前
+            # 有多少原文，「开篇」就有多少原文。
             if body or cur_title != "开篇":
                 chapters.append((cur_title, body, cur_start))
             # 一行里写了多级（「第一部 风起云涌 第一卷 新手村 第1章 初出茅庐」）：
@@ -2167,6 +2274,9 @@ def split_chapters_located(text, custom=None):
             # 同行正文归到这一章，缩进照原文留
             if tail:
                 buf.append(raw[:len(raw) - len(raw.lstrip())] + tail)
+        elif i < head_end and cur_title != "开篇":
+            # 页首的书名/作者/简介不是正文：手动建章顶掉了「开篇」也不能把它当正文
+            continue
         else:
             buf.append(raw)
     body = "\n".join(buf).strip()
@@ -2175,15 +2285,89 @@ def split_chapters_located(text, custom=None):
     elif cur_title not in ("开篇",):
         # 最后一章只有标题、没有正文：标题仍要留在目录里
         chapters.append((cur_title, "", cur_start))
-    # 「开篇」只装着书名/作者/简介这类元信息时不留成章：epub 的 metadata 已有这些
-    if chapters and chapters[0][0] == "开篇":
-        keep = [ln for ln in chapters[0][1].splitlines()
-                if ln.strip() and not _META_LINE.match(ln.strip())]
-        if not keep:
-            chapters.pop(0)
+    # 开篇只装书名/作者/简介也留着：第一个章节之前有多少原文就收多少，
+    # 不再判断「像不像元信息」—— 少一条规则，少一种「内容被吞掉」的可能。
     if not chapters:
         chapters = [("全文", text.strip(), 0)]
     return chapters
+
+
+# ---------------------------------------------------------------- 手工章节
+# 用户在正文预览里点「创建章节」造出来的章：只记「原文行号 + 章节名」，正文
+# 仍由切分时按行号现场取，源文件一个字都不改。清洗规则一改，行号就会平移，
+# 所以定位以内容为准：行号处一字不差 → 直接用；否则找同文行里离原行号最近
+# 的一处；原文那行被改写、找不到时，再按总行数比例估一个位置。章节名始终以
+# 用户填的为准，绝不回退成原文那一行。
+
+# 索引里每条手工章节记录的字段：line(0 基原文行号) / title(章节名) /
+# text(创建时那一行的原文，用于洗牌后重新对位) / rows(创建时全书行数)
+MANUAL_KEYS = ("line", "title", "text", "rows")
+
+
+def manual_records(entries):
+    """把手工作章记录规整成 [{line,title,text,rows}]，按行号排好。"""
+    out = []
+    for e in entries or ():
+        if not isinstance(e, dict):
+            continue
+        name = (e.get("title") or "").strip()
+        if not name:
+            continue
+        try:
+            line = int(e.get("line") or 0)
+        except (TypeError, ValueError):
+            line = 0
+        try:
+            rows = int(e.get("rows") or 0)
+        except (TypeError, ValueError):
+            rows = 0
+        out.append({"line": max(0, line), "title": name,
+                    "text": (e.get("text") or "").strip(), "rows": max(0, rows)})
+    out.sort(key=lambda r: r["line"])
+    return out
+
+
+def manual_lines(entries, text):
+    """手工章节的原文行号 → 这段文本里的行号，返回 {行号: 章节名}。
+
+    同一行只留一条（后记的覆盖先记的），切分时一行里不会长两个标题。
+    """
+    recs = manual_records(entries)
+    if not recs:
+        return {}
+    lines = text.splitlines()
+    if not lines:
+        return {}
+    got = {}
+    for r in recs:
+        got[_locate_line(r, lines)] = r["title"]
+    return got
+
+
+def _locate_line(rec, lines):
+    """手工章节在 lines 里的落点（0 基）：行号优先，内容兜底。"""
+    n = len(lines)
+    want = min(max(int(rec.get("line") or 0), 0), n - 1)
+    txt = (rec.get("text") or "").strip()
+    if not txt:
+        return want
+    # 1. 行号处的原文一字不差：没被清洗挪过，行号最准
+    if lines[want].strip() == txt:
+        return want
+    # 2. 按内容找：清洗删掉了上下若干行，行号会平移，内容不会
+    best, best_d = None, 0
+    for i, ln in enumerate(lines):
+        if ln.strip() == txt:
+            d = abs(i - want)
+            if best is None or d < best_d:
+                best, best_d = i, d
+    if best is not None:
+        return best
+    # 3. 那一行被规则改写/合并了：按整体行数比例估，别把章落到书尾
+    rows = int(rec.get("rows") or 0)
+    if rows > 0 and rows != n:
+        return min(max(int(round(want * float(n) / rows)), 0), n - 1)
+    return want
 
 
 # ---------------------------------------------------------------- 章节序号校验
@@ -2440,6 +2624,15 @@ def _infer_and_check(items, marks, holes, L, skip=(), expect=None):
     leaf = None         # 最内层（「章」所在层）
     breaks = []         # [(节点下标, 层, 是否强判)]：推断出来的父层，供空层回退
     quiet = set(skip)   # 不写 fail、也不参与连号判断的章（占位标题、章内小标题）
+    # 全书自上而下的统计：每个单位字「自己那一级」出现了多少次。层级不能只看
+    # 眼前这几章 —— 尤其是用户手动建的那一章，它可能出现在正文最开头，把本来
+    # 该在外面的「部/卷」当成更内层，整棵树的层级就全错了。整本书看一遍：
+    # 出现得多的那一种才是最内层。
+    unit_cnt = {}
+    for _ch, _toks in items:
+        if _toks:
+            _u = _toks[-1][1]
+            unit_cnt[_u] = unit_cnt.get(_u, 0) + 1
 
     fail_run = 0                            # 连续多少个没有序号的章
     for idx, (ch, toks) in enumerate(items):
@@ -2491,7 +2684,12 @@ def _infer_and_check(items, marks, holes, L, skip=(), expect=None):
             known.last = v
             _add_node(nodes, ch, v, known)
             continue
-        if leaf.last is not None and v == leaf.last + 1:      # 序号连续
+        # 序号连续（换个单位字也算同一层：「第1章」→「第二回」），但那个单位只
+        # 在全书零星出现时不能并进来 —— 页首手工建了「第0章 序」，紧跟着的
+        # 「第1部」正好等于 0+1，按连续处理就把「部」错当成了章这一级。
+        if (leaf.last is not None and v == leaf.last + 1
+                and (u == leaf.unit
+                     or unit_cnt.get(u, 0) >= unit_cnt.get(leaf.unit, 0))):
             leaf.last = v
             _add_node(nodes, ch, v, leaf)
             continue
@@ -2515,6 +2713,18 @@ def _infer_and_check(items, marks, holes, L, skip=(), expect=None):
                 lv.last = v
                 _add_node(nodes, ch, v, lv)
                 breaks.append((len(nodes) - 1, lv, True))
+                continue
+            # 再看「整本书谁多谁少」：这一级的章节数比当前最内层少得多，说明它是
+            # 更外层（部/卷本来就比章少）。典型场景：用户在正文最开头手动建了一章
+            # 「第1章 …」，后面才出现「第一部 …」—— 不能因为「1」从 0/1 起就把它
+            # 当成章的下一级，否则整棵树的层级会反着长，后面的章全都认不出来。
+            if unit_cnt.get(u, 0) < unit_cnt.get(leaf.unit, 0):
+                lv = _Lv(u, leaf.parent)
+                leaf.parent = lv
+                levels[u] = lv
+                lv.last = v
+                _add_node(nodes, ch, v, lv)
+                breaks.append((len(nodes) - 1, lv, False))
                 continue
             # 要成「更内层」，后面得真有内容跟上：同单位接 v+1（第二篇→第三篇），
             # 或更下一级从 0/1 开始（第一卷→第1章）。都不满足就只是章内小标题
