@@ -150,6 +150,67 @@ console.log("== 分章 ==");
   ok("非法正则抛错", threw);
 }
 
+console.log("== 分章：多级章节树（与桌面版一致） ==");
+{
+  /* 连续几行各是一个标题：各占一条，不能合并成「第一部 第一卷 第1章」 */
+  const multi = Core.splitChapters([
+    "第一部 风起云涌",
+    "",
+    "第一卷 新手村",
+    "",
+    "第1章 初出茅庐",
+    "",
+    "正文甲。",
+    "",
+    "第2章 名声鹊起",
+    "",
+    "正文乙。"
+  ].join("\n"));
+  ok("连续多级标题各占一条，不压成一行",
+    multi.map(c => c.t).join("|") === "第一部 风起云涌|第一卷 新手村|第1章 初出茅庐|第2章 名声鹊起",
+    multi.map(c => c.t).join("|"));
+  ok("上级章节（部/卷）没有正文", multi[0].b === "" && multi[1].b === "",
+    JSON.stringify(multi.map(c => c.b)));
+  ok("正文归最里面那一级",
+    multi[2].b.includes("正文甲") && multi[3].b.includes("正文乙"),
+    JSON.stringify(multi.map(c => c.b)));
+
+  /* 原文本身写在一行里：同样按序号位置拆成多条 */
+  const inline = Core.splitChapters(
+    "第一部 风起云涌 第一卷 新手村 第1章 初出茅庐\n正文甲。\n第2章 名声鹊起\n正文乙。");
+  ok("一行写多级也拆成独立条目",
+    inline.map(c => c.t).join("|") === "第一部 风起云涌|第一卷 新手村|第1章 初出茅庐|第2章 名声鹊起",
+    inline.map(c => c.t).join("|"));
+  ok("一行多级时成员层级正确", inline[2].b.includes("正文甲") && inline[0].b === "");
+
+  /* 文末最后一个标题没有正文：标题仍要留在目录里（旧版会塞进上一章正文） */
+  const tail = Core.splitChapters("第1章 起\n正文。\n第2章 终");
+  ok("文末空标题单独成条",
+    tail.length === 2 && tail[1].t === "第2章 终" && tail[1].b === "",
+    JSON.stringify(tail));
+
+  /* 标题里夹带的「第二部」不是上级章节，不能拆 */
+  const film = Core.splitChapters("第3章 他还会有第二部电影吗？\n正文。");
+  ok("标题里的「第二部」不拆", film.length === 1 && film[0].t === "第3章 他还会有第二部电影吗？",
+    JSON.stringify(film.map(c => c.t)));
+
+  /* 拆分工具本身：抽出的每段只含自己这一级 */
+  ok("splitTitleLevels 三级",
+    Core.splitTitleLevels("第一部 风起云涌 第一卷 新手村 第1章 初出茅庐").join("|")
+      === "第一部 风起云涌|第一卷 新手村|第1章 初出茅庐",
+    Core.splitTitleLevels("第一部 风起云涌 第一卷 新手村 第1章 初出茅庐").join("|"));
+  ok("splitTitleLevels 单级原样",
+    Core.splitTitleLevels("第3章 他还会有第二部电影吗？").join("|")
+      === "第3章 他还会有第二部电影吗？",
+    Core.splitTitleLevels("第3章 他还会有第二部电影吗？").join("|"));
+
+  /* 拆出来的空章节不影响校验：部/卷/章三层，无异常 */
+  const ck = Core.checkChapters(multi.map(c => c.t));
+  ok("多级章节树识别为 3 级", ck.levels === 3, ck.levels);
+  ok("多级章节树无校验异常", ck.bad === 0, JSON.stringify(ck.marks));
+  ok("部/卷标出层级", ck.lv[1] === 1 && ck.lv[2] === 2, JSON.stringify(ck.lv));
+}
+
 console.log("== 指纹 ==");
 ok("sha256('abc')", Core.sha256hex(new TextEncoder().encode("abc")) ===
   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
@@ -190,13 +251,21 @@ function zipEntries(zip) {
   const names = ents.map(e => e.name);
   ok("epub 内含 mimetype", names[0] === "mimetype" && ents[0].method === 0);
   ok("mimetype 内容精确", new TextDecoder().decode(ents[0].data) === "application/epub+zip");
-  for (const need of ["META-INF/container.xml","OEBPS/content.opf","OEBPS/toc.ncx","OEBPS/style.css",
-      "OEBPS/c0001.xhtml","OEBPS/c0002.xhtml"])
+  for (const need of ["META-INF/container.xml","OEBPS/content.opf","OEBPS/toc.ncx",
+      "OEBPS/nav.xhtml","OEBPS/style.css","OEBPS/c0001.xhtml","OEBPS/c0002.xhtml"])
     ok("含 " + need, names.includes(need));
   const opf = new TextDecoder().decode(ents.find(e => e.name === "OEBPS/content.opf").data);
   ok("opf 含书名/作者", opf.includes("测试书") && opf.includes("某人"));
+  ok("opf 是 EPUB3 并声明 nav 与 dcterms:modified",
+    opf.includes('version="3.0"') && opf.includes('properties="nav"')
+      && opf.includes("dcterms:modified"), opf.slice(0, 300));
   const c1 = new TextDecoder().decode(ents.find(e => e.name === "OEBPS/c0001.xhtml").data);
   ok("xhtml 含标题与段落缩进", c1.includes("第一章 开篇") && c1.includes("<p>") && c1.includes("正文乙"));
+  const enEnts = zipEntries(await Core.buildEpub({title:"B", author:"A", lang:"en",
+    chapters:[{t:"第1章 空",b:""}]}));
+  const enPage = new TextDecoder().decode(enEnts.find(e => e.name === "OEBPS/c0001.xhtml").data);
+  ok("英文界面空白章文案", enPage.includes("(No text in this chapter)")
+    && !enPage.includes("本章无正文"), enPage);
   const ncx = new TextDecoder().decode(ents.find(e => e.name === "OEBPS/toc.ncx").data);
   ok("ncx 目录两章", ncx.includes("第二章 结尾"));
   ok("mimetype CRC 校验", ents[0].crc === Core.crc32(ents[0].data));
@@ -206,6 +275,47 @@ function zipEntries(zip) {
   const sent = zipEntries(szip);
   ok("分章 zip 两文件", sent.length === 2);
   ok("分章 zip 中文文件名", sent.every(e => e.name.includes("样例/") && e.name.endsWith(".txt")));
+}
+
+console.log("== EPUB 多级目录（nav / NCX 嵌套） ==");
+{
+  const chs = [
+    {t:"第一部 风起云涌",b:""},
+    {t:"第一卷 新手村",b:""},
+    {t:"第1章 初出茅庐",b:"正文甲。"},
+    {t:"第2章 名声鹊起",b:"正文乙。"},
+    {t:"第二卷 剑指中原",b:""},
+    {t:"第1章 再起",b:"正文丙。"},
+  ];
+  /* 目录树本身：部 → 卷 → 章，节点指回章节页 */
+  const nodes = Core.chapterTocNodes(chs.map(c => c.t));
+  ok("chapterTocNodes 顶层只有一部", nodes.length === 1 && nodes[0].kids.length === 2,
+    JSON.stringify(nodes.map(n => n.title)));
+  ok("部下面挂两卷", nodes[0].kids.map(n => n.title).join("|") === "第一卷 新手村|第二卷 剑指中原",
+    JSON.stringify(nodes[0].kids.map(n => n.title)));
+  ok("卷下面挂章", nodes[0].kids[0].kids.map(n => n.title).join("|")
+    === "第1章 初出茅庐|第2章 名声鹊起", JSON.stringify(nodes[0].kids[0].kids));
+  ok("节点指回章节页", nodes[0].kids[0].kids[1].page === 4, nodes[0].kids[0].kids[1].page);
+  const flat = Core.chapterTocNodes(["第1章 a", "第2章 b"]);
+  ok("扁平书只有一层", flat.length === 2 && flat.every(n => n.kids.length === 0));
+
+  /* 导出的 EPUB：nav 是多层 <ol>，NCX 是嵌套 navPoint */
+  const ents = zipEntries(await Core.buildEpub({title:"多层书", author:"甲", chapters:chs}));
+  const nav = new TextDecoder().decode(ents.find(e => e.name === "OEBPS/nav.xhtml").data);
+  const ncx = new TextDecoder().decode(ents.find(e => e.name === "OEBPS/toc.ncx").data);
+  ok("nav 写明 epub:type=toc", nav.includes('epub:type="toc"'));
+  ok("nav 目录树 4 层 ol（根 + 部 + 两个卷）",
+    (nav.match(/<ol>/g) || []).length === 4, (nav.match(/<ol>/g) || []).length);
+  ok("nav 部条目下面挂着卷",
+    /<li><a href="c0001\.xhtml">第一部 风起云涌<\/a>\s*<ol>/.test(nav), nav);
+  ok("nav 卷条目下面挂着章",
+    /<li><a href="c0002\.xhtml">第一卷 新手村<\/a>\s*<ol>/.test(nav), nav);
+  ok("ncx navPoint 数 = 章数", (ncx.match(/<navPoint /g) || []).length === 6,
+    (ncx.match(/<navPoint /g) || []).length);
+  ok("ncx 嵌套：部的 navPoint 里含卷",
+    /<navPoint id="np1" playOrder="1">[\s\S]*<navPoint id="np2" playOrder="2">/.test(ncx), ncx);
+  ok("ncx playOrder 按先序递增",
+    [1, 2, 3, 4, 5, 6].every(n => ncx.includes('playOrder="' + n + '"')));
 }
 
 console.log("== 插图链接粗筛（明显不是图的本地拦掉） ==");

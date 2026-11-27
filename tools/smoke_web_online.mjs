@@ -4,11 +4,13 @@
  * 用法: node tools/smoke_web_online.mjs
  */
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const URL = "https://podcatcher962.github.io/DeShelf/web/DeShelf.html";
 const PORT = 9334;
 const PROFILE = (process.env.TEMP || "/tmp") + "/deshelf_online_" + Date.now();
+const SHOT = "web/_ui_shot.png";   // 调试截图，跑完自动删
 
 const results = [];
 function ok(name, cond, extra) {
@@ -99,12 +101,11 @@ try {
   ok("不蒜子统计已加载并显示数字", bzOk, JSON.stringify(r.val || r.err));
   console.log("  · 统计状态:", JSON.stringify(r.val || r.err));
 
-  // 5. 截图（复用 _ui_shot.png 名以匹配 .gitignore）
+  // 5. 截图（临时产物：跑完由 finally 删掉）
   await evalv("document.querySelectorAll('.step')[0] ? null : null");
   const shot = await send("Page.captureScreenshot", { format: "png" });
   if (shot.result && shot.result.data) {
-    const fs = await import("node:fs");
-    fs.writeFileSync("web/_ui_shot.png", Buffer.from(shot.result.data, "base64"));
+    fs.writeFileSync(SHOT, Buffer.from(shot.result.data, "base64"));
     ok("在线首屏截图已存", true);
   } else { ok("在线首屏截图已存", false, JSON.stringify(shot.err || {})); }
 
@@ -116,4 +117,8 @@ try {
   process.exitCode = 1;
 } finally {
   edge.kill();
+  await sleep(300);   // 等 Edge 退出、释放 user-data-dir 里的锁
+  // 清理测试产物：临时浏览器档案（%TEMP%）与调试截图
+  try { fs.rmSync(PROFILE, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (_) {}
+  try { fs.rmSync(SHOT, { force: true }); } catch (_) {}
 }

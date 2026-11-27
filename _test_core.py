@@ -1,19 +1,23 @@
 # -*- coding: utf-8 -*-
 """卷帙核心逻辑自测：造样本 → 编码识别 / 清洗 / 分章 / EPUB / 元信息。"""
+import atexit
 import os
 import shutil
 import sys
-import time
+import tempfile
 import zipfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 import jzcore
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_sample")
-if os.path.isdir(ROOT):
-    # 沙箱拦截一切删除，用 move 把旧样本挪开（rename 不被拦截）
-    shutil.move(ROOT, ROOT + "_" + time.strftime("%H%M%S"))
-os.makedirs(ROOT, exist_ok=True)
+# 样本建在系统临时目录里，跑完自动删干净，不再往仓库留 _sample* 目录
+ROOT = tempfile.mkdtemp(prefix="deshelf_core_")
+atexit.register(shutil.rmtree, ROOT, ignore_errors=True)
+# 顺手清掉旧版测试留下的样本目录（以前是挪成 _sample_HHMMSS，越攒越多）
+for _name in os.listdir(HERE):
+    if _name.startswith("_sample"):
+        shutil.rmtree(os.path.join(HERE, _name), ignore_errors=True)
 
 BODY_GBK = """斗破苍穹
 作者：天蚕土豆
@@ -116,6 +120,35 @@ check("章节数(1,2,123,序章+开篇)", len(chs), 5)
 check("中文数字章节命中", any("一百二十三" in t for t, _ in chs), True)
 check("序章命中", any(t.startswith("序章") for t, _ in chs), True)
 
+print("== 4b. 多级章节树（部/卷/章各占一条）==")
+# 连续几行各是一个标题：各占一条，不能合并成「第一部 第一卷 第1章」
+multi = jzcore.split_chapters(
+    "第一部 风起云涌\n\n第一卷 新手村\n\n第1章 初出茅庐\n\n正文甲。\n\n"
+    "第2章 名声鹊起\n\n正文乙。\n")
+check("连续多级标题各占一条", [t for t, _b in multi],
+      ["第一部 风起云涌", "第一卷 新手村", "第1章 初出茅庐", "第2章 名声鹊起"])
+check("上级章节没有正文", [multi[0][1], multi[1][1]], ["", ""])
+check("正文归最里面那一级", ["正文甲" in multi[2][1], "正文乙" in multi[3][1]],
+      [True, True])
+# 原文本身写在一行里：按序号位置拆开
+inline = jzcore.split_chapters(
+    "第一部 风起云涌 第一卷 新手村 第1章 初出茅庐\n正文甲。\n第2章 名声鹊起\n正文乙。")
+check("一行写多级也拆成独立条目", [t for t, _b in inline],
+      ["第一部 风起云涌", "第一卷 新手村", "第1章 初出茅庐", "第2章 名声鹊起"])
+check("一行多级时正文归最深一级", "正文甲" in inline[2][1], True)
+check("split_title_levels 切三段",
+      jzcore.split_title_levels("第一部 风起云涌 第一卷 新手村 第1章 初出茅庐"),
+      ["第一部 风起云涌", "第一卷 新手村", "第1章 初出茅庐"])
+check("单级标题不拆", jzcore.split_title_levels("第3章 他还会有第二部电影吗？"),
+      ["第3章 他还会有第二部电影吗？"])
+# 文末最后一个标题没有正文：标题仍留在目录里（旧版会塞进上一章正文）
+tail = jzcore.split_chapters("第1章 起\n正文。\n第2章 终")
+check("文末空标题单独成条", [(t, b) for t, b in tail],
+      [("第1章 起", "正文。"), ("第2章 终", "")])
+check("标题里的「第二部」不拆",
+      jzcore.split_chapters("第3章 他还会有第二部电影吗？\n正文。")[0][0],
+      "第3章 他还会有第二部电影吗？")
+
 print("== 5. 自定义章节正则 ==")
 chs2 = jzcore.split_chapters(cleaned, r"^#{1,3}\s*\S+")
 print("  自定义正则切出 %d 章（预期 1，样本里无 # 标题）" % len(chs2))
@@ -133,14 +166,36 @@ with zipfile.ZipFile(ep) as z:
     check("mimetype 内容", z.read("mimetype").decode(), "application/epub+zip")
     opf = z.read("OEBPS/content.opf").decode("utf-8")
     ncx = z.read("OEBPS/toc.ncx").decode("utf-8")
-    htmls = sorted(n for n in names if n.endswith(".xhtml"))
+    nav = z.read("OEBPS/nav.xhtml").decode("utf-8")
+    # 封面页与 nav 导航文档不是章节页，按章节页单独计数
+    htmls = sorted(n for n in names
+                   if n.endswith(".xhtml") and not n.endswith(("cover.xhtml", "nav.xhtml")))
     first_body = z.read(htmls[1]).decode("utf-8")
 check("章节 xhtml 数 = 章节数", len(htmls), len(chs))
 check("OPF 含书名", "<dc:title>斗破苍穹</dc:title>" in opf, True)
 check("OPF 含作者", "天蚕土豆" in opf, True)
+check("EPUB3 包声明", 'version="3.0"' in opf, True)
+check("OPF 声明 nav 导航文档", 'properties="nav"' in opf, True)
 check("NCX 含目录项", ncx.count("<navPoint"), len(chs))
+check("NCX 是合法 XML", ncx.startswith("<?xml") and "</ncx>" in ncx, True)
+check("nav 是合法 XML 页面", nav.startswith("<?xml") and "</html>" in nav, True)
+check("nav 写明 toc", 'epub:type="toc"' in nav, True)
 check("正文写入 xhtml", "萧炎" in first_body, True)
 check("xhtml 已转义/结构完整", first_body.startswith("<?xml") and "</html>" in first_body, True)
+
+# 空白章（部/卷这类只有标题的章节）的占位文案跟着界面语言走
+empty_chs = [("第1章 空", ""), ("第2章 有", "正文。")]
+ep_zh = os.path.join(ROOT, "空白章-zh.epub")
+ep_en = os.path.join(ROOT, "空白章-en.epub")
+jzcore.write_epub(ep_zh, "空白章", "甲", empty_chs)
+jzcore.write_epub(ep_en, "空白章", "甲", empty_chs, lang="en")
+with zipfile.ZipFile(ep_zh) as z:
+    page_zh = z.read("OEBPS/c0001.xhtml").decode("utf-8")
+with zipfile.ZipFile(ep_en) as z:
+    page_en = z.read("OEBPS/c0001.xhtml").decode("utf-8")
+check("中文界面空白章文案", "（本章无正文）" in page_zh, True)
+check("英文界面空白章文案", "(No text in this chapter)" in page_en, True)
+check("英文界面不留中文占位", "本章无正文" in page_en, False)
 
 print("== 7. 合并/拆分 TXT 导出 ==")
 m1 = os.path.join(ROOT, "合并本.txt")
@@ -300,6 +355,21 @@ rep_en = jzcore.chapter_tree_report(titles, None, ["Book: demo"], lang="en")
 check("英文导出标题", rep_en.splitlines()[0], "Chapter tree export")
 check("英文各级统计", "Chapters per level:" in rep_en and "Level 1:" in rep_en, True)
 check("英文无序号", "[0] 开篇  ← no number | OK" in rep_en, True)
+
+print("== 12b. EPUB 目录树（nav / NCX 嵌套）==")
+multi = jzcore.split_chapters(
+    "第一部 甲 第一卷 乙 第1章 丙\n正文。\n第2章 丁\n正文。\n"
+    "第二卷 戊\n\n第1章 己\n正文。\n")
+nodes = jzcore.chapter_toc_nodes([t for t, _b in multi])
+check("顶层=部", [n["title"] for n in nodes], ["第一部 甲"])
+check("部下面是两卷", [n["title"] for n in nodes[0]["kids"]],
+      ["第一卷 乙", "第二卷 戊"])
+check("卷下面是章", [n["title"] for n in nodes[0]["kids"][0]["kids"]],
+      ["第1章 丙", "第2章 丁"])
+check("第二卷也挂着章", [n["title"] for n in nodes[0]["kids"][1]["kids"]],
+      ["第1章 己"])
+check("节点指回章节页", nodes[0]["kids"][0]["kids"][1]["page"], 4)
+check("扁平书只有一层", len(jzcore.chapter_toc_nodes(["第1章 a", "第2章 b"])[0]["kids"]), 0)
 
 print()
 print("失败项：%d" % len(fails))

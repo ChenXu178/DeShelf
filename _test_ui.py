@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """界面布局探测：逐个切页测量关键控件尺寸，防止出现 1×1 不可见控件。"""
+import atexit
 import os
+import shutil
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -9,6 +12,11 @@ sys.path.insert(0, HERE)
 import tkinter as tk
 
 import jzcore
+
+# 界面探测也会走「试分章节」，那会顺手把分章规则写回索引：
+# 测试不能改用户真实书库的 .deshelf_index.json，这里直接掐掉落盘
+jzcore.save_index = lambda *a, **k: True
+
 from Juanzhi_Desktop import App, safe_name, theme_title, _ellipsize, px
 
 fails = []
@@ -30,16 +38,31 @@ root.update_idletasks()
 root.update()
 time.sleep(0.3)
 
-sample = os.path.join(HERE, "_sample")
+# 界面探测只需要几本书：样本建在系统临时目录，跑完自动删（不再依赖 _test_core.py 的 _sample）
+SAMPLE = tempfile.mkdtemp(prefix="deshelf_ui_")
+atexit.register(shutil.rmtree, SAMPLE, ignore_errors=True)
+_SAMPLES = {
+    "界面样本一.txt": ("界面样本一\n作者：甲\n\n第1章 开始\n"
+                  "　　正文第一段，用来测字数与清洗预览。\n"
+                  "请收藏本站 www.example.com\n\n"
+                  "第2章 继续\n　　正文第二段。\n"),
+    "界面样本二.txt": ("《界面样本二》\n作者：乙\n\n第1章 开篇\n"
+                  "　　正文甲。\n"
+                  "上一页 | 返回目录 | 加入书签\n\n"
+                  "第2章 承接\n　　正文乙。\n"),
+}
+for _name, _text in _SAMPLES.items():
+    with open(os.path.join(SAMPLE, _name), "w", encoding="utf-8") as _f:
+        _f.write(_text)
+
 n = 0
-if os.path.isdir(sample):
-    for f in sorted(os.listdir(sample)):
-        p = os.path.join(sample, f)
-        if f.lower().endswith(".txt"):
-            info = jzcore.scan_file(p)
-            info["rel"] = f
-            app.add_book(info)
-            n += 1
+for f in sorted(os.listdir(SAMPLE)):
+    p = os.path.join(SAMPLE, f)
+    if f.lower().endswith(".txt"):
+        info = jzcore.scan_file(p)
+        info["rel"] = f
+        app.add_book(info)
+        n += 1
 root.update()
 print("样本载入 %d 本" % n)
 check("书库行数", app.tv, 1, 1)

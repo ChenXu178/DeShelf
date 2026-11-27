@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """双语专项测试：词典完整性 / RULES 英文元数据 / 中英文界面冒烟。"""
+import atexit
 import os
 import sys
 
@@ -9,6 +10,29 @@ import tkinter as tk
 
 import jzcore
 from Juanzhi_Desktop import TEXTS, ZH, EN, pick_lang, App
+
+# switch_lang 会写用户配置（~/.deshelf_config.json）：先记下原样，退出时整文件还原，
+# 测试跑完不给用户留任何痕迹（原本没有配置文件就删掉，有就写回原字节）
+_CFG_PATH = jzcore.CONFIG_PATH
+_CFG_ORIG = None
+if os.path.exists(_CFG_PATH):
+    with open(_CFG_PATH, "rb") as _f:
+        _CFG_ORIG = _f.read()
+
+
+def _restore_cfg():
+    try:
+        if _CFG_ORIG is None:
+            if os.path.exists(_CFG_PATH):
+                os.remove(_CFG_PATH)
+        else:
+            with open(_CFG_PATH, "wb") as f:
+                f.write(_CFG_ORIG)
+    except OSError:
+        pass
+
+
+atexit.register(_restore_cfg)
 
 fails = []
 

@@ -98,7 +98,7 @@
 | **1 扫描入库** | 递归扫描目录，自动识别编码（GBK / UTF-8 / UTF-8 BOM / UTF-16），统计字数（按万/亿显示），按内容 MD5 标出重复文件；右键可改书名 / 作者 |
 | **2 批量清洗** | 14 条规则：网址行（长网址、含网址的 HTML 标签都认）、**保留插图链接**、**插图链接校验**（默认关，逐条请求确认真是图片）、站点宣传行、翻页导航残留、乱码行、**标点单独占一行**（默认关，省略号/破折号独占一行不动）、**合并句中断行**（默认关）、空行、首尾空白、全角转半角、段落缩进、**简繁重复行**。预览里被清洗的部分标红 |
 | **3 智能分章** | 内置中文网文章节规则库，也支持全局 / 本书专用自定义正则；**章节树校验**逐章核对缺章、重复、顺序与章号，可把层级与校验结果导出成 txt |
-| **4 导出分发** | 导出 EPUB（带目录、10 套版面主题、逐本封面，正文插图可下载并打包进书）、合并 TXT、分章 TXT；文件名可选保持原样 / 作者名 - 书名 / [作者名] 书名 / 《书名》作者：作者名 / 自定义；清洗结果可输出到新目录、原地覆盖（先备份 .bak）或不落盘，并可生成「清洗内容汇总.txt」核对误删 |
+| **4 导出分发** | 导出 EPUB（带多级目录，部/卷/章在阅读器侧边栏逐级展开；10 套版面主题、逐本封面，正文插图可下载并打包进书）、合并 TXT、分章 TXT；文件名可选保持原样 / 作者名 - 书名 / [作者名] 书名 / 《书名》作者：作者名 / 自定义；清洗结果可输出到新目录、原地覆盖（先备份 .bak）或不落盘，并可生成「清洗内容汇总.txt」核对误删 |
 
 其它：目录记忆、扫描索引缓存（秒开）、书单导出 CSV、规则包 JSON 导入导出、按内容指纹找出重复文件。
 
@@ -112,7 +112,7 @@ EPUB 是卷帙的主要输出格式，也是给电纸书/阅读器看书的推�
 | 可划线做笔记 | 支持高亮与批注留心得（笔记存在阅读器侧，换设备不丢） |
 | 体积小近一半 | EPUB 是 zip 压缩容器，同一本书通常比 TXT 小 40%~55%，省电纸书存储 |
 | 排版规范 | 段落缩进、标题层级完整保留，调字号自动重排，永不失真不乱码 |
-| 开放标准 | EPUB 2.0 为 W3C 国际标准，不会过期，任何设备可长期阅读 |
+| 开放标准 | EPUB 3 为 W3C 国际标准，不会过期，任何设备可长期阅读 |
 
 **推荐流程**：卷帙把野生 TXT 清洗分章 → 导出最终版 EPUB → 放进电纸书精读做笔记。
 
@@ -150,7 +150,7 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 
 - Python 3 + Tkinter，打包成单文件 EXE（约 15 MB）；清洗 / 分章 / EPUB 只用到标准库
 - 封面绘制与主题缩略图用 Pillow，版面预览用 html2image 调本机已装的 Chrome / Edge 渲染（浏览器不随包分发）
-- EPUB 由标准库 `zipfile` 手写（EPUB 2.0 + toc.ncx，兼容绝大多数阅读器）；主题 CSS 与预览图随包内置，也可在 EXE 同级放 `styles` 覆盖
+- EPUB 由标准库 `zipfile` 手写（EPUB 3：nav 导航文档 + toc.ncx 双份目录，都按部/卷/章逐级嵌套，新老阅读器都能展开）；主题 CSS 与预览图随包内置，也可在 EXE 同级放 `styles` 覆盖
 - 编码识别不依赖 chardet：BOM 判断 → UTF-8 严格解码 → 含 NUL 字节判 UTF-16 → 回落 GBK
 - 扫描结果缓存在目录下的 `.deshelf_index.json`，校验 mtime 与体积判断缓存是否过期
 - 批量处理在后台线程执行，界面不卡，可随时停止
@@ -162,14 +162,14 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 
 | 测试 | 覆盖什么 | 结果 |
 |---|---|---|
-| 核心逻辑 | `_test_core.py`：编码 / 清洗 / 分章 / 章节树 / 文件名格式 / EPUB 与 TXT 导出 / 去重指纹 | 105 项通过 |
+| 核心逻辑 | `_test_core.py`：编码 / 清洗 / 分章（含多级章节树拆条）/ 章节树 / 文件名格式 / EPUB 与 TXT 导出 / 去重指纹 | 128 项通过 |
 | 端到端 | `_test_flow.py`：扫描 → 清洗 → 分章 → 导出全流程，含失败分支与异常标红 | 59 项通过 |
 | 封面 | `_test_cover.py`：5 套内置封面、同名图、网络图转码、EPUB 引用 | 114 项通过 |
 | 界面 | `_test_ui.py`：字数显示、文字省略、按钮与弹窗状态 | 40 项通过 |
 | 双语词典 | `_test_bilingual.py`：中英 290 键 ×2 对齐、占位符与文案长度 | 42 项通过 |
 | 清洗一致性 | `tools/test_clean_parity.py`：逐条规则比对两端输出 | 53 项通过 |
-| 网页核心 | `tools/test_web_core.mjs`：分章 / 清洗 / 简繁 / 主题 / 封面 / 导出逻辑 | 96 项通过 |
-| 浏览器冒烟 | `tools/smoke_web_browser.mjs`：headless 真浏览器点界面 | 72 项通过 |
+| 网页核心 | `tools/test_web_core.mjs`：分章（含多级章节树拆条）/ 清洗 / 简繁 / 主题 / 封面 / EPUB 多级目录 / 导出逻辑 | 123 项通过 |
+| 浏览器冒烟 | `tools/smoke_web_browser.mjs`：headless 真浏览器点界面，含多级章节缩进与 EPUB 目录 | 77 项通过 |
 | 真实书 | v1.5.5 的反馈样本（81 万字）：桌面版与网页版各跑一遍，核章号是否连续、有无假章 | 旧 81 章 → 新 106 章，缺号 0 |
 
 两条硬性约束，每次都过：
@@ -247,8 +247,8 @@ Mac 上用 Chrome / Edge 打开，可以授权整个文件夹、把结果写回�
 需要批量"原地覆盖写回"原始文件时用桌面版 EXE。
 
 **自检通过**：
-- 单测：核心 105 / 端到端 59 / 封面 114 / 界面 40 项全过（详见上文「本版实测」）
-- 真实浏览器冒烟 72/72（Edge headless · 页面初始化 / 双语切换 / 文件入库 / 清洗 / 分章 / 主题 / 封面 / 插图 / 导出）
+- 单测：核心 128 / 端到端 59 / 封面 114 / 界面 40 项全过（详见上文「本版实测」）
+- 真实浏览器冒烟 77/77（Edge headless · 页面初始化 / 双语切换 / 文件入库 / 清洗 / 分章 / 多级章节缩进 / 主题 / 封面 / 插图 / 导出）
 - 双语词典 290 键 + 290 键完全对齐
 
 ---
@@ -349,7 +349,7 @@ only when you opt in to verifying / downloading illustration links.
 | **1 Scan** | Recursively scans a folder, auto-detects encoding (GBK / UTF-8 / UTF-8 BOM / UTF-16), counts characters (shown as 万/亿 or K/M), flags duplicates by content MD5; right-click to edit title / author |
 | **2 Clean** | 14 rules: URL lines (long URLs and HTML tags carrying a URL included), **keep illustration links**, **verify illustration links** (off by default; requests each link), site promo lines, page-nav leftovers, mojibake lines, **punctuation alone on a line** (off by default; ellipsis/dash-only lines are never touched), **join mid-sentence line breaks** (off by default), blank lines, trailing spaces, full-width to half-width, paragraph indent, **duplicate simplified/traditional lines**. Removed text is tinted in the preview |
 | **3 Chapters** | Built-in regex library for Chinese web-novel chapter headings, plus global / per-book custom regex; a **chapter-tree check** flags missing chapters, duplicates, out-of-order and wrong numbers, and the levels plus check results can be exported as txt |
-| **4 Export** | EPUB with a real table of contents, 10 layout themes, per-book covers and illustrations packed into the book; merged TXT; one file per chapter. Five file-name formats, three destinations (new folder / overwrite with `.bak` / export only), and an optional “清洗内容汇总.txt” listing everything the cleaning removed |
+| **4 Export** | EPUB with a nested multi-level table of contents (parts / volumes / chapters expand level by level in the reader sidebar), 10 layout themes, per-book covers and illustrations packed into the book; merged TXT; one file per chapter. Five file-name formats, three destinations (new folder / overwrite with `.bak` / export only), and an optional “清洗内容汇总.txt” listing everything the cleaning removed |
 
 Also: remembers the last folder, caches the scan index for instant reload, exports the book list as CSV,
 imports / exports rule packs as JSON, and finds duplicates by content fingerprint.
@@ -364,7 +364,7 @@ EPUB is DeShelf's primary output format and the recommended way to read on e-rea
 | Highlight & annotate | Full support for highlighting and margin notes (notes live in the reader, so they survive file changes) |
 | Roughly half the size | EPUB is a zip container — the same book is typically 40–55% smaller than TXT |
 | Clean typography | Paragraph indents and heading levels are preserved; text reflows at any font size — no mojibake, no distortion |
-| Open standard | EPUB 2.0 is a W3C standard that will never go stale |
+| Open standard | EPUB 3 is a W3C standard that will never go stale |
 
 **Recommended workflow**: clean & split your raw TXT in DeShelf → export the final EPUB → read and annotate on your e-reader.
 
@@ -400,7 +400,7 @@ The **Web version** `DeShelf.html` is also on the same Release page (source: `we
 
 - Python 3.15 + Tkinter, shipped as a single-file EXE (~15 MB); cleaning / splitting / EPUB use the standard library only
 - Covers and theme thumbnails use Pillow; layout previews use html2image to drive the Chrome / Edge already on your machine (no browser is redistributed)
-- EPUB is written by hand with the standard-library `zipfile` (EPUB 2.0 + toc.ncx); the theme CSS files and their previews are bundled, and a `styles` folder next to the EXE overrides them
+- EPUB is written by hand with the standard-library `zipfile` (EPUB 3: both a nav document and toc.ncx, nested by part/volume/chapter so new and old readers can expand it); the theme CSS files and their previews are bundled, and a `styles` folder next to the EXE overrides them
 - Encoding detection without chardet: BOM check → strict UTF-8 decode → NUL byte test for UTF-16 → fall back to GBK
 - Scan results cached in `.deshelf_index.json`, invalidated by mtime and size
 - Batch jobs run on a worker thread; the UI stays responsive and can be stopped at any time
@@ -413,14 +413,14 @@ scripts in this repo rather than estimated:
 
 | Suite | What it covers | Result |
 |---|---|---|
-| Core logic | `_test_core.py` — encoding / cleaning / splitting / chapter tree / file names / EPUB and TXT export / duplicate fingerprint | 105 checks pass |
+| Core logic | `_test_core.py` — encoding / cleaning / splitting (multi-level chapter trees) / chapter tree / file names / EPUB and TXT export / duplicate fingerprint | 128 checks pass |
 | End-to-end | `_test_flow.py` — scan → clean → split → export, including failure branches and tinted rows | 59 checks pass |
 | Covers | `_test_cover.py` — five built-in styles, same-named images, URL images, EPUB references | 114 checks pass |
 | UI | `_test_ui.py` — character counts, ellipsis, button and dialog state | 40 checks pass |
 | Bilingual | `_test_bilingual.py` — 290 keys × 2 aligned, placeholders and copy lengths | 42 checks pass |
 | Clean parity | `tools/test_clean_parity.py` — every rule diffed across both ends | 53 checks pass |
-| Web core | `tools/test_web_core.mjs` — split / clean / script-dedupe / themes / covers / export logic | 96 checks pass |
-| Browser smoke | `smoke_web_browser.mjs` — a headless browser clicking the real UI | 72 checks pass |
+| Web core | `tools/test_web_core.mjs` — split (multi-level chapter trees) / clean / script-dedupe / themes / covers / nested EPUB TOC / export logic | 123 checks pass |
+| Browser smoke | `smoke_web_browser.mjs` — a headless browser clicking the real UI, multi-level chapter indentation and EPUB TOC included | 77 checks pass |
 | Real book | the 810k-character sample from v1.5.5, run through both the desktop and the web core — chapter numbering and phantom-chapter check | 81 chapters → 106, no gaps |
 
 Two hard rules that must hold every time:
@@ -507,8 +507,8 @@ For most "I have a few TXT files and want a readable EPUB for my e-reader" jobs,
 no Python, no install. Reach for the desktop EXE only when you need to batch-overwrite original files in place.
 
 **Self-tests passing**:
-- Unit tests: 105 core / 59 end-to-end / 114 covers / 40 UI — all green (details under “What was actually tested”)
-- 72/72 real-browser smoke (Edge headless: init / language / file import / clean / chapters / themes / covers / illustrations / export)
+- Unit tests: 128 core / 59 end-to-end / 114 covers / 40 UI — all green (details under “What was actually tested”)
+- 77/77 real-browser smoke (Edge headless: init / language / file import / clean / chapters / multi-level chapter indentation / themes / covers / illustrations / export)
 - 290 keys × 2 in the bilingual dictionary, fully aligned
 
 ---
